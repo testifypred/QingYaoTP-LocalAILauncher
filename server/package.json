@@ -1,7 +1,11 @@
 {
-    "dependencies":  {
-                         "msedge-tts":  "^2.1.0",
-                         "ws":  "^8.22.0",
-                         "node-llama-cpp":  "3.22.1"
-                     }
+  "name": "localai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "本地 AI 工作台：llama.cpp 本地模型 + 无框架网页界面，全离线",
+  "dependencies": {
+    "msedge-tts": "^2.1.0",
+    "ws": "^8.22.0",
+    "node-llama-cpp": "3.22.1"
+  }
 }

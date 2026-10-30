@@ -3,7 +3,7 @@
 > 原名 `HANDOFF.md`，由上一任开发者写于 **2026-10-18 21:45**。
 > 从 **2026-10-18 21:44** 起，本文件改为**按时间流水记录**：每一笔写清「几点、改了什么、落在哪、怎么验的」。
 > 第一节是日志索引，其后的一~七节是原交接正文（保留原样，仅修正两处日期笔误），八~十节是本次三项需求的详细设计说明。
-> 最新一笔：**2026-10-30 00:20**（全部时间均为 China Standard Time，本机时钟）。
+> 最新一笔：**2026-10-30 23:55**（第二十三节；全部时间均为 China Standard Time，本机时钟）。
 >
 > **接手先读 [`交接文档.md`](交接文档.md)**（一页纸：定位、现状、代码地图、下一步）。
 > 技术专题已抽到 [`technique/`](technique/)：架构、接口、插件、模型、打包、探针、坑。本文件保留**按时间流水**的原始记录，作为「为什么这么做」的证据。
@@ -1124,6 +1124,68 @@ export async function run(args, ctx) {
 - 耗时约 35 分钟（真模型那几条：tools-agent 98s、web-tools、kv-long、context-switch、ui-preload、preload、second-opinion 各 40–70s）。
 
 跑之前把 `workspace\sessions` 整份备份到 `sessions-backup-before-suite`；`probe-ui-sessions` 照例清空会话，跑完把真实会话（30 条「Hello」）从备份拷回，探针留下的那条删掉。
+
+## 二十三、2026-10-30：版本号、「关于」页、代码入 git
+
+这一轮的出发点不是功能，是**可对账**：出问题时分不清「跑的是哪一版」，改坏了也没有退路。
+
+### 一、先把代码放进 git（这比版本号更要紧）
+
+`D:\LocalModels` 之前**没有任何版本控制**——会话有历史快照，代码没有，一次误覆盖就没了。
+
+| 决定 | 为什么 |
+|---|---|
+| 只收源码与文档（322 个文件 / 26.9MB） | 模型约 15GB、发布包 351MB、语音 99MB 都可再生，进仓库只会让每次 diff 变成拉 GB |
+| `workspace/` 整个忽略 | 会话、历史快照、RAG 索引、备份配置都是用户数据，不该跟着代码走 |
+| `*.gguf` / `dist/` / `tts/` / `node_modules/` / `server/docs/*.png` 忽略 | 同上；截图与音频是探针留档，重跑即可再生 |
+| `.gitattributes` 写 `* -text` | 发布包的核对方式是比哈希，**字节必须一致**，不让 git 做换行转换 |
+| 基线提交 `b6a9175` | 提交信息只写「现状」，不假装是完成态 |
+
+仓库里那份 `server\backup\*.bak`（10-18 的手工备份）先留着，确认 git 好用之后再说。
+
+### 二、版本号：只写一处，处处读它
+
+- `app.mjs` 只有一个常量 `APP_VERSION = "1.0.0"`；`server\package.json` 的 `version` 必须与它一致（**探针会查**，防「只改代码不改包描述」）。
+- 新增 `GET /api/version`：`version / commit / commitAt / builtAt / buildSource / dirty / startedAt / node / pid / port / dir`，**不含本地令牌**。
+- `/api/state` 也带 `version`、`build`、`startedAt`，界面不用多打一个请求。
+- 启动日志第一行改成 `本地 AI v1.0.0 (b6a9175) 已启动`，看控制台就知道跑的是哪一版。
+
+**一个差点埋错的坑**：第一版直接用 `git rev-parse --short HEAD`，结果**发布包也报出了仓库的提交**——因为 `dist\LocalAI\app` 恰好在 `D:\LocalModels` 这个仓库下面，git 会一路往上找 `.git`。那样报出来的是仓库的哈希、不是包里那份代码的，等于给了一张假的「版本证明」。
+
+改法：只有「**app.mjs 这份文件自己**被 git 跟踪」才报哈希（`git ls-files --error-unmatch app.mjs` 成功），否则退回 app.mjs 的修改时间（≈打包那一刻），标 `buildSource: "mtime"`；工作区有未提交改动时标 `dirty: true`——脏工作区不能当发版依据。
+
+实测：源码目录报 `b6a9175 / dirty=true`；把同样的文件放进 `dist\LocalAI\app`，用包里的 `runtime\node.exe` 跑在 8098，报 `buildSource=mtime / builtAt=打包时间`。两种情况都自洽。
+
+### 三、界面：「设置 → 关于」
+
+- 第五个选项卡：版本（`v1.0.0` + 复制按钮）、构建（哈希/提交时间，或打包时间 + 来源）、运行（node / 端口 / 进程号 / 启动时刻 / 服务目录）。
+- 「更新」一栏**没有放假按钮**：这是离线部署，没有分发通道就没有可查的更新源。写清「换版本 = 覆盖 dist 目录，重启后看版本号变没变」，比放一个点了没反应的「检查更新」诚实。
+- 数据全部来自 `/api/version`，界面不自己拼版本号（否则改了常量界面还显示旧的）。
+
+### 四、验证
+
+| 探针 | 结果 | 覆盖 |
+|---|---|---|
+| `probe-version`（新） | **14/14** | semver、构建来源、短哈希合法、dirty 标记、启动时刻不在未来、node/端口、不泄漏令牌、`/api/state` 同源、`package.json` 与常量一致、版本号只在一处定义 |
+| `probe-ui-version`（新） | **9/9** | 「关于」页存在、只显示这一页、三行都有内容、构建行点明来源、复制进剪贴板、切回生成页收起 |
+
+回归（会被「加选项卡 / 加 state 字段」牵动的 5 条）：`probe-settings-tools` 9/9、`probe-ui-new` 30/30、`probe-ui-rag` 6/6、`probe-ui-backup` 20/20、`probe-sessions` 33/33 —— 全绿。
+
+- 同步到 `dist\LocalAI\app\`（app.mjs / app.html），SHA256 一致；
+- **本轮没跑全量**：新增驱动 `server\docs\probe-full-2026-10-30\run-full.ps1`（45 条，比上轮多 2 条），下一轮开工前先跑一次把 45 条钉住。跑之前照规矩备份 `workspace\sessions`。
+
+### 五、顺带修掉的一个文档坑
+
+`新会话启动词.md` 与 `technique\06-探针与验证.md` 里起 headless Edge 的命令写的是 `"$env:ProgramFiles(x86)\..."`——**这在 PowerShell 里取不到值**，会报「无法将 C:\Program Files(x86)... 项识别为 cmdlet」。必须写成带花括号的 ${env:ProgramFiles(x86)} 形式。这次照着文档起 Edge 就是这么卡住的，已把两处命令改对，并写进 `technique\07-坑与约定.md`。
+
+另：本轮用编辑器改 `run-full.ps1` 时 BOM 被悄悄剥掉了（前 3 字节从 `EF BB BF` 变成 `0A 24 62`）。已用 `ReadAllBytes` 补回，并**用 PowerShell 5.1 的 Parser 复验**通过——以后凡改 .ps1 都要做这两步。
+
+### 六、这一轮没做
+
+- **真·更新检查**：要做就得先定「版本清单从哪来」。没有分发通道就不做假按钮；将来做，按 `/api/version` 的形状比对即可。
+- **版本写进 exe 元数据**：要改 `Launcher.cs` + 重编译启动器，收益（资源管理器里能看到版本）小于风险，先放在界面上。
+- 打标签（`git tag v1.0.0`）：只在本地有意义，等真有第二台机器对版本时再打。
+
 
 
 

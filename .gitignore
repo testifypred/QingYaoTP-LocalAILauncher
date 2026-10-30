@@ -20,6 +20,7 @@ workspace/
 
 # 运行日志与进程号
 *.log
+*.log.err
 server/server.pid
 
 # 探针留档：截图、音频、被 wipe 前的会话备份（体积大，跑探针可再生）

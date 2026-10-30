@@ -826,6 +826,8 @@ header::before{
 .pluginRow{display:flex;align-items:center;gap:6px;padding:5px 7px;border:1px solid var(--line);border-radius:5px;background:var(--panel-2);margin-bottom:4px;font-size:12px}
 .pluginRow b{color:var(--text);font-weight:600;font-family:var(--mono)}
 .pluginRow .hintText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 「关于」页的版本串：等宽、可折行，长路径不撑破面板 */
+#paneAbout .mono{font-family:var(--mono);font-size:12px;word-break:break-all;color:var(--text)}
 </style>
 </head>
 <body>
@@ -1235,6 +1237,7 @@ header::before{
       <button type="button" class="stab" data-tab="tts">朗读</button>
       <button type="button" class="stab" data-tab="tools">工具</button>
       <button type="button" class="stab" data-tab="appear">外观</button>
+      <button type="button" class="stab" data-tab="about">关于</button>
     </div>
     <div class="settingsBody" id="paneGen" data-pane="gen">
       <div class="field">
@@ -1391,6 +1394,29 @@ header::before{
           <button id="setQuitOpen" class="ghost danger">退出本地 AI 服务</button>
           <span class="hintText">会先确认；退出后可用桌面图标重新启动</span>
         </div>
+      </div>
+    </div>
+    <div class="settingsBody" id="paneAbout" data-pane="about" hidden>
+      <div class="field">
+        <span class="lbl">版本</span>
+        <div class="exportRow">
+          <b id="aboutVersion" class="mono">—</b>
+          <button id="aboutCopy" class="ghost">复制版本信息</button>
+        </div>
+        <em>报问题时把这一行贴出来，就能直接对上跑的是哪一版；两个包是不是同一版，看它就行，不必再逐个比对文件哈希。</em>
+      </div>
+      <div class="field">
+        <span class="lbl">构建</span>
+        <em id="aboutBuild">—</em>
+      </div>
+      <div class="field">
+        <span class="lbl">运行</span>
+        <em id="aboutRuntime">—</em>
+        <em id="aboutDir" class="mono">—</em>
+      </div>
+      <div class="field">
+        <span class="lbl">更新</span>
+        <em>这是离线部署，程序不联网检查更新。换新版本就把 dist\LocalAI 整个拷过去覆盖（或在源码目录重新打包），重启后回这里看版本号变没变。</em>
       </div>
     </div>
     <div class="modalFoot">
@@ -4807,7 +4833,66 @@ function showSettingsTab(name) {
 }
 for (const b of settingsTabs) b.onclick = () => showSettingsTab(b.dataset.tab);
 
+// ---- 关于页：版本 / 构建 / 运行环境 ----
+// 数据只认服务端 /api/version：界面不自己拼版本号，否则改了常量界面还显示旧的。
+let versionInfoCache = null;
+
+/** 时间戳给人看：2026-10-30 23:41 */
+function fmtStamp(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  const p = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+/** 复制的降级路径：无剪贴板权限时（headless/旧内核）用 execCommand */
+async function copyPlainText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+  }
+}
+
+async function loadVersionInfo() {
+  if (!versionInfoCache) versionInfoCache = await (await fetch('/api/version')).json();
+  const v = versionInfoCache;
+  $('aboutVersion').textContent = 'v' + v.version;
+  $('aboutBuild').textContent = v.commit
+    ? v.commit + (v.commitAt ? ' · 提交于 ' + fmtStamp(v.commitAt) : '') + (v.dirty ? ' · 有未提交改动' : '') + '（源码目录，取自 git）'
+    : v.builtAt
+      ? '打包于 ' + fmtStamp(v.builtAt) + '（发布包里没有 git，取 app.mjs 的修改时间）'
+      : '构建信息不可用';
+  $('aboutRuntime').textContent = 'Node ' + v.node + ' · 端口 ' + v.port + ' · 进程 ' + v.pid + ' · 启动于 ' + fmtStamp(v.startedAt);
+  $('aboutDir').textContent = v.dir;
+  return v;
+}
+
+$('aboutCopy').onclick = async () => {
+  const btn = $('aboutCopy');
+  try {
+    const v = await loadVersionInfo();
+    const head = '本地 AI v' + v.version + (v.commit ? ' (' + v.commit + (v.dirty ? ' 未提交' : '') + ')' : v.builtAt ? ' (打包 ' + fmtStamp(v.builtAt) + ')' : '');
+    await copyPlainText([head, 'Node ' + v.node, '启动 ' + fmtStamp(v.startedAt), v.dir].join(' · '));
+    const old = btn.textContent;
+    btn.textContent = '已复制';
+    setTimeout(() => { btn.textContent = old; }, 1200);
+  } catch (e) {
+    btn.textContent = '复制失败：' + e.message.slice(0, 24);
+    setTimeout(() => { btn.textContent = '复制版本信息'; }, 1800);
+  }
+};
+
 settingsBtn.onclick = () => {
+  loadVersionInfo().catch(() => {});
   refreshPlugins();
   refreshRag();
   refreshBackup();

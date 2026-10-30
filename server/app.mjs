@@ -10,7 +10,7 @@ import http from "node:http";
 import os from "node:os";
 import { randomUUID, createHash } from "node:crypto";
 import { readFile, readdir, stat, statfs, writeFile, mkdir, unlink, link, copyFile, open, mkdtemp, rm, rename, rmdir } from "node:fs/promises";
-import { unlinkSync, existsSync, createWriteStream, watch } from "node:fs";
+import { unlinkSync, existsSync, createWriteStream, watch, statSync } from "node:fs";
 import https from "node:https";
 import { spawn, spawnSync } from "node:child_process";
 import { extractTextBuffer } from "./doc-extract.mjs";
@@ -29,6 +29,61 @@ const DEFAULT_SYSTEM =
 
 const UI = path.join(HERE, "app.html");
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
+
+/** 版本号：发版只改这一处；server\package.json 的 version 必须与它一致（probe-version 会查） */
+const APP_VERSION = "1.0.0";
+/** 进程启动时刻：配合版本号回答「你现在跑的到底是哪一版、几点起来的」 */
+const STARTED_AT = new Date().toISOString();
+
+/**
+ * 构建标识。开发目录里有 .git 就取短哈希（报问题能直接对上哪次提交）；
+ * 发布包里没有 .git，退回 app.mjs 自己的修改时间（≈打包那一刻）。
+ * 拿不到也不报错：版本信息只用于对账，不该拦住启动。
+ */
+const BUILD = (() => {
+  const git = (args) => spawnSync("git", args, { cwd: HERE, encoding: "utf8", timeout: 3000, windowsHide: true });
+  try {
+    const rev = git(["rev-parse", "--short", "HEAD"]);
+    // 只有「这份文件本身被 git 跟踪」时才认这个哈希：
+    // 发布包是拷贝出来的，它可能恰好躺在某个仓库子目录里（dist\ 就在本仓库下），
+    // 那样 rev-parse 会报出仓库的提交，而包里跑的其实是另一份代码 —— 宁可报打包时间。
+    const tracked = git(["ls-files", "--error-unmatch", "app.mjs"]);
+    if (rev?.status === 0 && rev.stdout.trim() && tracked?.status === 0) {
+      const at = git(["log", "-1", "--format=%cI"]);
+      // 有未提交改动时也照样报哈希，但标出来 —— 免得拿「脏工作区」当发版依据
+      const dirty = git(["diff", "--quiet", "HEAD", "--", "app.mjs"])?.status === 1;
+      return {
+        commit: rev.stdout.trim(),
+        commitAt: at?.status === 0 ? at.stdout.trim() : "",
+        builtAt: "",
+        source: "git",
+        dirty,
+      };
+    }
+  } catch {}
+  try {
+    return { commit: "", commitAt: "", builtAt: statSync(fileURLToPath(import.meta.url)).mtime.toISOString(), source: "mtime", dirty: false };
+  } catch {
+    return { commit: "", commitAt: "", builtAt: "", source: "unknown", dirty: false };
+  }
+})();
+
+/** 版本信息：界面「关于」页与排障共用这一份，避免多处各写一遍 */
+function versionInfo() {
+  return {
+    version: APP_VERSION,
+    commit: BUILD.commit,
+    commitAt: BUILD.commitAt,
+    builtAt: BUILD.builtAt,
+    buildSource: BUILD.source,
+    dirty: BUILD.dirty,
+    startedAt: STARTED_AT,
+    node: process.version,
+    dir: HERE,
+    pid: process.pid,
+    port: PORT,
+  };
+}
 
 /** 请求体上限：防止超大 POST 撑爆内存 */
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
@@ -4042,10 +4097,18 @@ async function handle(req, res) {
       recommend: { id, reason },
     });
   }
+  if (req.method === "GET" && url === "/api/version") {
+    return sendJson(res, 200, versionInfo());
+  }
+
   if (req.method === "GET" && url === "/api/state") {
     return sendJson(res, 200, {
       models: await scanModels(),
       modelDir: MODEL_DIR,
+      // 版本三件套：出问题时用户只要报这一行，就能对上代码与构建时间
+      version: APP_VERSION,
+      build: { commit: BUILD.commit, commitAt: BUILD.commitAt, builtAt: BUILD.builtAt, source: BUILD.source, dirty: BUILD.dirty },
+      startedAt: STARTED_AT,
       loaded: state.file,
       context: state.contextSize,
       layers: state.layers,
@@ -5210,6 +5273,12 @@ server.headersTimeout = 0;
 /** 进程号落盘：停止脚本/启动器在优雅退出失败时可以按它兜底 */
 const PID_FILE = path.join(HERE, "server.pid");
 server.listen(PORT, "127.0.0.1", () => {
+  const tag = BUILD.commit
+    ? ` (${BUILD.commit})`
+    : BUILD.builtAt
+      ? ` (打包 ${BUILD.builtAt.slice(0, 16).replace("T", " ")})`
+      : "";
+  log(`本地 AI v${APP_VERSION}${tag} 已启动`);
   log(`界面 http://127.0.0.1:${PORT}/   API http://127.0.0.1:${PORT}/v1`);
   writeFile(PID_FILE, String(process.pid)).catch(() => {});
   // 启动时清一次过期快照；之后每次写盘顺带跑，成本只有几次 readdir
