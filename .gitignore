@@ -1,0 +1,35 @@
+# 本地 AI 工作台 —— 仓库只装源码与文档，运行期产物一律不进
+
+# 模型权重：GB 级，绝不上库
+*.gguf
+*.part
+.downloads/
+
+# 发布包：由 server/build-portable.ps1 一键重建，不入库（体积 250MB+）
+dist/
+
+# 依赖
+node_modules/
+
+# 语音：piper 二进制与音色、合成缓存（运行期下载/生成，约 100MB）
+tts/
+asr/deps/
+
+# 工作区：全部是用户数据（会话、历史快照、RAG 索引、备份与引导状态）
+workspace/
+
+# 运行日志与进程号
+*.log
+server/server.pid
+
+# 探针留档：截图、音频、被 wipe 前的会话备份（体积大，跑探针可再生）
+server/docs/*.png
+server/docs/**/*.png
+server/docs/*.wav
+server/docs/*.mp3
+server/docs/session-backups/
+server/docs/probe-full-*/logs/
+server/docs/probe-full-*/shots/
+
+# 解压第三方包时的临时目录
+tmp-*/

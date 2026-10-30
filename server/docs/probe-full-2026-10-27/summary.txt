@@ -1,0 +1,39 @@
+﻿# probe run 2026-10-27 23:44:01
+probe-sessions           PASS                1.2s  == 结果: 33 通过 / 0 失败 == /
+probe-workspace-api      PASS                0.8s  / RESULT 9/9
+probe-code-run           FAIL(exit 1)       25.4s  / RESULT 12/13
+probe-ui-metric          PASS               11.5s  原始字段   → reused=43 prefill=17 hit=0.717 ttft=915ms /
+probe-func               PASS               37.3s  / 通过 9 项，失败 0 项
+probe-ui-new             PASS                9.8s  == 结果: 30 通过 / 0 失败 == /
+probe-start-screen       FAIL(exit 1)        5.1s  / RESULT 9/12
+probe-start-flow         PASS               15.1s  / RESULT 8/8
+probe-model-add          FAIL(exit 1)        8.9s  / RESULT 3/4
+probe-menu-stacking      FAIL(exit 1)        4.2s  / RESULT 1/2
+probe-status             PASS                4.2s  / RESULT 6/6
+probe-code-panel         PASS                9.9s  / RESULT 9/9
+probe-settings-tools     PASS                5.6s  / RESULT 9/9
+probe-workspace-ui       PASS                8.5s  / RESULT 7/7
+probe-hero-modes         FAIL(exit 1)          6s  / RESULT 10/11
+probe-input-extras       PASS                9.4s  / RESULT 8/8
+probe-formula-panel      PASS                9.4s  / RESULT 7/7
+probe-formula-find       FAIL(exit 1)          8s  / RESULT 5/8
+probe-timestamps         PASS                5.7s  / RESULT 4/4
+probe-small-features     FAIL(exit 1)       10.6s  / RESULT 5/6
+probe-title-ui           FAIL(exit 1)        3.6s  
+probe-session-jump       PASS                8.4s  / RESULT 4/4
+probe-session-race       PASS                5.9s  / RESULT 3/3
+probe-ctx-panel          PASS               15.3s  / RESULT 24/24 passed
+probe-code-run-ui        PASS                5.1s  / RESULT 9/9
+probe-ui-tools           FAIL(exit 1)       20.2s  == 结果: 10 通过 / 2 失败 == /
+probe-ui-web             FAIL(exit 1)       41.4s  == 结果: 35 通过 / 4 失败 == /
+probe-ui-sessions        PASS               15.2s  == 结果: 27 通过 / 0 失败 == /
+probe-auto-title         PASS               28.6s  / RESULT 5/5
+probe-chat-plain         PASS                7.7s  == 结果: 11 通过 / 0 失败 == /
+probe-tools-agent        PASS              115.2s  == 结果: 24 通过 / 0 失败 == /
+probe-web-tools          PASS              116.1s  == 结果: 19 通过 / 0 失败 == /
+probe-kv-long            PASS               40.4s  / 完整提示长度：1311 → 1386 → 1467 token
+probe-context-switch     PASS               48.6s  / RESULT 3/3
+probe-ui-preload         FAIL(exit 1)       44.9s  == 结果: 34 通过 / 1 失败 == /
+probe-preload            FAIL(exit 1)       60.5s  == 结果: 25 通过 / 1 失败 == /
+probe-second-opinion     PASS               62.6s  == 结果: 11 通过 / 0 失败 == /
+# done 2026-10-27 23:57:59

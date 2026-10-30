@@ -1,0 +1,15 @@
+{"start":true,"heroInput":true,"footer":"none","modes":["∫Agent 模式","推理模式"]}
+ok   开场白带输入框
+ok   开场白隐藏底部输入区  [none]
+ok   两个模式按钮  [["∫Agent 模式","推理模式"]]
+ok   Agent 前有 ∫
+STYLES {"italic":"italic","reasonFont":"SimSun, 宋体, serif","reasonWeight":"800","reasonColor":"rgb(34, 211, 238)"}
+ok   Agent 斜体  [italic]
+ok   推理用宋体  [SimSun, 宋体, serif]
+ok   推理粗体 + 科技色  [800 rgb(34, 211, 238)]
+FAIL 模型不支持思考时，推理模式如实提示并保持关闭  {"think":false,"tools":true,"hint":"Agent 模式：可以调用工具（时间/计算/读文件/联网/跑代码）"}
+ok   Agent 模式开工具、关思考  [{"think":false,"tools":true,"hint":"Agent 模式：可以调用工具（时间/计算/读文件/联网/跑代码）"}]
+ok   从开场白发送后进入对话
+ok   回答生成
+
+RESULT 10/11

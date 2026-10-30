@@ -1,0 +1,27 @@
+import WebSocket from "ws";
+const list = await (await fetch("http://127.0.0.1:9333/json/list")).json();
+const page = list.find((t) => t.type === "page" && t.url.includes("8099"));
+if (!page) { console.log("no page"); process.exit(2); }
+const ws = new WebSocket(page.webSocketDebuggerUrl, { perMessageDeflate: false });
+await new Promise((r, j) => { ws.once("open", r); ws.once("error", j); });
+let id = 0; const pend = new Map();
+ws.on("message", (raw) => { const m = JSON.parse(raw.toString()); if (m.id && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } });
+const send = (m, p = {}) => new Promise((res) => { const i = ++id; pend.set(i, res); ws.send(JSON.stringify({ id: i, method: m, params: p })); });
+const ev = async (e) => { const r = await send("Runtime.evaluate", { expression: e, returnByValue: true, awaitPromise: true }); if (r.result?.exceptionDetails) throw new Error(r.result.exceptionDetails.text); return r.result?.result?.value; };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let pass = 0, fail = 0;
+const check = (n, c, d = "") => { if (c) { pass++; console.log("ok   " + n + (d ? "  [" + d + "]" : "")); } else { fail++; console.log("FAIL " + n + "  " + d); } };
+await send("Page.enable"); await send("Runtime.enable");
+await send("Page.reload", { ignoreCache: true }); await sleep(3000);
+await ev("document.getElementById('recentOpen').click(); 1"); await sleep(1500);
+const stat = await ev("({ rows: document.querySelectorAll('.row').length, times: [...document.querySelectorAll('.msgTime')].map(e => e.textContent), titles: [...document.querySelectorAll('.msgTime')].map(e => e.title) })");
+console.log(JSON.stringify(stat).slice(0, 200));
+check("每条消息都有时间", stat.times.length >= stat.rows, "times=" + stat.times.length + " rows=" + stat.rows);
+check("时间格式正确", stat.times.every((t) => /^(\d{2}:\d{2}|\d{1,2}-\d{1,2} \d{2}:\d{2})$/.test(t)), JSON.stringify(stat.times));
+check("悬停有完整时间", stat.titles.every((t) => t && t.length > 4));
+await ev("bubble('user', '时间测试'); 1"); await sleep(300);
+const live = await ev("(() => { const ts = document.querySelectorAll('.msgTime'); return ts[ts.length - 1].textContent; })()");
+check("新消息立即带时间", /^(\d{2}:\d{2})$/.test(live), live);
+await send("Page.reload", { ignoreCache: true });
+console.log("\nRESULT " + pass + "/" + (pass + fail));
+ws.close(); process.exit(fail ? 1 : 0);

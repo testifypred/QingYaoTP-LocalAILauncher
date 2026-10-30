@@ -1,0 +1,16 @@
+﻿# retest 2026-10-28 00:01:37
+probe-backup             PASS               16.5s  fails=0  == 结果: 28 通过 / 0 失败 ==
+probe-ui-backup          PASS                8.4s  fails=0  == 结果: 14 通过 / 0 失败 ==
+probe-start-screen       PASS                5.6s  fails=0  RESULT 12/12
+probe-model-add          PASS                8.9s  fails=0  RESULT 4/4
+probe-menu-stacking      PASS                4.9s  fails=0  RESULT 2/2
+probe-hero-modes         FAIL(exit 1)       14.2s  fails=1  RESULT 10/11
+probe-formula-find       PASS                7.6s  fails=0  RESULT 8/8
+probe-small-features     PASS               11.5s  fails=0  RESULT 6/6
+probe-title-ui           PASS                8.2s  fails=0  RESULT 13/13
+probe-ui-tools           PASS                 22s  fails=0  == 结果: 12 通过 / 0 失败 ==
+probe-ui-web             FAIL(exit 1)       41.7s  fails=1  == 结果: 38 通过 / 1 失败 ==
+probe-ui-preload         FAIL(exit 1)       44.9s  fails=1  == 结果: 34 通过 / 1 失败 ==
+probe-preload            FAIL(exit 1)       56.8s  fails=1  == 结果: 25 通过 / 1 失败 ==
+probe-code-run           PASS               23.6s  fails=0  RESULT 13/13
+# done 2026-10-28 00:06:13

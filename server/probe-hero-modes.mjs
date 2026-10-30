@@ -1,0 +1,54 @@
+import WebSocket from "ws";
+import fs from "node:fs";
+const base = "http://127.0.0.1:8099";
+const list = await (await fetch("http://127.0.0.1:9333/json/list")).json();
+const page = list.find((t) => t.type === "page" && t.url.includes("8099"));
+const ws = new WebSocket(page.webSocketDebuggerUrl, { perMessageDeflate: false });
+await new Promise((r, j) => { ws.once("open", r); ws.once("error", j); });
+let id = 0; const pend = new Map();
+ws.on("message", (raw) => { const m = JSON.parse(raw.toString()); if (m.id && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } });
+const send = (m, p = {}) => new Promise((res) => { const i = ++id; pend.set(i, res); ws.send(JSON.stringify({ id: i, method: m, params: p })); });
+const ev = async (e) => { const r = await send("Runtime.evaluate", { expression: e, returnByValue: true, awaitPromise: true }); if (r.result?.exceptionDetails) throw new Error(r.result.exceptionDetails.text); return r.result?.result?.value; };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let pass = 0, fail = 0;
+const check = (n, c, d = "") => { if (c) { pass++; console.log("ok   " + n + (d ? "  [" + d + "]" : "")); } else { fail++; console.log("FAIL " + n + "  " + d); } };
+
+await send("Page.enable"); await send("Runtime.enable");
+await send("Page.reload", { ignoreCache: true });
+await sleep(3200);
+const st = await ev("({ start: document.body.classList.contains('startScreen'), heroInput: !!document.getElementById('heroInput'), footer: getComputedStyle(document.querySelector('footer')).display, modes: [...document.querySelectorAll('#hero .modeBtn')].map(b => b.textContent.trim()) })");
+console.log(JSON.stringify(st));
+check("开场白带输入框", st.heroInput === true);
+check("开场白隐藏底部输入区", st.footer === "none", st.footer);
+check("两个模式按钮", st.modes.length === 2 && st.modes[0].includes("Agent") && st.modes[1].includes("推理"), JSON.stringify(st.modes));
+check("Agent 前有 ∫", st.modes[0].startsWith("∫") || st.modes[0].includes("∫"));
+const styles = await ev("(() => { const a = document.querySelector('#hero .modeBtn.agent'); const r = document.querySelector('#hero .modeBtn.reason'); const ca = getComputedStyle(a), cr = getComputedStyle(r); return { italic: ca.fontStyle, reasonFont: cr.fontFamily, reasonWeight: cr.fontWeight, reasonColor: cr.color }; })()");
+console.log("STYLES", JSON.stringify(styles));
+check("Agent 斜体", styles.italic === "italic", styles.italic);
+check("推理用宋体", /SimSun|宋体|serif/i.test(styles.reasonFont), styles.reasonFont);
+check("推理粗体 + 科技色", Number(styles.reasonWeight) >= 700 && /34, 211, 238|14, 116, 144/.test(styles.reasonColor), styles.reasonWeight + " " + styles.reasonColor);
+
+await ev("document.querySelector('#hero .modeBtn.reason').click(); 1");
+await sleep(200);
+const reason = await ev("({ think: document.getElementById('thinkChk').checked, tools: document.getElementById('toolChk').checked, hint: document.getElementById('heroHint').textContent, status: document.getElementById('statusText').textContent })");
+const thinking = ((await (await fetch("http://127.0.0.1:8099/api/state")).json()).supportsThinking) === true;
+if (thinking) check("推理模式开思考、关工具", reason.think === true && reason.tools === false, JSON.stringify(reason));
+else check("模型不支持思考时，推理模式如实提示并保持关闭", reason.think === false && /不支持/.test((reason.hint || "") + " " + (reason.status || "")), JSON.stringify(reason));
+await ev("document.querySelector('#hero .modeBtn.agent').click(); 1");
+await sleep(200);
+const agent = await ev("({ think: document.getElementById('thinkChk').checked, tools: document.getElementById('toolChk').checked, hint: document.getElementById('heroHint').textContent })");
+check("Agent 模式开工具、关思考", agent.tools === true && agent.think === false, JSON.stringify(agent));
+
+await ev("(() => { const h = document.getElementById('heroInput'); h.value = '只回复两个字：收到'; h.dispatchEvent(new Event('input', { bubbles: true })); h.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); return 1; })()");
+await sleep(400);
+check("从开场白发送后进入对话", (await ev("!document.body.classList.contains('startScreen') && !document.getElementById('hero') && getComputedStyle(document.querySelector('footer')).display !== 'none'")) === true);
+let done = false;
+for (let i = 0; i < 120; i++) { await sleep(500); done = await ev("!document.getElementById('send').disabled && document.querySelectorAll('.row.assistant').length > 0"); if (done) break; }
+check("回答生成", done === true);
+const shot = await send("Page.captureScreenshot", { format: "png" });
+fs.writeFileSync("D:/LocalModels/server/docs/ui-new/start-modes.png", Buffer.from(shot.result.data, "base64"));
+const sid = await ev("localStorage.getItem('localai.lastSession')");
+await ev("newChat()"); await sleep(500);
+await fetch(base + "/api/sessions/" + encodeURIComponent(sid), { method: "DELETE" });
+console.log("\nRESULT " + pass + "/" + (pass + fail));
+ws.close(); process.exit(fail ? 1 : 0);

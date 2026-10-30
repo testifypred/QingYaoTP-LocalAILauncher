@@ -1,0 +1,6 @@
+﻿# retest2 2026-10-28 00:10:27
+probe-hero-modes         PASS               14.7s  fails=0  RESULT 11/11
+probe-ui-web             FAIL(exit 1)       41.6s  fails=1  == 结果: 38 通过 / 1 失败 ==
+probe-preload            PASS               48.4s  fails=0  == 结果: 26 通过 / 0 失败 ==
+probe-ui-preload         FAIL(exit 1)       33.4s  fails=1  == 结果: 34 通过 / 1 失败 ==
+# done 2026-10-28 00:12:45

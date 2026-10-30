@@ -1,0 +1,1129 @@
+# 本地 AI 桌面应用 —— 开发者实时日志（Developer Real-time Log）
+
+> 原名 `HANDOFF.md`，由上一任开发者写于 **2026-10-18 21:45**。
+> 从 **2026-10-18 21:44** 起，本文件改为**按时间流水记录**：每一笔写清「几点、改了什么、落在哪、怎么验的」。
+> 第一节是日志索引，其后的一~七节是原交接正文（保留原样，仅修正两处日期笔误），八~十节是本次三项需求的详细设计说明。
+> 最新一笔：**2026-10-30 00:20**（全部时间均为 China Standard Time，本机时钟）。
+>
+> **接手先读 [`交接文档.md`](交接文档.md)**（一页纸：定位、现状、代码地图、下一步）。
+> 技术专题已抽到 [`technique/`](technique/)：架构、接口、插件、模型、打包、探针、坑。本文件保留**按时间流水**的原始记录，作为「为什么这么做」的证据。
+
+---
+
+## 〇、变更日志（实时，按时间正序）
+
+### 2026-10-18
+
+| 时间 | 改动 | 落点 | 验证 |
+|---|---|---|---|
+| 21:44 | 修 Windows 工作区权限故障：`D:\Test For DSH Harness` 缺所有者权限，导致沙箱无法执行任何命令 | `D:\dsh-acl-recovery\acl-backup-6e8f*.json`（可回滚） | 补 `WRITE_OWNER` 后复测，命令恢复 |
+| ≈21:46–21:50 | 通读 `app.html`（1631 行）/ `app.mjs`（1801 行），摸清 TTS、设置、会话、模型切换的现状 | — | — |
+| ≈21:50 | 就三项需求发出 5 问问卷（朗读按钮去留 / @语义 / 会话存储 / @触发 / 自动朗读开关） | — | 用户选定：保留喇叭、B 第二意见、服务端磁盘、@ 图标在输入框下、自动朗读默认关 |
+| ≈21:52–21:56 | 三项需求首版落地：①朗读搬进设置 ②多会话 ③@ 第二意见 | `server\app.mjs`、`server\app.html` | `node --check` 通过 |
+| 21:55:08 | 写 `probe-second-opinion.mjs`（真加载两个模型） | `server\` | **11/11**，往返 32.1s，主模型确认换回、恢复后仍能对话 |
+| ≈21:56 | `probe-ui-new.mjs` 首跑，截图 ui-1~7 | `server\docs\ui-new\` | **30/30** |
+| ≈22:05 | 界面端 @ 全链路（`probe-ui-second.mjs`） | — | **11/11**，截图 ui-8 |
+| 22:06:50 | 首次便携打包成功 **206.9MB**（app 117.4 + runtime 88.5，模型与语音外置） | `dist\LocalAI\` | 与源码 SHA256 一致 |
+| 22:07:16 | 修打包脚本隐患：删旧产物失败时先把 `data\` 放回原处（此前会把对话记录遗落在 `%TEMP%\localai-data-*`） | `server\build-portable.ps1` | 手工复现该失败路径验证 |
+| 22:07:45 | 应用重启，旧 `localStorage` 单会话自动迁移成正式会话 | `workspace\sessions\mvdwh5sr-*.json` | **20 轮 / 30 条**全部保住，标题「Hello」 |
+| ≈22:08–22:09 | 5 个新探针归档进 `server\`，截图目录统一到 `docs\ui-new` | `server\` | — |
+| ≈22:23 | ⚠️ **操作事故**：为释放测试端口，按 PID 直接结束进程且未核对进程名，误杀了一个 `DSH Desktop` 子进程 | — | DSH 主进程与 GUI 未受影响（22:23:37 自动拉起新子进程）；此后改为「进程名 + 端口」双确认再动手 |
+| 22:25:49 | 修「发完消息后侧栏标题/时间不刷新」：`saveTranscript` 落盘成功后补一次 `refreshSessions()` | `app.html` | 用户截图发现该问题，改动已热同步到发布包 |
+| ≈22:28:35 | 新增**嗅探本地模型**模块（扫描 / 收录 / 配置 + 分片过滤 + 降噪） | `app.mjs`、`app.html` | `probe-discover` **34/34** |
+| 22:29:26 | 写 `probe-discover.mjs`、`probe-ui-discover.mjs` | `server\` | UI **23/23** |
+| ≈22:47–22:48 | 两次同步 `app.mjs` / `app.html` 到发布包并重启 | `dist\LocalAI\app\` | 哈希一致；`/api/discover/config` 正常；2 个会话保留 |
+| 22:50:04 | 发布包里首次真实扫描 | `workspace\discovery.json` | 16964 个文件 / **309ms** / 0 个候选（4 个模型已在选项卡，被降噪剔除） |
+| ≈22:53 | 评估「把 Piper 封装进软件目录」，结论**暂不做** | 本文档第十节 | 体积实测 piper 37MB + 音色 60.3MB；四个前置关卡 |
+| 22:55 | 本文档由 `HANDOFF.md` 改名为 `DeveloperRealtimeLog.md`，改为按时间记录 | 本文件 | 全项目无其他文件引用旧名 |
+| ≈22:5x | 用户在嗅探面板里扫过一轮并加自定义目录，`workspace\discovery.json` 写入 `onboarded=true`、`customDirs=["D:\\LocalModels"]` | `workspace\discovery.json` | 扫描 16972 文件 / 132–167ms |
+| 23:03 | 用户点「退出服务」正常关闭应用（日志 `15:03:42 收到退出指令`，UTC），非崩溃 | — | 重启后一切正常 |
+| ≈23:05–23:20 | 新增**多回答预加载**：常驻额外模型 + 开启前能力核算与警告弹窗 + 「不再提醒」+ 设置里的提醒开关 | `app.mjs`、`app.html` | `probe-preload` **26/26**、`probe-ui-preload` **31/31** |
+| ≈23:20 | 关键实测：预加载后第二意见 **13.9s**（原 30–45s），事件流无 `loading`，`swapped=false`，主模型 KV 缓存完整保留 | — | `qwen3-5-4B` + `Phi-4-mini` 双模型常驻 |
+| ≈23:25–23:36 | **修工具调用**：自建 `<tool_call>` 协议 + Agent 循环，替换失效的库函数调用 | `app.mjs`（`buildToolRegistry`/`parseToolCalls`/`stripToolCalls`/`TOOL_ROUND_LIMIT`） | `probe-tools-agent` **24/24** |
+| 23:33 | 发布包（8099）实测同一条工具探针：四个工具全部真实执行 | `dist\LocalAI\` | **24/24**，`note.txt` 读出「天枢」项目内容 |
+| ≈23:35 | 预加载部署后的能力核算在 8099 实测正常（4 模型逐个 ok、合计 insufficient） | `dist\LocalAI\app\` | 哈希一致 |
+| ≈23:36 | 指标行改为「工具 N 次 X.XXs」；工具卡片图标 `🔧` 换文字（字形缺失） | `app.html` | `probe-ui-tools` **12/12** |
+| ≈23:38 | 纯聊天回归，确认没把流式对话改坏 | — | `probe-chat-plain` **11/11**（40 块流式、KV 复用 58%） |
+| ≈23:50 | 加左下角提示条：预加载完成或取消时明确报「模型名 + 占用/释放多少 GB」 | `app.html`（`showToast`、`toastReleased`、`.toasts`） | `probe-ui-preload` **35/35**（新增 4 项断言） |
+| 10-21 23:35 | 新增「上下文余量」浮窗：顶栏下方右侧悬空卡片，剩余 / 已用 / 百分比 + 进度条，≥70% 黄、≥85% 红并提示接近上限；顶栏「余量」按钮与浮窗 ✕ 双向开关，选择存 localStorage；数字只取每轮 `usage`，不额外请求服务端 | `app.html`（`#ctxPanel`、`noteCtxUsage`、`renderCtx`、`placeCtx`） | `probe-ctx-panel` **24/24**（贴顶栏 top=129/hb=119、64% 常态、89% 告警、隐藏/显示后刷新仍记忆、窄窗跟随、真跑一轮 37/16,384、测试会话已清） |
+| 10-21 23:50 | 验证时用 CDP 重载页面：生成中断开连接 → Vulkan device lost → 进程退出，启动器 15s 自动重启（已知问题 2 的又一次复现，不是新缺陷） | — | 日志 15:50:12 客户端断开 → 15:51:34 聊天错误 → 15:51:37 重启 |
+| 10-21 23:53 | 修工具路径计时错位：工具分支两处 `session.prompt` 没传 `onToken`，单轮直接作答时 ttft 要等整段生成完才补记，于是显示「预填充 294.94s / 生成 0.0s / 227555.56 tok/s」；顺手给速度加零值保护，界面不再显示 0 tok/s | `app.mjs`（工具分支 `session.prompt`×2、`finishMetrics`）、`app.html`（`formatStats`） | 工具开+不调工具：ttft 4.30s / 生成 0.46s / 4.33 tok/s；工具开+真调用：0.74s / 7.19s / 6.26 tok/s（修复前同条件 genMs≈1ms、tokPerSec≈6.3 万） |
+| 10-22 00:20 | 对话标题：①侧栏双击/右键就地改名（不再用 `window.prompt` 弹窗），手改即 `renamed=true`；②顶栏加「重命名」；③右键菜单含 重命名/导出 Markdown/删除；④第二轮之后空闲 8 秒，主模型在独立 512 上下文里概括 6–12 字标题（不写进对话 sequence，不破坏 KV 复用） | `app.html`（`beginRename`/`commitRename`/`showSessionMenu`/`scheduleAutoTitle`）、`app.mjs`（`renamed` 字段、`/api/sessions/<id>/auto-title`、`generateTitleWithModel`） | `probe-title-ui` **13/13**（右键菜单/就地改名落盘/顶栏按钮/Esc 取消）；`probe-auto-title` **5/5**（两轮后 11s 出标题「KV缓存加速网络请求响应」，renamed 仍为 false）；接口单独实测：生成 3.9s、单轮 `too-early`、手改后 `skipped:renamed` |
+| 10-22 00:25 | 顶栏去拥挤：模型选项卡独占第一行（4 个模型完整可见），状态栏从 60px 截断恢复到 360px（悬停看全文）；「提示词 / 嗅探 / 退出服务」收进「⋯」菜单；工具栏允许换行，窄窗不再被裁掉 | `app.html`（`.topbar` / `.toolbar` / `.hdrMenu` / `#status`） | `probe-title-ui` 头部 4 项断言通过；截图 `docs/ui-new/header-final.png`（1408px 下 4 个模型全可见） |
+| 10-22 23:30 | 修「点左侧对话后历史乱跳」：切会话时 `flushTranscript()` 无条件 PUT，服务端每次都把 `updatedAt` 抬到当下，列表按时间重排，刚离开的会话跳到顶部、指针下的行被换走；改为 ① 无新内容不写盘（dirty + seq）② 服务端内容完全相同不抬时间戳 ③ 列表重建保留滚动位置 ④ 连点只认最后一次（switchToken） | `app.html`（`saveTranscript`/`flushTranscript`/`loadSession`/`switchSession`/`renderSessions`）、`app.mjs`（`writeSession`） | `probe-session-jump` **4/4**（切换后顺序不变、updatedAt 不变、真发消息才置顶）；`probe-session-race` **3/3**（0/20/80ms 连点都落在最后一次） |
+| 10-22 23:42 | 新增**代码块运行**：每个围栏代码块带「复制 / 运行」，点运行就地显示 exit code、耗时、stdout/stderr；服务端限制 10s 超时 + 64KB 输出 + 进程树强杀 + 本地令牌；语言按本机已装工具链自动启用（实测 JS / Python / C / C++ 可用，Java 缺 JDK、Go / Rust 未装时给出明确提示）；设置 → 生成里可关闭「运行」按钮 | `app.mjs`（`/api/run`、`/api/run/langs`、`runCode`/`runSpawn`）、`app.html`（`.codeWrap`、`runCodeBlock`、`#setCodeRun`） | `probe-code-run` **13/13**（Python 106ms、JS、C++ 6.2s 编译执行、超时 10.4s 被杀、输出截断 65536、403/400 边界）；`probe-code-run-ui` **9/9**（按钮显示、执行出结果、设置开关） |
+| 10-22 23:48 | 「提示词 / 嗅探 / 退出服务」从顶栏「⋯」挪进 **设置 → 工具**（新选项卡），不再依赖隐藏按钮的 `.click()`；顶栏移除 ⋯，第二行只剩 上下文 / 思考 / 工具 / 新对话 / 重命名 / 加载 / 卸载 / ⚙ | `app.html`（`paneTools`、`setPromptOpen`/`setDiscoverOpen`/`setQuitOpen`、`quitService`） | `probe-settings-tools` **9/9**（无 ⋯、工具页可见、提示词/嗅探面板真打开）；截图 `docs/ui-new/settings-tools.png` |
+| 10-22 23:54 | 首页重构：① 去掉顶部模型选项卡，改左上角「∫ 模型」下拉（点一行即加载，底部带上下文与卸载）；② 顶栏收成一行（☰ / ∫ 模型 / 状态 / 余量 / 设置 / 主题）；③ 启动默认**新对话** + 开场白（早上/中午/晚上好，按时间段自动亮/暗主题）；④ 右下角「上次在聊」卡片可跳回上次对话；⑤ 深度思考 / 调用工具 / 联网 / 预加载移到输入框下方；⑥ 发送键显示已加载模型图标；⑦ `config.ini` 的 `autoLoad` 改为 `qwen3-5-4B-Q4_K_M.gguf` | `app.html`、`dist\LocalAI\config.ini` | `probe-start-screen` **12/12**（开场白/默认新对话/问候语/无模型列表/∫ 按钮/发送图标/上次对话卡/输入区选项/模型菜单 4 行）；`probe-start-flow` **8/8**（继续对话、新对话、发送后退场、图标保留）；截图 `docs/ui-new/start-screen.png`、`model-menu.png` |
+| 10-22 23:58 | 修「嗅探面板只剩标题和按钮」：`showSettingsTab` 用全局 `.settingsBody` 选择器切分页，把嗅探 / 预加载弹窗的 body 一起 hidden 了（它们复用了这个类）；改成只切 `#settingsModal .settingsBody`。顺带把空结果文案说清楚：模型库里的模型不会重复列出 | `app.html`（`showSettingsTab`、`renderDscResults`） | `probe-discover-ui` **8/8**（内容区 341px、说明/扫描位置/自定义目录/扫描按钮可见；扫描 17058 个文件 0.3s）；截图 `docs/ui-new/discover.png` |
+| 10-23 00:05 | 模型菜单补「＋ 添加模型…」入口（打开嗅探面板扫描/收录新模型）；模型列表加签名缓存，3 秒刷新不再重建打开着的菜单（之前每 3 秒 innerHTML 重建，鼠标下的行会被换掉）；实测点模型行即加载（Phi-4 ↔ Qwen3.5 往返） | `app.html`（`modelAddBtn`、`renderModelTabs` 签名缓存、`.modelAddRow`） | `probe-model-add` **4/4**（入口存在、3 秒内 4→4 不重建、点入口开嗅探并收起菜单）；截图 `docs/ui-new/model-menu.png` |
+| 10-23 00:09 | 修「模型菜单点不动 / 被消息盖住」：`header` 没有独立 z-index，`body>*` 给四个区都设了 1，DOM 中靠后的 `main` 把顶栏里的菜单压在下面——看得见、点不到；给 `header` 加 `z-index:40`（模态框 50、余量浮窗 45 仍在上面） | `app.html`（header 样式） | `probe-menu-stacking` **2/2**（header z=40、四行模型命中测试全部落在菜单上，底下压着一条消息）；截图 `docs/ui-new/model-menu.png` |
+| 10-23 00:13 | 状态栏瘦身：原来「模型名 · 是否思考 · 上下文 · 层数 · 后端」挤成省略号；现在只显示「16K · 可思考 / 不支持思考」，模型名（左边按钮已有）、层数、后端全放进 tooltip | `app.html`（`setStatus` 增加第三参数、`refresh` / `loadModelFile` 文案） | `probe-status` **6/6**（状态栏 99px、tooltip 含模型与层数、最长名字放得下、可思考标注与 tooltip 一致） |
+| 10-24 00:03 | 新增**独立代码运行器**（顶栏「代码」）：选语言、写代码、Ctrl+Enter 运行，输出带 exit code / 耗时；不依赖对话消息；未安装语言置灰；草稿存 localStorage；复用 `/api/run` 的 10s 超时 / 64KB / 本地令牌 | `app.html`（`#codeModal`、`.codePane`、`openCodePanel`/`runCodePanel`） | `probe-code-panel` **9/9**（入口、7 种语言列表、未装置灰、Python 运行出结果、刷新草稿、清空、Esc 关闭）；截图 `docs/ui-new/code-panel.png` |
+| 10-24 22:50 | 修三处状态类 bug：① **换模型只清界面不清存档**——`loadModelFile` 清空 `#msgs` 但 `transcript` 还在，下一句会被写进模型没见过的上下文；改成按 transcript 重建 history 并重渲染（对话保留）② **自动标题每轮重写**——已生成或手改过就跳过 ③ **删除会话后右下角卡片仍指向已删会话**——同步收起；空会话统一回开场白，不再显示旧提示 | `app.html`（`loadModelFile`/`scheduleAutoTitle`/`deleteSession`/`renderStored`） | `probe-context-switch` **3/3**（Phi-4 ↔ Qwen3.5 往返，消息 2/2 不变、无空开场白） |
+| 10-24 22:52 | 加三个小功能：① 每条回答加「复制」按钮（与朗读、重生成同一排，复制成功打勾）② 输入草稿按会话保存（切会话/刷新不丢没发出去的话，发送后清掉）③ 滚上去后右下角出现「回到最新」按钮 | `app.html`（`makeCopyBtn`、`draftKey`/`restoreDraft`、`#toBottom`） | `probe-small-features` **6/6**（复制拿到正文、切会话不带草稿、回来草稿还在、回到底部 gap=0） |
+| 10-24 22:59 | 输入侧小功能：① ↑/↓ 调出最近 20 条发过的输入（草稿为空的 ↑ 才触发）② Ctrl+N 新对话、Ctrl+K 聚焦输入、Esc 清空输入 ③ 会话右键「清空消息」——保留会话本身，只清消息 | `app.html`（`pushInputHistory`、全局快捷键、`clearSessionMessages`、右键菜单） | `probe-input-extras` **8/8**（历史上下翻、三快捷键、清空后接口 messages=0） |
+| 10-24 23:11 | 新增**工作区（文件管理）**：顶栏「文件」打开，左侧目录树、右侧 CodeMirror（行号 + 按扩展名高亮）；支持新建文件/文件夹、保存（Ctrl+S）、重命名、删除空目录、上传（≤10MB）、越界路径拒绝；模型工具新增 `list_workspace_files` / `write_workspace_file` | `app.mjs`（`/api/workspace/*`、`wsList`/`wsRead`/`wsSave`、工具注册）、`app.html`（`#wsModal`、CodeMirror 资源） | `probe-workspace-api` **9/9**（增删改查、越界拒绝、空目录删除）；`probe-workspace-ui` **7/7**（打开、行号、新建打开、保存回读、重命名、删除）；截图 `docs/ui-new/workspace.png` |
+| 10-24 23:18 | 开场白改版：自带输入框（此时隐藏底部输入区）；打招呼下加「∫ Agent 模式」（斜体）与「推理模式」（粗体宋体 + 青色发光）；Agent 自动勾选调用工具、推理自动勾选深度思考（模型不支持时提示）；发送走原链路，发出后切回普通对话布局 | `app.html`（`showHero`/`applyHeroMode`/`heroSendNow`、`.modeBtn` 样式、`body.startScreen`） | `probe-hero-modes` **11/11**（输入框、隐藏底栏、两按钮、斜体/宋体/粗体/颜色、模式联动开关、发送后切回对话）；截图 `docs/ui-new/start-modes.png` |
+| 10-24 23:31 | 修**工具调用截断泄漏**：模型在 `<tool_call>` 中间被 max_tokens 截断时，解析与清洗都要求闭合标签，原始 JSON 会漏进正文（用户截图）；现在接受未闭合块并从正文剔除，正文为空时给「调用被截断」提示；新增 `run_code` 工具（7 语言、10s 超时），`write_workspace_file` 说明要求精简 | `app.mjs`（`parseToolCalls`/`stripToolCalls`/`rawCallSeen`/`run_code`） | 实测：写文件请求 29.7s → `star.py` 258B 且正文无 `<tool_call>`；`run_code` 16.4s → 42；`max_tokens=48` → 只显示截断提示、无泄漏 |
+| 10-25 00:33 | 消息时间戳：用户/助手消息下方显示时间（今天只显示 HH:MM，跨天带「10-24」；悬停看完整时间）；历史消息用存档里的 `t`，新消息用当前时间 | `app.html`（`msgTimeText`/`makeMsgTime`、`bubble` 参数、stats 追加） | `probe-timestamps` **4/4**（每条都有、格式、悬停完整时间、新消息即时） |
+| 10-25 00:37 | ① **公式复制**：块级公式右上角「复制 LaTeX」（悬停出现），行内公式点一下复制，源码取自 KaTeX 的 `annotation` ② **会话内搜索**：`Ctrl+F` 打开、实时高亮（CSS Highlight API，不改 DOM）、`Enter`/`Shift+Enter` 上下跳、`Esc` 关闭 | `app.html`（`decorateFormulas`/`copyFormulaTex`、`#findBar` 逻辑） | `probe-formula-find` **8/8**（块级按钮复制、行内点击复制、搜索计数/高亮/跳转/关闭） |
+| 10-25 00:44 | ① **公式面板**（顶栏「公式」）：MathLive 可视化编辑（虚拟键盘），LaTeX 源码双向同步，可复制 / 插入输入框 ② **化学式**：引入 mhchem，`$\ce{...}$` 可渲染，裸写 `\ce{CO2}` 自动补定界符；注意 KaTeX 0.19 自带的 mhchem 是 ESM（classic 方式加载会报 import 错误），改用去掉 import 的 classic 版本 ③ 顺带补 CodeMirror `addon/mode/simple.js`（rust 模式之前报 defineSimpleMode 未定义） | `app.html`（`#fxModal`、`decorateFormulas` 前身）、`vendor/mathlive`（785KB + 250KB 字体）、`vendor/katex/contrib/mhchem` | `probe-formula-panel` **7/7**（化学式 3 条含裸写、面板就绪、双向同步、复制、插入、关闭）；截图 `docs/ui-new/formula-panel.png`、`chemistry.png` |
+| 10-25 09:56 | **探针全量巡检**：29 个探针跑出 366 条断言（353 通过 / 13 失败）——19 条是探针自身过期，3 条是真缺陷，见下面三笔 | `server\probe-*.mjs` | 探针输出落 `docs\probe-*.log` |
+| 10-25 10:20 | ⚠️ **事故**：`probe-ui-sessions` 的 `wipe()` 用 API 逐个删会话，把 13 条真实会话删光（`unlink`，回收站与卷影副本都无） | `probe-ui-sessions.mjs` | 已给 `wipe()` 加「删前整份备份到 `docs\session-backups\<时间戳>\`」，复跑打印「已备份 N 个会话」 |
+| 10-25 10:22 | 修**自动标题静默失效**：标题专用 context 没传 `noThink` wrapper，24 token 全被 `<think>` 吃掉，`cleanTitle` 拿到空串 | `app.mjs`（`generateTitleWithModel` 传 `chatWrapper`、maxTokens 24→32、空结果打日志） | `probe-auto-title` **5/5**；两轮后 12s 出标题「虚拟内存为何比物理内存慢」 |
+| 10-25 10:22 | 修**开场白页快捷键失联**：Ctrl+K / Esc 只认底部 `#q`，而它被 `body.startScreen` 藏了，`focus()` 静默无效；顺带 `↑/↓` 历史也接到 hero 输入框 | `app.html`（`activeInputBox()`、`inputHistoryKey`） | CDP 实测 Ctrl+K→`heroInput(visible)`、Esc 清空两框、`↑` 翻出上一条 |
+| 10-25 10:22 | 修**读文件被调成写文件**：`read_workspace_file` 参数叫 `name`、其余工具叫 `path`，且与 write 描述边界糊 | `app.mjs`（read 兼容 `path`、两条描述互相点名、说明书第 6 条） | `probe-tools-agent` **24/24**（原 22/24） |
+| 10-25 10:34 | 新增**命令行客户端 `localai`**：零依赖单文件，走 `/v1/chat/completions` 与 `/api/*`；支持 ask/chat/models/load/unload/state/run/sessions、stdin 管道、会话续写、`--json` | `server\localai.mjs`、`localai.cmd`、`build-portable.ps1`（进包） | 16 项手工验收（流式/工具卡片/stdin/会话回想/JSON/退出码 0·1·2·3）；包内 `app\localai.cmd` 用自带 `runtime\node.exe` 实跑通过 |
+| 10:40 | 新增**全屏终端 TUI**：零依赖 ANSI 界面，彩色对话 / 工具卡片 / 斜杠命令 / 滚动 / Ctrl+C 中断；非 TTY 自动降级成逐行模式 | `server\localai-tui.mjs`、`localai-tui.cmd`、`localai.mjs`（`localai tui`） | `--selftest` 7 组通过；`--snapshot` 在 60/70/88 列下边框对齐；真控制台启动存活 5s 无异常退出 |
+| 10:45 | 顶栏新增「终端」按钮：`POST /api/terminal/open`（要本地令牌）用 `start` 拉起真控制台跑 TUI，所以窗口里是真 TTY | `app.mjs`、`app.html`、`build-portable.ps1` | 带令牌 ok 且 node 进程存活；无令牌 403；截图 `docs\ui-new\topbar-terminal.png` |
+| 10:47 | 附带发现：重启后 localStorage 的 `localai.transcript.v1` 旧备份被重新迁移，找回 1 条 30 消息的老会话（10-25 会话丢失事故里唯一能恢复的部分） | — | `mvn7m7kl-0d9fe764.json`，30 条，从「Hello」开始 |
+| 10:42 | 修**快照时间戳撞名**：文件名只到秒，同一秒内连写会互相覆盖（回滚后本该多一版却还是 1 版）→ 改成到毫秒 | `app.mjs`、`app.html`（面板解析新文件名） | 3 秒内 4 次写盘 → 4 份独立快照 |
+| 10:44 | 新增**会话自动快照**：每次覆盖写盘前把原文字节留一份到 `workspace\session-snapshots\<日期>\`，单会话留 20 版、保留 30 天；会话右键「历史版本…」列出并回滚（回滚前也留档，所以可再撤回） | `app.mjs`（`snapshotBeforeWrite` / `pruneSessionSnapshots` / `pruneOldSnapshotDirs` / `GET .../snapshots` / `POST .../restore`）、`app.html`（`#snapModal`、`openSnapshots`） | 3 版列出→回滚→回滚后 +1 版；连写 23 次只留 20（最老=第 4 版）；无令牌回滚 403；面板 1 行正常，截图 `docs\ui-new\snapshot-panel.png` |
+| 10:50 | **模型下载**：通道 ModelScope（0.5B 三档量化，469/396/644MB）+ 自定义直链；浏览器 UA、跟随 302、进度/速度/ETA/取消、下完自动加载 | `app.mjs`（`startDownload`/`followGet`/`/api/download/*`）、`app.html` | 实下 `qwen2.5-0.5b-instruct-q4_k_m.gguf` 468.6MB 落盘；加载后 2.3s 答出「递归是函数调用自身…」 |
+| 10:52 | **首次使用引导**：首启弹「准备模型」——① 自动嗅探本机 ② 也可以直接下一个极小的；两个通道可切；完成后若没自定义提示词，自动应用推荐系统提示词 | `app.html`（`#firstModal`、`firstRunOpen`/`frScan`/`frStartDownload`/`frPoll`）、`app.mjs`（`/api/onboarding`、`workspace\onboarding.json`） | 首启弹出；嗅探 18226 文件 0 候选（4 个模型已在库）；两通道三档位；「其他通道」出 URL/文件名输入；点完成→不再弹、sysPrompt 写入；截图 `docs\ui-new\first-run.png` |
+| 10:54 | 修**打包脚本丢 BOM**：我改过 `build-portable.ps1` 后 UTF-8 BOM 没了，PS 5.1 按 GBK 读 → 中文注释乱码，解析直接失败 | `build-portable.ps1`（补 EF BB BF） | 补 BOM 后打包一路通过 |
+| 10:55 | 修**打包被占用**：`--stop` 之后启动器进程不退，它的 WebView2 子进程占着 `data\` 导致清空旧产物失败（日志第 8 条已知问题的又一次复现） | 操作流程 | 只按 `CommandLine -like '*LocalAI*'` 精确杀 webview，未误伤 DSH 的 WebView2 |
+| 10:56 | **重新封装便携版**：209MB / 3430 文件，含界面、CLI、TUI、引导与下载；`AUTO_LOAD` 找不到指定模型时回退到最小的那个 | `dist\LocalAI\`、`app.mjs` | 起包实测：引导弹出、5 个模型（含 0.5B）、页面无 JS 错误、`app.mjs`/`app.html` 与源码哈希一致 |
+| 12:04 | **虚拟机实测通过**：VC++ 运行库装上后，包在 Win10 VM 里跑通；Qwen2.5-0.5B Q4 纯 CPU **16.4 tok/s**、内存 3.4/8GB；状态栏正确显示后端 | — | 截图与日志见 `docs\ui-new`；确认「缺 VC++」就是 `spawn git ENOENT` 的真因 |
+| 18:25 | **入门化改造**：启动器拉起服务前自检——缺 VC++ 引导装随包的 `vc_redist.x64.exe`、端口被占自动改口并写回 config、磁盘不足预警；新增 `gpu=auto\|cpu\|vulkan` 配置，状态栏在 CPU 时标 `· CPU` | `Launcher.cs`、`app.mjs`、`app.html`、`build-portable.ps1` | 编译通过；`LOCALAI_GPU=cpu` 实测 `gpu=cpu / 已按配置强制使用 CPU`；宿主 vulkan 不受影响 |
+| 18:26 | 修**静默编译**：`getLlama({build:"never"})`，不再偷偷编译 llama.cpp（VM 里 `spawn git ENOENT` 的元凶）；首启加硬件体检（内存/核数/后端 + 推荐档位自动预选），下载完自动发第一句 | `app.mjs`（`/api/sysinfo`）、`app.html` | 卡片实测「31.4GB · 可用 10.7GB · 22 核 · 后端 Vulkan」；首启自动弹出并预选 Q4_K_M |
+| 18:30 | **重新封装 v2**：257.9MB / 3435 文件，正式带上 `vc_redist.x64.exe`(24MB) 与 `plugins\`(3 个示例)；日志逐项打印「已附带…」 | `build-portable.ps1`、`dist\LocalAI\` | 起包实测：`/api/plugins` 3 个可用、`/api/sysinfo` 正常、无 JS 报错 |
+
+### 2026-10-26
+
+| 时间 | 改动 | 落点 | 验证 |
+|---|---|---|---|
+| 23:38 | 新增**插件系统**：`plugins\*.mjs` 导出 `{name,description,params,run}` 即成为工具，与内置工具共用链路、支持热重载；设置→工具可看列表/错误/重载/开目录；随包 3 个示例 | `app.mjs`（`loadPlugins`/`watchPlugins`/`/api/plugins*`）、`app.html`、`server\plugins\`、`build-portable.ps1` | 模型实测调用 `disk_space`（3ms）；热重载 `loadedAt` 变化；界面「3 个可用」 |
+| 23:48 | 新增**外观自定义**（设置 → 外观）：主色（6 预设 + 取色器，改 --accent/--cyan/--glow）、整体缩放 80–140%、背景图（≤1.5MB，存 dataURL，自动加暗色蒙版）、**自定义 CSS**（逃生舱）；全部存 `localai.appearance`，刷新保留，一键恢复默认 | `app.html`（`applyAppearance`/`renderAppearanceControls`） | CDP 实测：色板 6 个、改紫+110%+自定义 CSS 生效、刷新后仍生效、无 JS 报错；截图 `docs\ui-new\appearance.png` |
+| 23:58 | **文档重构**：新增根目录 `交接文档.md`（一页纸）与 `technique\`（7 篇专题：架构/接口/插件/模型/打包/探针/坑）；本日志保持「只追加」的时间流水，并加指路 | `交接文档.md`、`technique\`、本文件 | 文档内链接与代码事实逐条对照（接口表取自 `app.mjs` 路由、工具清单取自注册表） |
+
+
+### 2026-10-19 → 10-20（隔天续做：Web 能力）
+
+| 时间 | 改动 | 落点 | 验证 |
+|---|---|---|---|
+| 10-19 23:0x | 排查「百度能不能用」：先误判为 IP 被封，实测后确认是**UA 敏感**（桌面 UA 给安全验证页，移动 UA 给 1.85MB 正常结果） | — | 两次误判都写在第十二/十三节，避免下次再错 |
+| ≈10-19 23:2x | 新增联网工具：`web_search`（百度优先→被拦自动回落 Bing）+ `fetch_url`（读正文、SSRF 防护） | `app.mjs`（`webSearch`/`fetchUrlText`/`checkUrl`/`fetchPage`/`htmlToText`） | `probe-web-tools` **19/19** |
+| ≈10-20 00:0x | 未知工具调用改为列出「当前可用工具」并禁止编造（模型曾凭记忆瞎调 `web_search` 后谎称查到了新闻） | `app.mjs` `run()` | 复测：拒绝 + 告知可用清单 |
+| ≈10-20 00:2x | 联网 UI：工具栏「联网」开关（默认关）+ 首次开启须知弹窗（5 条）+ 「不再提示」+ 设置里可恢复 | `app.html` | `probe-ui-web` **34/34** |
+| ≈10-20 00:3x | 联网专用卡片（搜索词/条数/引擎/回落原因/结果清单）与「本次联网」摘要；`🌐` 字形缺失改文字 | `app.html` `toolCardEl()` | 卡片与摘要都验过 |
+| ≈10-20 00:4x | 修一处状态不一致：`webEnabled` 会持久化而「调用工具」不会，刷新后联网显示开着却发不出 `web` 标记 | `app.html`（`toolEnabled` + `tools: toolChk.checked`） | 复测刷新后两者一致 |
+| 00:45 | 部署发布包并重启，联网探针在 8099 复跑 | `dist\LocalAI\` | **19/19** |
+| ≈10-20 23:3x | 「联网」开关从工具栏移到**输入框下方**，与「多回答预加载」同一右对齐组 | `app.html`（`.askToggles`、`#webChk`） | `probe-ui-web` **39/39**（新增 5 项位置断言） |
+| ≈10-20 23:4x | 修数字实体漏解码：Bing 标题里的 `&#183;` 被原样显示成 "&#183;" | `app.mjs` `htmlToText()` | 复测标题显示「·」，结果里已无 `&#` |
+
+### 当前状态快照（2026-10-20 23:45）
+
+- 服务：`启动本地AI.exe` 运行中，`http://127.0.0.1:8099`，qwen2.5-7B 已自动加载，4 个模型可用
+- **工具调用**：已修好（自建 `<tool_call>` 协议 + Agent 循环），qwen2.5 实测 24/24
+- **联网**：已上线，**默认关闭**，开关在**输入框下方**；首次开启弹须知；搜索百度优先、被拦回落 Bing；读网页有 SSRF 防护
+- 多回答预加载：已上线，默认关闭；开启前弹能力检查
+- 会话：服务端磁盘存储，随用随建；旧 localStorage 已迁移
+- 未完成：ASR 语音输入、Piper 封装（主动搁置）；工具与联网路径均未做增量流式
+
+### 下一笔怎么写
+
+在后面追加一行即可，别改旧行：
+
+```
+| HH:MM | 一句话说清改了什么、为什么改 | 改了哪个文件/目录 | 怎么验的（探针项数/实测数字） |
+```
+
+---
+
+## 一、这是什么
+
+一台 Windows 笔记本上的**纯本地 AI 对话应用**：Node 服务 + 内置网页界面，模型用 llama.cpp（node-llama-cpp）跑在本机核显上。
+
+- 入口：`server\app.mjs`（服务端，端口 8099）+ `server\app.html`（界面）
+- 模型目录：`D:\LocalModels\*.gguf`
+- 便携成品：`D:\LocalModels\dist\LocalAI\`（双击 `启动本地AI.exe`）
+- 桌面快捷方式「本地 AI」→ 指向那个 exe
+
+## 二、当前已完成的能力
+
+| 能力 | 状态 | 关键实现位置 |
+|---|---|---|
+| KV 缓存复用 | ✅ 多轮只解码增量，实测首字 16.7s → 0.97s | `app.mjs`：常驻 `state.sequence` / `state.session`、`commitSession()` |
+| 系统提示词跨轮保留 | ✅ 修掉 `setChatHistory` 顶掉 system 的旧 bug | `initialHistory()` |
+| 便携打包 + 图标启动器 | ✅ 206.9MB（模型外置） | `build-portable.ps1`、`launcher\Launcher.cs` |
+| 内嵌窗口（不依赖 Edge） | ✅ WebView2，缺运行时可回落浏览器 | `Launcher.cs` OpenUi |
+| DPI 感知 | ✅ 175% 缩放不再模糊 | `launcher\app.manifest` |
+| 亮/暗主题 | ✅ 跟随系统 + 手动切换，记忆 | `app.html` theme 相关 |
+| 模型选项卡 + 品牌图标 | ✅ Microsoft/Qwen/OpenAI/DeepSeek | `vendor\models\*.png`、`renderModelTabs` |
+| 思考段拆分（R1/gpt-oss） | ✅ `think` 标签流式拆到折叠区 | `createThoughtSplitter()` |
+| TTS 朗读 | ✅ Edge 神经语音（在线）+ Piper（离线）+ 系统兜底 | `/api/tts`、`D:\LocalModels\tts\` |
+| 停止生成 / 重新生成 / 导出 | ✅ | `app.html` + `/api/export` |
+| 刷新后续聊 | ✅ 重建 history | `renderStored()` |
+| max_tokens / 温度可调 | ✅ ⚙ 设置面板 | `localai.settings` |
+| 朗读设置集中于设置页 | ✅ 「设置 → 朗读」：默认音色 + 语速 + 试听；底部旧朗读条已删 | `initTts()`、`localai.settings` |
+| 自动朗读 | ✅ 保留但默认关闭，迁移时强制归零一次 | `SETTINGS_VERSION` |
+| 多会话对话列表 | ✅ 左侧栏，建/切/删/双击重命名，存服务端磁盘 | `/api/sessions`、`workspace\sessions\` |
+| @ 模型征询第二意见 | ✅ 输入框下方 @ 按钮，主回答后换模型补一段看法 | `/api/second-opinion`、`runSecondOpinions()` |
+| 工具调用（Agent） | ✅ 自建 `<tool_call>` 协议 + 最多 4 次往返；时间/计算/模型列表/读文件全部实测 | `buildToolRegistry()`、`parseToolCalls()`、`handleChat` 的 `toolsEnabled` 分支 |
+| 联网工具 | ✅ 默认关；搜索（百度优先→被拦回落 Bing）+ 读网页正文；SSRF 防护 | `webSearch()`、`fetchUrlText()`、`#webChk`、`#webWarnModal` |
+| 上下文余量浮窗 | ✅ 顶栏下方悬空卡片，可隐藏；≥70% 黄、≥85% 红；数字取每轮 `usage` | `app.html`：`#ctxPanel`、`renderCtx()` |
+| 嗅探本地模型 | ✅ 扫常见位置+自定义目录，硬链接收进模型目录 | `/api/discover/*`、`workspace\discovery.json` |
+| 崩溃自愈 | ✅ 启动器守护 + Vulkan 崩溃后自动降 CPU | `Launcher.cs` Exited、`recentCrashes()` |
+
+## 三、模型清单（`D:\LocalModels`）
+
+| 文件 | 大小 | 说明 |
+|---|---|---|
+| `qwen2.5-7b-instruct-1m-q4_k_m.gguf` | 4.36GB | **默认/主力**，1M 上下文版，~8-10 tok/s |
+| `DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf` | 4.68GB | 思考型，6.4 tok/s，加载 26s |
+| `Phi-4-mini-instruct-Q4_K_M.gguf` | 2.32GB | Microsoft，快 |
+| `qwen3-5-4B-Q4_K_M.gguf` | 2.52GB | Qwen3 系 |
+
+## 四、已知问题（改动前先看）
+
+1. **工具调用已修好（2026-10-18 23:35）**。原缺陷是 node-llama-cpp 从 jinja 模板里探测不到函数调用语法时会把 `functions` 静默丢弃，模型于是只吐 `<tool_call>` 文本而无人解析。现在改成自建协议 + 自己的 Agent 循环（详见第十二节），四个内置工具全部实测可跑。**遗留限制**：工具路径不逐 token 流式（每轮跑完一次性推正文）；一轮最多 4 次工具往返；模型必须愿意按 `<tool_call>` 格式输出——qwen2.5 实测很稳，R1 那类思考模型没测过。
+2. **Vulkan 后端偶发 device lost**：尤其「生成中途点停止 / 关窗口」时必崩（实测复现）。现在靠两条兜底：启动器守护自动重启（约 15s）、10 分钟内崩 2 次启动时自动切 CPU。
+3. **Piper 只支持 `phoneme_type=espeak` 音色**：`chaowen`/`xiao_ya` 是 pinyin 模式，会让 2023 版二进制崩，服务端已自动跳过。
+4. **对话记录里有测试残留**：之前调试时发过“你好”“请写一篇 800 字的长文”等，用户可点「新对话」清空。
+5. `npm install` 会删掉手工安装的 `node-llama-cpp`（已写进 package.json 以防再发生）。
+6. **第二意见必然让主模型的 KV 缓存作废**：一台机器只装得下一个模型，征询时是「卸掉 A → 加载 B → 作答 → 再装回 A」。实测一轮往返 32–44 秒（qwen2.5-7B ↔ Phi-4-mini），回来之后下一轮要重新预填充。这是硬件决定的，不是 bug。
+7. **第二意见期间不给「停止」按钮**：服务端必须在 `finally` 里把主模型装回来，中途 abort 会让下次提问打到错的权重上。所以 `runSecondOpinions()` 里把 `stopBtn` 藏起来了。
+8. **`--stop` 之后启动器进程不退出**，仍占着 `logs\app.log`，导致 `build-portable.ps1` 清空旧产物那一步失败。照脚本提示把残留的 `启动本地AI.exe` 结束掉再打一次。
+
+## 五、待办（按性价比）
+
+1. **语音输入 ASR**：与 TTS 配成闭环。ModelScope 有 SenseVoice-small（约 300MB，CPU 准实时）。
+2. 上下文裁剪打断 KV 复用的优化（当前裁历史会导致整段重算）。
+3. 第二意见的「不换模型」方案：目前只能靠临时换人。若以后上更大显存，可以常驻一个小模型专职当第二意见。
+4. 嗅探模块的「删除模型」与「下载目录监听」（新下完的模型自动出现）。
+5. 工具调用再往前走一步：给工具路径也做增量流式（现在每轮跑完才推正文），以及补 Web 搜索 / 目录遍历这类真能扩大能力面的工具。
+
+## 六、怎么改、怎么验
+
+```powershell
+# 改完源码后重新打包（会把 app\ 拷进便携目录并重编译启动器）
+cd D:\LocalModels\server
+powershell -NoProfile -ExecutionPolicy Bypass -File .\build-portable.ps1
+
+# 打包前必须先停掉正在运行的应用，否则 data\ 里的文件被占用会失败
+cd D:\LocalModels\dist\LocalAI
+Start-Process .\启动本地AI.exe -ArgumentList '--stop' -Wait
+```
+
+> 只改了 `app.mjs` / `app.html` 时可以**跳过打包**：服务端每次请求都重新读 `app.html`，直接覆盖 `dist\LocalAI\app\` 里那两份再加一次重启即可（`app.mjs` 是启动时加载的，必须重启节点）。
+
+现成的验证脚本（都在 `server\`）：
+
+| 脚本 | 用途 |
+|---|---|
+| `probe-kv-long.mjs` | KV 复用 A/B（首字、复用率） |
+| `probe-func.mjs` | 功能回归（9 项，工具调用那项会失败） |
+| `probe-ui-shot.mjs` | 亮/暗主题截图（需要 CDP 端口） |
+| `probe-features.mjs` | 停止/重生成/导出/设置验收 |
+| `probe-reasoning.mjs` | 思考型模型拆分验证 |
+| `test-think-split.mjs` | think 拆分单元测试（纯字符串，不用模型） |
+| `probe-sessions.mjs` | 多会话 + 第二意见接口（33 项，不用模型，30 秒） |
+| `probe-second-opinion.mjs` | 第二意见端到端（真加载两个模型，约 1–2 分钟） |
+| `probe-ui-new.mjs` | 界面结构：侧栏/设置选项卡/@ 菜单（Edge headless，30 项） |
+| `probe-ui-second.mjs` | 界面端 @ 全链路（真发一轮，约 45 秒） |
+| `probe-ui-sessions.mjs` | 会话迁移/切换/删除/刷新恢复 + 朗读接口（23 项） |
+| `probe-discover.mjs` | 嗅探模块接口（34 项，配合 fake-models 假模型，不用真模型） |
+| `probe-ui-discover.mjs` | 嗅探面板 UI 全流程（23 项，首次询问→选目录→扫描→收录） |
+| `probe-preload.mjs` | 多回答预加载端到端（26 项，真加载两个小模型，约 40 秒） |
+| `probe-ui-preload.mjs` | 预加载 UI：开关/能力弹窗/不再提醒/设置恢复/结果提示条（35 项） |
+| `probe-tools-agent.mjs` | 工具调用端到端（24 项，真加载 qwen 并真跑 4 个工具） |
+| `probe-ui-tools.mjs` | 工具调用界面链路（12 项：卡片/正文/指标/刷新恢复） |
+| `probe-chat-plain.mjs` | 纯聊天回归（11 项，确认改工具没把流式对话改坏） |
+| `probe-web-tools.mjs` | 联网工具端到端（19 项：搜索/回落/读网页/SSRF/关闭时不注册） |
+| `probe-ui-web.mjs` | 联网界面链路（34 项：默认关→须知→开启→卡片→刷新→设置→联动关闭） |
+| `probe-ctx-panel.mjs` | 上下文余量浮窗（24 项：贴顶栏/数值自洽/告警配色/隐藏显示+刷新记忆/窄窗/真跑一轮/会话清理） |
+| `probe-title-ui.mjs` | 标题与顶栏（13 项：状态栏位置/更多菜单/右键菜单/就地改名落盘/Esc 取消） |
+| `probe-auto-title.mjs` | 自动标题端到端（5 项：两轮后生成、不是首句照抄、不置 renamed） |
+| `probe-session-jump.mjs` | 会话切换顺序（4 项：切换不重排、不抬 updatedAt、真消息才置顶） |
+| `probe-session-race.mjs` | 连点切会话（3 项：选中最后一次、正文对应、顺序不变） |
+| `probe-code-run.mjs` | 代码块执行接口（13 项：语言可用性、超时、截断、令牌/未知语言/空代码） |
+| `probe-code-run-ui.mjs` | 代码块运行界面（9 项：复制/运行按钮、执行输出、设置开关） |
+| `probe-settings-tools.mjs` | 设置工具页（9 项：工具选项卡、提示词/嗅探/退出入口、面板打开关闭） |
+| `probe-start-screen.mjs` | 启动页（12 项：开场白、默认新对话、问候语、模型菜单/图标、上次对话卡、输入区选项） |
+| `probe-start-flow.mjs` | 启动流程（8 项：继续对话、新对话、发送退场、发送键图标） |
+| `probe-discover-ui.mjs` | 嗅探面板（8 项：内容区可见、说明/扫描位置/自定义目录、扫描统计与空结果文案） |
+| `probe-model-add.mjs` | 模型菜单（4 项：添加模型入口、刷新不重建、入口打开嗅探并收起菜单） |
+| `probe-menu-stacking.mjs` | 模型菜单层级（2 项：header z-index、四行命中测试不被消息遮挡） |
+| `probe-status.mjs` | 状态栏（6 项：只显示窗口/思考能力、tooltip 完整、长名字放得下） |
+| `probe-code-panel.mjs` | 独立代码运行器（9 项：入口、语言列表与置灰、运行、草稿、清空、Esc） |
+| `probe-context-switch.mjs` | 换模型保留对话（3 项：加载会话、切 Phi-4 后消息数不变、非空开场白） |
+| `probe-small-features.mjs` | 小功能（6 项：复制按钮、草稿按会话保存、回到最新） |
+| `probe-input-extras.mjs` | 输入侧（8 项：历史上下翻、Ctrl+N/K、Esc 清空、清空消息） |
+| `probe-workspace-api.mjs` | 工作区接口（9 项：增删改查、越界拒绝、空目录删除） |
+| `probe-workspace-ui.mjs` | 工作区界面（6 项：打开、行号、新建打开、保存回读、删除） |
+| `probe-hero-modes.mjs` | 开场白模式（11 项：输入框、隐藏底栏、两按钮、字体/颜色、模式联动、发送切回） |
+| `probe-timestamps.mjs` | 消息时间戳（4 项：每条都有、格式、悬停、新消息） |
+| `probe-formula-find.mjs` | 公式复制 + 会话搜索（8 项：块级/行内复制、Ctrl+F、计数、高亮、跳转、Esc） |
+| `probe-formula-panel.mjs` | 公式面板 + 化学式（7 项：化学式含裸写、MathLive 就绪、双向同步、复制、插入、关闭） |
+
+合计 **523 条断言**。界面探针需要先把 Edge 以 headless + CDP 起起来（不需要启动器，直接打服务端口就行）：
+
+```powershell
+& "$env:ProgramFiles(x86)\Microsoft\Edge\Application\msedge.exe" --headless=new `
+  --remote-debugging-port=9333 --user-data-dir="$env:TEMP\edge-dsh-probe" `
+  --window-size=1440,900 --hide-scrollbars 'http://127.0.0.1:8099/'
+node probe-ui-new.mjs http://127.0.0.1:9333 D:/LocalModels/server/docs/ui-new
+```
+
+> 踩过的坑 1：CDP 里改完 HTML 必须 `Page.enable` 再 `Page.reload`，否则页面还是旧 JS。
+> 踩过的坑 2：两个界面探针**不要同时跑**：它们共用一个页面，会互相抢 `sessionId`。
+> 踩过的坑 3：便携版启动时会 `AUTO_LOAD` 一个模型，所以探针里别假设「没有已加载模型」。
+> 踩过的坑 4：探针会真发对话、真装卸模型，跑之前想清楚它会不会打断你正在用的界面。
+> 踩过的坑 5：探针里的 Windows 路径别直接拼进模板字符串——`${dir}\fake.gguf` 的 `\f` 是转义符。
+
+调试启动（带远程调试端口，供脚本连）：
+```powershell
+$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS='--remote-debugging-port=9222 --autoplay-policy=no-user-gesture-required'
+Start-Process .\启动本地AI.exe
+```
+
+## 七、约定与坑
+
+- **模型、语音资源都外置**：`<MODEL_DIR>\*.gguf` 和 `<MODEL_DIR>\tts\`，便携包只有 206MB。
+- 启动器是**守护进程**：node 异常退出（退出码≠0）会自动重启；正常 `--stop`（退出码 0）不会。
+- 服务停掉后再双击图标，会把服务重新拉起来。
+- `app.html` 里写不了字面量 `<think>`：工具链会改写它，代码里用 `String.fromCharCode(60)` 拼。
+- PowerShell 5.1 读脚本需要 **UTF-8 BOM**，否则中文乱码导致解析失败。
+- 用 PowerShell 调 `/api/tts` 或 `/v1/chat/completions` 时，`-Body` 必须传 `[Text.Encoding]::UTF8.GetBytes(...)`，否则中文变问号。
+
+## 八、详细说明①：朗读设置重构 + 多会话 + @第二意见（2026-10-18 21:52–22:06）
+
+三项需求来自用户，实现与验证都跑过（探针清单见第六节）。
+
+### 1) 朗读从底部条搬进设置页，自动朗读默认关
+
+- 删掉 footer 里的 `.ttsBox`（原「音色 + 语速」两件套），改为 **设置 → 朗读** 选项卡。
+- 设置面板重构成两个选项卡：`生成`（max_tokens / 温度 / 导出）与 `朗读`（引擎信息 / 默认音色 / 语速 / 试听 / 自动朗读开关）。
+- 音色与语速并入 `localai.settings`（`{v, maxTokens, temp, autoRead, ttsVoice, ttsSpeed}`），旧的 `localai.ttsVoice` / `localai.ttsSpeed` 只读一次做迁移。
+- **自动朗读没删，但默认关闭**：`SETTINGS_VERSION = 2`，旧配置（`v` 不等于 2）加载时 `autoRead` 一律归零一次，之后用户自己开。
+- 每条回答旁边的小喇叭按钮**保留**：它读设置里的默认音色/语速（`speakText` 以设置为准，DOM 只是编辑面）。
+- 试听按钮走同一个 `/api/tts`，用下拉框里的**当前值**（不必先保存），失败时把原因显示在按钮旁边。
+
+### 2) 多会话：存在服务端磁盘，不存 localStorage
+
+- 存储：`<MODEL_DIR>\workspace\sessions\<id>.json`，id 形如 `mvdw3hub-8a15c856`（时间前缀 + uuid 片段），严格校验 `^[A-Za-z0-9_-]{6,64}$` 防目录穿越。
+- 接口：`GET/POST /api/sessions`、`GET/PUT/DELETE /api/sessions/<id>`。
+- 标题字段**只存用户手动起的名字**：空表示没起过，展示时用首句推导（`displayTitle`）。这样客户端拿回空 title 不会把自动标题钉死。
+- **懒建会话**：打开应用不建文件，「新对话」只是清空界面，发第一句时才 `POST` 落盘。否则点几次新对话就会堆一串空的「新对话」。
+- 存盘 400ms 防抖（`saveTranscript`），切会话/删会话/新建前强制 `flushTranscript()`；落盘成功后补一次 `refreshSessions()` 让侧栏标题/时间实时更新（22:25 修）。
+- 旧版 `localai.transcript.v1` 会在「服务端一个会话都没有」时自动迁移成一个会话，**且不清空旧 key**（留作备份）。
+- 侧栏：`☰` 收起/展开，状态记在 `localai.sidebar`；窗口 < 980px 默认收起。
+
+### 3) @ 征询第二意见
+
+- 交互：输入框**下方**一个 `@` 按钮 → 弹出模型菜单 → 可多选 → 输入框下方出现 `@模型 ✕` 标签 → 发送。**发完自动清空**（每轮重新选）。
+- 语义：主模型正常答完，再让被 @ 的模型「补一段看法」。喂给它的上下文是：本轮之前的历史 + 本轮提问 + 主模型回答 + 一段固定要求（只补差异、别复述、300 字内）。
+- 服务端 `/api/second-opinion`：SSE 事件流 `loading → thinking → answer → restoring → done`。
+  内部用 `makeMemoryResponse()` 造个假 res 去调 `handleChat()`——**必须复用同一条聊天链路**（模板/思考段拆分/上下文预算/工具），否则两套实现迟早不一致。
+  `finally` 里无条件把主模型装回来，失败也要发 `restore-failed` 事件。
+- 结果渲染成独立的紫色消息行（`.row.assistant.second`），有单独的朗读按钮和指标，**没有重生成按钮**（重生成会把它变成主模型的回答，误导）。
+- 存档：`{role:'assistant', kind:'second', model, content, ctx}`。`ctx` 是带 `（第二意见 · 模型名）` 前缀的版本，只有它进 `history`，让主模型知道那句不是自己说的。
+- 边界：如果生成期间切了会话（`sessionId` 变了），这条结果**不写盘也不进上下文**，只留在界面上看。
+
+### 这一轮还剩的口子
+
+- 第二意见一轮 30–45 秒，全是模型装卸的开销，UI 里只靠状态栏文字告知，没有进度条。
+  **拿 R1 这种思考型模型当第二意见要 ≈100 秒**（实测：预填充 3.81s + 生成 94.2s，773 字思维过程）——
+  模型本身要想 90 秒，不是卡住了。
+- 多选多个模型时会**串行**换人，每个都要装卸一次，时间线性叠加。
+- 侧栏没有搜索、没有置顶、没有分组；会话多了只能靠滚动。
+- 会话文件没有自动清理，`workspace\sessions\` 会一直长大（单个会话上限 24MB）。
+
+## 九、详细说明②：嗅探本地模型（2026-10-18 ≈22:28）
+
+需求：模型散落在下载目录/桌面/别的软件里时，也能被发现并收进模型列表，不必手动搬文件。
+
+### 行为
+
+- **入口**：工具栏「嗅探」按钮；**首次使用**会自动弹一次询问（标记存服务端 `workspace\discovery.json` 的 `onboarded`，换机器才再问）。
+- **扫描范围**：常见位置（下载/桌面/文档、`~\.cache\lm-studio\models`、`~\.ollama\models`、`%APPDATA%\CherryStudio`、`D:\Models`、`D:\AI`）+ 用户自己加的目录（持久化在 `discovery.json` 的 `customDirs`）。**只读**，不动原文件。
+- **收录**：同盘建**硬链接**（瞬间完成、不额外占空间），跨盘自动退回复制。原文件留着，删链接不影响原文件。
+
+### 三个关键实现点
+
+1. **靠文件头认模型，不靠后缀**。`isGguf()` 读前 4 字节比对 `GGUF`——Ollama 的模型是内容寻址的 `sha256-<hex>` blob，根本没有 `.gguf` 后缀，只能这么认。
+   Ollama 的名字还要反查 `~\.ollama\models\manifests`：manifest 里 `layers[].mediaType` 含 `model` 的那层的 digest 对应 blob 文件名，路径末两段拼成 `名字:tag`。
+2. **三重上限**：深度 6、文件数 60000、时间 15 秒。超了就返回 `truncated: true`，UI 明确提示「加点自定义目录缩小范围」，而不是假装扫完了。
+   实测本机 16964 个文件 309ms 扫完。
+3. **降噪**：`MODEL_DIR` 第一层的 `.gguf` 本来就在模型选项卡里，直接从候选里剔除，否则列表一开就是 4 条「已收录」。
+   人工丢进 `MODEL_DIR` 子目录的分片仍会列出——那才是真需要处理的。
+
+### 接口
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/discover/config` | `onboarded` / `customDirs` / `modelDir` / `home` / `common` / `existing` |
+| POST | `/api/discover/config` | 改 `onboarded` / `customDirs` |
+| POST | `/api/discover/scan` | `{includeDefaults, dirs}` → 候选列表 + 遍历统计 |
+| POST | `/api/discover/adopt` | `{paths:[...]}` → 逐个收录，返回 `method`（hardlink/copy/existing） |
+
+### 测试怎么造
+
+不需要真模型：造几个带 `GGUF` 魔数的稀疏文件即可（见 `probe-discover.mjs` 的 fixture 约定）。
+两个探针都是**自复位**的（开场清空模型目录 + 把 `onboarded` 置回 false），可以反复跑。
+
+```powershell
+# 起一个假的模型目录来测嗅探，别拿真模型目录当实验场
+$env:PORT='8096'; $env:MODEL_DIR='D:\Test For DSH Harness\fake-models\library'; node app.mjs
+node probe-discover.mjs http://127.0.0.1:8096 'D:\Test For DSH Harness\fake-models\src' 'D:\Test For DSH Harness\fake-models\library'
+```
+
+### 还没做的
+
+- 不做「删除模型」（只管收录，删要用户自己去目录里删，避免误删 4GB 文件）。
+- 不跟随符号链接/junction，不扫网络盘（会卡死）。
+- 分片模型只认第一片：`-00002-of-00003` 这类后续片既不进候选列表，硬要收录也会被明确拒绝（`isShard` / `isFirstShard` 复用自 `scanModels()`）。
+- 收录后没有「撤销」按钮；删错了得自己去 `MODEL_DIR` 删文件（硬链接删掉不影响原文件，这点是安全的）。
+
+## 十、评估过但**暂不做**：把 Piper 封装进软件目录（2026-10-18 ≈22:53）
+
+需求是让便携包「拿到别人机器上、断网也有声音」。结论：技术上可行，但**暂缓**，原因和前置条件记在这里，免得下次重新推一遍。
+
+体积实测：`tts\piper` 37.0MB（其中 `libtashkeel_model.ort` 9.8MB 是阿拉伯语变音模型、`ru_dict` 8.1MB 是俄语字典，对中文完全无用）+ `voices\zh_CN-huayan-medium.onnx` 60.3MB。全带 = 包体 207MB → 约 305MB（+47%）。
+
+要做得先过四关：
+
+1. **打包脚本会删掉它们**：`build-portable.ps1` 清空整个 `dist\LocalAI`，只保留 `data\`。放进 `dist\LocalAI\tts\` 的东西下次打包即蒸发，必须放进被复制的源（如 `server\tts\`）或扩一份保留名单。
+2. **路径解析是单一来源**：`TTS_DIR = process.env.TTS_DIR ?? MODEL_DIR\tts`。要「包内自带 + 外置覆盖」，得改成候选链，且 `piperVoices()` 现在只扫一个目录，要改成多来源合并。
+3. **缓存得挪出去**：`TTS_CACHE_DIR` 在 `tts\cache`，上限 200MB；tts 进 app 目录后这些会算进安装体积，重打包又被清。应固定到 `workspace\tts-cache`。
+4. **音色再分发许可**：piper 二进制是 MIT，但 VITS 音色各有自己的许可。打进安装包 = 再分发，义务比「用户自己下载」重。这条必须由发布者确认，不能代判。
+
+真要做的话，最省的是「piper 二进制（裁掉阿拉伯/俄语数据约 20MB）+ 一个 x_low 音色（约 20MB）」，增量约 40MB；外置 `<MODEL_DIR>\tts` 保留为覆盖/追加来源，现有 60MB medium 音色不受影响。
+
+注：**对本机没有收益**——Edge 在线音质最好且实测可用，Piper 只是断网兜底；这件事是为「发给别人」投资。
+
+## 十一、详细说明③：多回答预加载（2026-10-18 ≈23:05–23:35）
+
+需求原文三层意思：①加一个「多回答时是否预加载」的开关；②**开启前弹窗警告**，警告时要**先嗅探设备能力**判断是否支撑得住「被预加载的模型在后台同时运行」；③弹窗下方给「我已知晓，不再提醒」，勾了就不要再问，且**设置里能重新打开提醒**。默认不勾选。
+
+### 为什么必须"真常驻"
+
+之前第二意见的做法是「卸主模型 → 装目标模型 → 作答 → 装回主模型」，一轮 30–45 秒，而且**主模型的 KV 缓存被白白丢掉**，下一轮要重新预填充。
+
+预加载把被 @ 的模型**提前装进内存并常驻**，第二意见直接用它作答：
+主模型原地不动，KV 缓存完整保留。实测从 13.9s（`qwen3-5-4B` + `Phi-4-mini` 双模型），事件流里连 `loading` 都没有。
+
+### 服务端：`extras` 表 + 三个接口
+
+`const extras = new Map()`：`file → { model, context(4K), wrappers, bytes, busy }`，与 `state.*` 完全独立。
+
+| 方法 | 路径 | 作用 |
+|---|---|---|
+| GET | `/api/capacity?files=a,b` | 能力核算：内存总量/可用、每个目标的占用与余量、整体结论与建议 |
+| GET/POST | `/api/preload` | 查常驻清单 / 预加载指定模型（内存不够时 **409 拒绝**） |
+| POST | `/api/preload/clear` | 释放全部或指定模型 |
+
+`/api/second-opinion` 现在分两段：**先跑已常驻的**（不碰主模型），**再跑需要换人的**（换人前先 `clearExtras()`，否则峰值是「主模型 + 常驻 + 目标」三份权重，正好把内存压死）。`done` 事件多返回一个 `swapped`，前端据此决定状态栏说「KV 保留」还是「KV 已清空」。
+
+### 能力核算的算法（宁可保守）
+
+```
+目标占用 = 权重 × 1.15（加载期拷贝/对齐的临时量） + 0.8GB（上下文与运行时开销）
+余量     = 当前可用内存 − Σ目标占用
+判定：余量 ≥ 2GB → ok ｜ 0 < 余量 < 2GB → tight ｜ 余量 ≤ 0 → insufficient
+```
+
+用的是 `os.freemem()` 而不是 commit——Windows 的 standby 会被回收，`freemem` 偏保守，宁可低估余量也别把机器拖进换页。
+
+本机实测：4 个模型**逐个看都 ok**（余量 +3.9 ~ +6.6GB），**全部一起看 insufficient**（差 9.1GB）。所以 UI 在「还没选 @ 模型」时逐行列出、只要有一个能装就允许开启；内存不足的那些即使开了开关，服务端也会逐个拒绝。
+
+### 交互细节
+
+- 开关在输入框下方（`@` 右侧），默认不勾。- 勾上 → 先弹能力检查（不直接生效），弹窗里有内存元信息、逐模型账单、结论色块、「我已知晓，不再提醒」、取消/仍然开启。**确认前开关保持未勾选**。
+- 勾了「不再提醒」→ 以后直接生效，不再弹窗；但**内存不够仍会拒绝**并把原因写进状态栏（提醒可以关，安全闸不关）。
+- 设置 → 生成 →「多回答预加载」：`开启前显示能力检查提示`（= 去掉不再提醒）+ `清空预加载` 按钮 + 当前常驻状态。
+- 开关开着时，在 `@` 菜单里选中即预加载、取消即释放；常驻状态显示在输入框下方的灰字里。
+
+### 结果提示：为什么必须是左下角一条独立的条
+
+预加载完成/取消是一次性结果，**不能塞进状态栏**：`refresh()` 每 3 秒会把状态文字整体重写一遍，
+写进去也活不过一轮轮询。所以另起 `.toasts`（左下角固定，`z-index:60`）：
+
+- 完成：`预加载【Phi-4-mini】已完成，占用 2.32 GB 内存`（绿）
+- 取消：`预加载【Phi-4-mini】已取消，释放 2.32 GB 内存`（琥珀）
+- 失败：`预加载【X】失败：<原因>`（红，停留 6 秒）
+- 复用：`【X】已在内存中，无需重复加载`（青）
+- 只看开关不看模型：`已开启多回答预加载，选中 @ 模型后会自动装入内存`
+
+每 4.2 秒自动淡出，最多同时留 4 条（顶掉最老的）。释放量不是猜的：`clearPreload` 前后各取一次
+`extras` 快照，`toastReleased()` 用差集算出「哪几个真的没了、各自多大」——所以批量释放会逐条报，不会糊成一句总量。
+
+### 实测（数字）
+
+| 项 | 结果 |
+|---|---|
+| `probe-preload.mjs` | 26/26：能力公式自洽、预加载 11.6s、重复预加载直接复用、第二意见无 `loading`、`swapped=false`、主模型仍在 |
+| `probe-ui-preload.mjs` | 31/31：默认不勾、弹窗账单 4 行、结论色、不再提醒生效、设置可恢复提醒、选中 @ 即常驻、取消 @ 即释放 |
+| 第二意见耗时 | **13.9s**（原 30–45s）；主模型 KV 缓存保留 |
+
+### 还没做的
+
+- 预加载的模型在「切换主模型」时不会被清（设计如此，避免用户刚热好就没了），但如果正好切到同一个文件会先释放再装（`loadModel` 里处理）。
+- 常驻模型不参与 KV 复用，每个第二意见都重新 prefill——量小（问题+主回答约 200–500 tok），不值得为它做序列复用。
+- 没有「预加载进度条」：装 4GB 模型时界面只有一行灰字，约 10–15 秒。
+- 内存核算只算内存，不算显存：核显共享内存，所以两者本来是一笔账；换成独显机器时这套算法需要重写。
+
+## 十二、详细说明④：修好工具调用（Agent 能力，2026-10-18 23:25–23:38）
+
+原来「工具调用完全不可用」不是模型不行，是**链路上有一层静默失败**。这次把它拆掉重做。
+
+### 根因
+
+`node-llama-cpp` 的函数调用依赖 chat wrapper 从 **jinja 模板里探测**工具语法
+（`extractFunctionCallSettingsFromJinjaTemplate`：拿假的函数调用历史去渲染模板，看占位符有没有被正确吐出）。
+
+探测失败时：`functionCallSettings` 为 null，而 `_requireFunctionCallSettingsExtraction` 默认为 false
+（`JinjaTemplateChatWrapper.js:212` 那段），于是 **`functions` 被静默丢弃**——不报错、不警告。
+
+结果就是上家看到的现象：模型知道要调工具（提示词里有描述），于是按 Qwen 原生格式吐
+`<tool_call>{...}</tool_call>`，但没有任何代码解析它，最后原样显示在气泡里。
+
+### 做法：不再依赖那层探测，自己定协议
+
+1. **工具改成纯数据注册表**（`buildToolRegistry`）：`{name, description, params, run}`。
+   `run` 内部仍走 `record()` 记 journal、回调 `onCall`，界面照旧能看到真实输入与结果。
+2. **说明书拼进系统提示**（`buildToolInstructions`）：工具清单 + `<tool_call>` 格式 + 5 条硬规则
+   （"时间/日期/计算/文件一律用工具"）。
+   关键是它拼在 `sessionKeyOf()` **之前**，所以勾掉工具会让会话指纹变化、重建会话，
+   而不是复用带旧提示的会话。
+3. **自己的 Agent 循环**（`handleChat` 里的 `toolsEnabled` 分支）：
+   `session.prompt(user)` → `parseToolCalls()` → 逐个 `toolRegistry.run()` → 把结果以
+   `<tool_response>` 回填 → 再 `session.prompt()` → 直到没有调用块。
+   上限 `TOOL_ROUND_LIMIT`（默认 4，环境变量 `TOOL_ROUNDS` 可调），到顶会明确告诉用户，不会无限刷。
+4. **解析器容错**：JSON 坏了就截首尾花括号重试；`arguments` / `params` / `args` 三种字段名都认。
+5. **正文净化**：`stripToolCalls()` 把调用块与回填块从最终正文里剥掉——用户只看答案，不看原始标记。
+
+### 一个必须说清的取舍：工具路径不逐 token 流式
+
+`<tool_call>` 这串标记会被 tokenizer 拆到两个 token 之间，边流边滤必然漏（把半个标记吐给用户）。
+所以这条分支是「每轮跑完再一次性推正文」：工具事件仍然实时推（卡片先出现），正文最后整块出现。
+正确性优先于打字机效果——纯聊天路径（`tools:false`）保持原样流式，实测仍是 40 块增量。
+
+### 实测（qwen2.5-7B，本机）
+
+| 工具 | 实测结果 |
+|---|---|
+| `get_current_time` | 返回 `2026/10/18 23:29:24`、`星期日`，回答「现在是2026年10月18日23点29分24秒」 |
+| `calculate` | `(1234*56)+78` → **69182**，回答里带上正确结果 |
+| `list_local_models` | 返回 4 个真实模型与体积，回答里列出模型名 |
+| `read_workspace_file` | 读出 `workspace\note.txt`：「项目代号：天枢 / 负责人：阿甲 / 状态：工具调用联调」 |
+
+一轮问答约 **10.6 秒**（含一次工具往返），指标显示 `工具 1 次 0.00s`、`rounds: 2`、
+预填充复用 74–78%（第一轮仍吃到了 KV 缓存）。
+
+### 验证
+
+| 探针 | 结果 |
+|---|---|
+| `probe-tools-agent.mjs` | **24/24**（四个工具真执行 + 流式事件 + 关闭工具 + 不需要工具时不乱调） |
+| `probe-ui-tools.mjs` | **12/12**（勾选 → 卡片 → 正文 → 指标 → 刷新后卡片与正文都从存档恢复） |
+| `probe-chat-plain.mjs` | **11/11**（纯聊天回归：40 块流式、KV 复用 58%、会话接口正常） |
+
+同一条 `probe-tools-agent` 在**发布包 8099** 上也是 24/24。
+
+### 还没做
+
+- 工具只有 4 个，且都很"内置"：没有 Web 搜索、没有目录遍历、没有代码执行。
+  Agent 能力的地板抬起来了，天花板还在原地。
+- 工具路径没有增量流式（见上）；长回答时会有一段"静默"。
+- 只测了 qwen2.5。R1 这类思考模型是否愿意按格式输出、`<tool_call>` 会不会跟 `think` 标签打架，都没验证。
+- 多轮工具往返时每轮都重新 prefill，没有跨轮 KV 复用（工具结果会改历史，复用本来也不好做）。
+
+## 十三、详细说明⑤：联网能力（Web 搜索 + 读网页，2026-10-19 23:00 – 10-20 00:46）
+
+需求只有两个字「Web」，加上一句追问「为什么不让用百度」。两次误判都出在**测试方法**上，先记下来。
+
+### 两次误判
+
+| 判断 | 错在哪 | 事实 |
+|---|---|---|
+| 「百度返回 227 字节，反爬拦截，不能用」 | 用短 UA 测了一次就下结论 | 换完整 Chrome UA 后返回 **1.4MB / 2.2MB** 正常结果 |
+| 「这个 IP 被判定为自动化了」 | 连续请求几次都被拦，误当成 IP 级封禁 | 换成**移动 UA** 立刻恢复 1.85–1.9MB。**百度是按 UA 拦人，不是按 IP** |
+
+结论：百度一律用移动 UA + `m.baidu.com`。Bing 反而不挑 UA，10 次全部 200 / 102KB / ~358ms。
+
+### 双引擎与自动回落
+
+- `web_search(query, engine?)`，`engine` 可为 `auto`/`baidu`/`bing`。
+- `auto`：中文查询 → 百度优先；其它 → Bing 优先。
+- 百度被拦的判定：`字节数 < 20000` 或页面含「百度安全验证 / wappass.baidu.com」。
+- 回落时把原因写进结果：`fallbackFrom` + `fallbackReason`，**界面上会显示**「baidu 被拦，已回落」，不静默换源。
+- 两个引擎都失败时抛错，工具返回 `{error}`，模型拿不到结果就不会编。
+
+### 百度结果怎么解析
+
+移动版**没有可直接抓的 href**：标题在 `<h3 class="cosc-title">`，真实地址藏在属性里编码过的 JSON
+（`dataUrl&quot;:&quot;https://…&quot;`）。实测一页 **8 个标题 / 7 个地址**，按出现顺序配对；
+配不到地址的条目明确标 `note: 该条没有可直接访问的地址`，不假装有。
+Bing 则是 10 个 `b_algo` 块，`<h2><a>` + `b_lineclamp` 摘要，稳定好取。
+
+### 安全：SSRF 防护
+
+`fetch_url` 只允许 http/https，并且**拒绝本机与内网**：`localhost`、`127.`、`10.`、`192.168.`、
+`172.16-31.`、`169.254.`、`.local/.internal`、`::1`。
+跳转是**手动逐跳跟随**（`redirect: "manual"`，最多 4 跳），每一跳都重新校验——否则一个 302 就能绕过。
+实测：模型被要求读 `http://127.0.0.1:8099/api/state`，工具返回「拒绝访问本机/内网地址」，且没有泄露 `localToken`。
+
+### 开关与知情（按用户要求）
+
+- **默认关闭**，且挂在「调用工具」之下（没有工具循环，光有搜索能力也没人会用）。
+- **首次开启弹须知**，列清五件事：查询词会发给第三方；只访问公网、内网拒绝；有些站点本来不通（DuckDuckGo / Wikipedia 实测超时）；网页正文会截断到约 6000 字；断网或全被拦时工具会失败、模型要如实说。
+- 弹窗底部「我已知晓，不再提示」；恢复入口在 **设置 → 生成 → 联网 → 开启前显示须知**。
+- 关掉「调用工具」会**连带关掉联网**，并在提示条里说明——避免"联网开着但根本不会用"的假状态。
+
+### 过程可见
+
+搜索结果不是塞进折叠 JSON，而是专门的卡片（对话框紧邻区域）：
+
+```
+本次联网：搜索 1
+联网 · 搜索「Qwen2.5 上下文长度」   8 条 · 引擎 bing（baidu 被拦，已回落）
+  1. Qwen2 | Qwen2 详细介绍（官方文档）- 知乎
+     https://zhuanlan.zhihu.com/p/703883561
+  …
+```
+
+读网页时显示 `联网 · 读取 example.com   200 · 171 字 · Example Domain` 并给出正文前 600 字。
+卡片与摘要在**刷新后从存档恢复**（`entry.tools`）。
+
+### 附带修掉的一个谎报
+
+模型曾在没有 `web_search` 的情况下凭记忆调用它，工具返回「没有这个工具」，它却对用户说「我查到了一些新闻」。
+现在未知工具的错误里带 `availableTools` 清单和一句明确要求（"只能使用这些工具，没有就如实说"），
+把模型拉回来，而不是让它顺着猜测继续编。
+
+### 开关位置（2026-10-20 调整）
+
+开关最初放在工具栏、紧挨「调用工具」。用户要求挪到**输入框下方**——理由站得住：联网是"这一问要不要带网络"的临时决定，
+和 `@`、多回答预加载同属"发送前的选项"，放在输入框旁边才顺路。现在的位置：
+
+```
+[输入框]
+[@] 点 @ 征询第二意见   [已常驻 Phi-4-mini]            ☑ 联网搜索  ☐ 多回答预加载
+```
+
+右侧两个开关由 `.askToggles` 一组承载（`margin-left:auto`），常驻状态 `#preloadState` 紧挨在它们左边。
+`#webChk` 仍受「调用工具」约束：未勾工具时置灰，标题里写明要先勾。
+
+### 一个渲染层的真 bug（顺手修掉）
+
+第一版搜索结果里出现过 `Qwen2 &#183; Hugging Face`——`htmlToText()` 只解了 `&amp;` 这类**命名实体**，
+没解**数字实体**，而 Bing 的标题正是用 `&#183;` 表示「·」。已加两条替换：
+
+```js
+.replace(/&#(\\d{1,6});/g, (_, n) => String.fromCharCode(Number(n)))
+.replace(/&#x([0-9a-f]{1,5});/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+```
+
+复测标题正常显示「·」，结果 JSON 里再无 `&#`。这类问题不会报错，只会安静地难看——靠截图才看得见。
+
+### 验证
+
+| 探针 | 结果 |
+|---|---|
+| `probe-web-tools.mjs` | **19/19**：真搜索（回落链路可见）、真读 example.com、SSRF 拒绝、关闭时不注册、流式事件 |
+| `probe-ui-web.mjs` | **39/39**：默认关 → 开关位置 → 须知 5 条 → 开启 → 搜索卡片 → 刷新恢复 → 设置恢复提示 → 联动关闭 |
+| 发布包 8099 | `probe-web-tools` **19/19** |
+
+### 还没做
+
+- 只有两个引擎，且都是**抓页面**：百度随时可能改版/加验证，Bing 也可能。没有 API key 兜底方案。
+- 没有「先搜后自动读多页」的编排；模型得自己决定要不要 `fetch_url`（受 4 轮上限约束）。
+- 网页正文是粗暴去标签，不认正文提取算法（Readability 那类），长文里会混进导航与页脚。
+- 不处理需要登录/JS 渲染的页面；PDF 不解析。
+- 联网路径同样不逐 token 流式（与工具路径一致）。
+
+---
+
+## 2026-10-25 阶段总结：编辑器、工作区、公式与开场白
+
+这一轮从「把代码运行单独拎出来」开始，最后落到「开场白 + 公式面板 + 化学式」。下面是全量清单与验证数据。
+
+### 一、新增功能
+
+| 功能 | 入口 | 说明 | 验证 |
+|---|---|---|---|
+| 独立代码运行器 | 顶栏「代码」 | 语言下拉、Ctrl+Enter、exit code/耗时、草稿持久化 | `probe-code-panel` 9/9 |
+| 回答复制 | 每条回答按钮排 | 复制正文，成功打勾 | `probe-small-features` 6/6 |
+| 输入草稿 | 自动 | 按会话保存，切会话/刷新不丢 | 6/6 |
+| 回到最新 | 右下角浮动按钮 | 滚上去出现 | 6/6 |
+| 输入历史 | ↑/↓ | 最近 20 条，去重 | `probe-input-extras` 8/8 |
+| 快捷键 | Ctrl+N / Ctrl+K / Esc | 新对话 / 聚焦 / 清空 | 8/8 |
+| 清空消息 | 会话右键 | 保留会话、清空消息 | 8/8 |
+| 工作区 | 顶栏「文件」 | 目录树 + CodeMirror（行号/高亮）、新建/保存/重命名/删除/上传、路径越界拒绝 | API 9/9，UI 7/7 |
+| 模型工具 | 工具开关 | `list_workspace_files`、`write_workspace_file`、`run_code` | 实测写文件 29.7s、run_code 16.4s → 42 |
+| 开场白改版 | 启动页 | 自带输入框（隐藏底栏）、∫ Agent 模式（斜体）、推理模式（粗体宋体 + 青色） | `probe-hero-modes` 11/11 |
+| 消息时间戳 | 每条消息下 | HH:MM / 跨天 M-D HH:MM，悬停完整时间 | `probe-timestamps` 4/4 |
+| 公式复制 | 公式上 | 块级悬停按钮、行内点击复制 | `probe-formula-find` 8/8 |
+| 会话内搜索 | Ctrl+F | 高亮、计数、上下跳、Esc | 8/8 |
+| 公式面板 | 顶栏「公式」 | MathLive 可视化、LaTeX 双向同步、插入输入框 | `probe-formula-panel` 7/7 |
+| 化学式 | 对话内 | mhchem，`\ce{}` 与裸写都渲染 | 7/7 |
+
+### 二、修掉的 bug
+
+1. **换模型清空对话但存档还在** → 按 transcript 重建 history，对话保留（`probe-context-switch` 3/3）。
+2. **自动标题每轮重写** → 已有标题就跳过。
+3. **删除会话后右下角卡片指向已删会话** → 同步收起。
+4. **工具调用被 max_tokens 截断时原始 `<tool_call>` 泄漏到正文** → 接受未闭合块并从正文剔除；空正文给「调用被截断」提示；实测 48 token 截断只显示提示、无泄漏。
+5. **CodeMirror rust 模式报 `defineSimpleMode is not a function`** → 补 `addon/mode/simple.js`。
+6. **KaTeX 0.19 的 mhchem 是 ESM**，classic 加载报 import 错误 → 生成去 import 的 classic 版本。
+
+### 三、新增资源（均本地）
+
+| 资源 | 体积 | 用途 |
+|---|---|---|
+| CodeMirror 5.65.16 | 约 400KB + modes | 工作区编辑器、代码高亮 |
+| MathLive 0.105.0 | 785KB + 250KB 字体 | 公式面板 |
+| mhchem（classic） | 67KB | 化学式 |
+
+### 四、当前状态（2026-10-25 09:41）
+
+- 模型：`qwen3-5-4B-Q4_K_M.gguf`，上下文 16384，4 个模型可用；
+- 会话：13 条；
+- 断言总数：**523**（本轮新增 9 个探针、63 条断言，460 → 523）；
+- 服务：`http://127.0.0.1:8099`，仅本机绑定。
+
+### 五、没做 / 下一步
+
+- 手机 / 局域网访问（需绑 0.0.0.0 + PIN + 窄屏布局）；
+- 导出 HTML（公式离线可看）；
+- 文档 RAG（BM25 切片）；
+- 真断点调试（只讨论过 DAP 钩子，未实现）；
+- 代码模式嵌进对话（左右分栏）——被判定成本偏高，先停在独立面板。
+
+---
+
+## 十四、命令行接口 `localai`（2026-10-25 10:34）
+
+服务本来是「界面 + HTTP」，脚本、CI、一次性提问都得自己拼 curl。这一笔加了个薄客户端：**只是 `/v1/chat/completions` 与 `/api/*` 的封装，不进服务端逻辑**，所以对界面零影响。
+
+### 用法
+
+```powershell
+localai "用一句话解释 KV 缓存"             # 一问一答，流式
+localai ask --tools "现在几点"             # 开工具（时间/计算/读文件/联网/跑代码）
+localai chat                              # 交互式多轮：/exit /new /model /state
+localai models | load <文件> | unload | state | sessions
+localai run python "print(6*7)"           # 复用 /api/run（10s 超时 / 64KB / 令牌）
+Get-Content spec.md | localai ask -       # stdin 当提问
+localai --json --no-stream "答两个字：好"  # 给脚本用
+```
+
+常用开关：`--model` `--session <id>` `--save` `--json` `--no-stream` `--tools` `--web` `--think` `--max-tokens` `--temp` `--system` `--quiet` `--url`。
+
+### 三个设计决定
+
+1. **正文走 stdout，诊断走 stderr**（工具卡片、耗时、token 数）。所以 `localai "..." > answer.txt` 拿到的就是干净回答。
+2. **`ask` 无状态、`chat` 有状态**。`ask` 每次只发一条 user；要多轮就用 `--session <id>`，它会把会话历史读进来，加 `--save` 再把这一轮写回去——脚本里做多轮不必自己管上下文。
+3. **管道输入先读完再逐条处理**。第一版用 readline 直接喂，管道下 stdin 一秒读完就 close，长回答还没结束第二行就取不到了，只剩第一轮有效。
+4. **没加载模型时挑最小的那个**（`--model` / `LOCALAI_MODEL` 可覆盖）。CLI 多是一次性提问，2.32GB 的 Phi-4-mini 十秒可用，比默认去装 4.68GB 的 R1 合理。
+
+### 退出码
+
+`0` 成功 · `1` 服务端报错 · `2` 用法错 · `3` 连不上服务（提示去开 `dist\LocalAI\启动本地AI.exe`）。脚本里可以据此分支。
+
+### 落地位置
+
+- 源码：`server\localai.mjs` + `server\localai.cmd`
+- 打包：已加进 `build-portable.ps1` 的必要文件与复制步骤，进包后是 `app\localai.mjs`、`app\localai.cmd`
+- `.cmd` 优先用包内 `..\runtime\node.exe`，源码目录自动回落到 PATH 上的 `node`；**内容保持纯 ASCII**——第一版写了中文注释，GBK 控制台把它当命令执行，满屏报「不是内部或外部命令」。
+
+想在任何目录直接用，把 `D:\LocalModels\server`（或 `dist\LocalAI\app`）加进 PATH 即可。
+
+### 已知边界
+
+- 只提供 Windows 的 `.cmd`；`localai.mjs` 本身跨平台，macOS/Linux 加个同名 shell 包装即可。
+- 中文在某些老控制台会乱码（Node 写 UTF-8、控制台按 GBK 解），`chcp 65001` 或 Windows Terminal 正常。
+- 不带 `--session` 时每轮都是独立会话，KV 复用只在这一轮内部生效。
+
+---
+
+## 十五、全屏终端 TUI（2026-10-25 10:40）
+
+需求是「能在本地跑、能从软件内部调用、形态像 TUI」。落地成两件：**一个零依赖的 ANSI 全屏客户端**，加上**顶栏一个「终端」按钮**去开它。
+
+### 两种入口
+
+```powershell
+localai tui                        # 命令行里直接进
+```
+
+或者在应用顶栏点「终端」——服务端 `POST /api/terminal/open`（要本地令牌）用 `start` 开一个**真控制台窗口**跑 `localai-tui.cmd`。两条路跑的是同一份界面。
+
+### 界面里有什么
+
+- 顶栏：客户端版本、当前模型、上下文大小、工具/联网开关状态
+- 对话区：用户输入青色、工具执行灰色卡片（`🔧 工具 参数 → 耗时`）、错误红色、系统提示紫色
+- 输入行：光标随中文宽度走，超宽时窗口左移保证光标可见
+- 状态行：`Enter 发送 · ↑↓ 历史 · PgUp/PgDn 滚动 · /help`，生成中变成 `Ctrl+C 中断`
+- 斜杠命令：`/help /new /model /tools /web /think /state /run /clear /exit`
+
+### 四个必须写对的细节
+
+1. **中文按 2 列算**。折行、截断、右侧补空格全走同一个 `charWidth()`，否则一屏中文会让边框逐步歪掉——`--snapshot --cols 60` 就是用来肉眼查这个的。
+2. **模型输出先剥控制码**。`stripAnsi()` 在上屏前把 ESC 序列清掉，不然模型回一段 `ESC [2J` 就能把界面刷没。
+3. **没有 TTY 就降级**。被管道/重定向时 `isTTY` 为 false，自动切成逐行模式（`/state` 这类命令结果直接打印），所以 `echo ... | localai tui` 也能用，脚本里不会卡住。
+4. **`main()` 必须挂住**。第一次实现里 `main()` 挂完事件处理器就 `return`，外层 `.then` 立刻 `process.exit` → 窗口开出来秒关。现在结尾 `await` 一个永不 resolve 的 Promise，退出只走 `bye()`。
+
+### 验证方式（终端界面没法自动截图，靠这三条）
+
+| 手段 | 作用 |
+|---|---|
+| `--selftest` | 7 组宽度/折行/补齐/剥码断言，不需要服务 |
+| `--snapshot [--cols N]` | 把一帧渲染成纯文本打出来，直接看边框是否对齐 |
+| 起一个真控制台 | 进程存活 5 秒且无 stderr，说明 raw mode 与首帧渲染都过了 |
+
+### 已知边界
+
+- 只做了 Windows 控制台；Linux/macOS 上 `localai tui` 理论上能跑（纯 ANSI），但没实测。
+- 不做语法高亮、不做 Markdown 渲染，模型正文按纯文本上屏（含代码块）。
+- 滚动只有 PgUp/PgDn，没有鼠标。
+- 一次只跑一轮：生成中按 Enter 会被拦下并提示，避免和服务端单会话抢资源。
+
+---
+
+## 十六、会话自动快照（2026-10-25 10:44）
+
+起因很直接：10-25 上午一次探针把 13 条真实会话删了，服务端是 `unlink`，回收站和卷影副本都没有，**一条都找不回来**。通用产品有云端兜底，私人工具只能自己给自己兜底。
+
+### 机制
+
+- **写前留档**：`writeSession` 在覆盖会话文件之前，先把**原文字节**（不是解析后的对象）写到 `workspace\session-snapshots\<yyyy-mm-dd>\<id>.<HH-MM-SS-mmm>.json`。
+- **内容没变不留**：上游那句「内容相同就不抬 updatedAt」的判断在留档之前，所以纯切换会话不会产生快照。
+- **保留策略**：单会话最多 20 版（按文件名时间序砍最老的）；按天目录，超过 30 天的整目录删。清理在启动时跑一次，之后每次留档顺带跑。
+- **回滚也是写**：`POST /api/sessions/<id>/restore` 走的是同一个 `writeSession`，所以**回滚前那版也会被留档**——回滚不是单向门，撤错了能再撤回来。
+- **要本地令牌**：回滚是覆盖操作，`x-local-token` 不对直接 403。
+
+### 界面
+
+侧栏会话右键 → **历史版本…** → 列出「日期 时分秒 · 条数 · 体积 · 标题」→ 点「恢复」二次确认。截图：`docs\ui-new\snapshot-panel.png`。
+
+### 两个坑
+
+1. **时间戳只到秒会撞名**。第一次实现里「回滚」紧接着「再存一次」在同一秒内发生，后写的把先写的盖掉——正是快照要防的那种丢失。改成到毫秒后，3 秒内 4 次写盘得到 4 份独立快照。
+2. **快照要存原文**。解析成对象再序列化会丢字段（比如将来加的新字段），快照失去「原样」的意义。
+
+### 已知边界
+
+- 只保护「会话被改/被删」这一种损失，**不防误删整个 `workspace` 目录**（那需要另做导出/异地备份）。
+- 不压缩：单会话最坏情况 20 × 24MB（会话上限）。日常 10KB 级文件可以忽略，但真有超大会话时要靠天数清理兜底。
+- 快照目录不在界面上可见，只能进「历史版本」面板看；手工恢复直接拷文件也能用。
+
+---
+
+## 十七、首次使用引导与模型下载（2026-10-25 10:50–10:56）
+
+需求原话：「初次使用要求嗅探本地模型，并且给出模型下载按钮，按下后选择下载通道（ModelScope 或其他）下载模型」。
+
+### 流程
+
+1. 首启（`workspace\onboarding.json` 里 `done=false`）自动弹「开始使用 · 准备模型」。
+2. **① 先嗅探本机**：自动调 `/api/discover/scan`（常见目录 + 自定义目录），列出候选，勾选后「收录所选」走硬链接。
+3. **② 或者直接下载**：默认 ModelScope，三个档位（396/469/644MB）；也可切「其他通道 / 自定义链接」填任意 http(s) 直链 + 文件名。
+4. 下载有进度条、速度、剩余时间、取消；下完自动加载，并把新模型刷进模型列表。
+5. 点「完成，进入应用」写回 `done=true`；如果用户没自定义过系统提示词，**自动应用一段为小模型写的推荐提示词**（可在 设置 → 工具 → 提示词 改）。
+
+### 下载器实现要点
+
+- **必须带浏览器 UA**：ModelScope 对默认 Node UA 直接 403（含 Range 请求），换 Chrome UA 后实测 5.8MB/s。
+- **手动跟随重定向**：ModelScope 会 302 到 CDN，`https.get` 不会自动跟，最多 6 跳。
+- 先写 `\.downloads\<file>.part` 再 `rename`，中途失败不会留下半个 .gguf 被 scanModels 当成模型。
+- 进度靠 `data` 事件累加，速度用最近 16 个采样点算，避免一开始的抖动。
+- 下载目录 `MODEL_DIR\.downloads`，文件名强制限定字符集，防路径穿越。
+
+### 顺带修的三件事
+
+1. **`build-portable.ps1` 丢 BOM**：我编辑过它，BOM 被写掉，PS 5.1 按 GBK 读中文注释直接语法错误。补 `EF BB BF` 后通过。这条正是第七节「约定与坑」里写过的那一条，被自己踩了一次。
+2. **`--stop` 后启动器不退**：它的 WebView2 子进程占着 `data\`，打包清空旧产物时 `Move-Item` 失败。按 `CommandLine -like '*LocalAI*'` 精确杀，未误伤 DSH 自己的 WebView2。
+3. **`AUTO_LOAD` 指向不存在的模型**：新机器上配置里写的是 7B，用户刚下的是 0.5B，原来只会打一行日志、界面停在「先加载一个模型」。现在回退到目录里最小的那个。
+
+### 实测数字
+
+| 项 | 结果 |
+|---|---|
+| 下载 | `qwen2.5-0.5b-instruct-q4_k_m.gguf` **468.6MB**，落盘完整 |
+| 小模型可用性 | 加载后 **2.3s** 答出「递归是函数调用自身以解决问题的编程技术」 |
+| 首启嗅探 | 18226 个文件，0 个候选（库里的 4 个已被降噪剔除），符合预期 |
+| 打包产物 | **209MB / 3430 文件**（另有 83MB 运行期 data 缓存） |
+| 起包验证 | 引导弹出、两通道三档位、无 JS 错误、模型列表 5 个 |
+
+### 还没做的
+
+- **断点续传**：中断即重来，470MB 在 5.8MB/s 下约 80 秒，暂时可以接受。
+- **下载源的可用性探测**：现在只有 ModelScope 一个内置源 + 手动链接，没有多镜像自动测速。
+- **模型删除**：只管下，不管删（与嗅探一致，避免误删 4GB 文件）。
+
+---
+
+## 十八、插件系统（2026-10-26 23:38）
+
+目标：让「加一个工具」变成「丢一个文件」，不用改 app.mjs、不用重启。
+
+### 契约（一个 .mjs 三件事）
+
+```js
+export const name = "disk_space";                  // 字母/下划线开头，模型看到的就是它
+export const description = "查询各磁盘剩余空间";      // 模型靠这句决定要不要调，要写清楚「什么时候用」
+export const params = { type: "object", properties: {}, required: [] };  // 可选
+export async function run(args, ctx) {
+  return { ok: true };   // 返回值必须能 JSON 化
+}
+```
+
+`ctx` 给的是 `{ workspace, modelDir, log }`，插件里也能自己 import 任何 Node 模块。
+
+### 落地方式
+
+- 目录：`<安装目录>\plugins`（源码目录是 `server\plugins`）。服务启动时读一遍，并用 `fs.watch` 监听，改文件 400ms 后自动重载。
+- 注册：`buildToolRegistry()` 末尾把可用插件塞进 `defs`，和内置工具走**同一个 `record()`**——所以界面上的工具卡片、耗时、journal 表现完全一致，没有第二套渲染。
+- 隔离：单个插件 import 失败只标记为 `ok:false` 并写日志，不影响其它插件和主流程。重名自动加 `_2` 后缀。
+- 接口：`GET /api/plugins`（列表/错误）、`POST /api/plugins/reload`、`POST /api/plugins/open`（打开目录）。
+- 界面：设置 → 工具 → 「插件」：可用数、逐个名字与说明、失败原因、重新加载、打开目录。
+
+### 随包示例
+
+| 文件 | 作用 | 演示了什么 |
+|---|---|---|
+| `hello.mjs` | 回显名字与时间 | 最小模板 |
+| `disk.mjs` | 查各盘剩余空间 | 用 Node 模块（`statfs`） |
+| `notes.mjs` | 往工作区 `notes.md` 追加/读取便签 | 用 `ctx.workspace` |
+
+### 实测
+
+| 项 | 结果 |
+|---|---|
+| 加载 | 3 个全部 `ok`，日志逐条打印 |
+| 模型调用 | 问「磁盘还剩多少」→ 真调 `disk_space`（3ms）→ 按结果答 C 盘 165.5GB / D 盘 309.6GB |
+| 热重载 | 给 `hello.mjs` 追加一行注释，2 秒后 `loadedAt` 变化，3 个插件仍可用 |
+| 界面 | 设置 → 工具显示「3 个可用」+ 逐个说明，无 JS 报错 |
+| 打包 | `build-portable.ps1` 自动带上 `plugins\`，日志「已附带插件 3 个」 |
+
+### 安全边界（写进界面提示了）
+
+插件和主进程同权限：能读能写能联网。只放自己信得过的文件；不要把来路不明的 .mjs 丢进去。
+
+---
+
+## 十九、外观自定义（2026-10-26 23:48）
+
+把「长什么样」交还给用户。入口：**设置 → 外观**。
+
+| 能改 | 落点 | 说明 |
+|---|---|---|
+| 主色 | `--accent` `--accent-2` `--cyan` `--glow-c` `--accent-soft` | 6 个预设 + 任意取色；按钮、高亮、边框、发光一起走 |
+| 整体缩放 | `body.style.zoom` | 80–140%，高分屏或坐得远时用 |
+| 背景图 | `body` 背景 + `.hasBg` 暗色蒙版 | 选图即存 dataURL（≤1.5MB），保证文字可读 |
+| 自定义 CSS | 注入 `<style id="userCss">` | 逃生舱：任何看不顺眼的地方一条 CSS 改掉 |
+
+存储：`localStorage['localai.appearance']`，刷新保留；「恢复默认外观」清空全部。
+
+### 为什么这样做
+
+- 整个界面本来就长在 CSS 变量上，所以**改主色不用动任何一条规则**，只换变量值。
+- 缩放用 `zoom` 而不是 `html{font-size}`：这套样式里字号大量写死 px，改根字号没用。`zoom` 是 Chromium 专有但本项目只跑 WebView2/Edge，可以接受。
+- 自定义 CSS 放在最后注入，天然覆盖内置样式；写坏了点恢复默认就回来。
+
+### 还能往前一步（没做）
+
+- 主题包（一套 JSON 同时带主色/背景/圆角/间距），可导入导出分享
+- 圆角、间距、字体族单独暴露（现在要写 CSS 才行）
+- 每会话独立外观（现在全局一份）
+
+---
+
+## 二十、2026-10-27：全量探针巡检 + 会话备份到别处
+
+### 一、全量探针巡检（39 个探针，一次跑完）
+
+跑法：`server\docs\probe-full-2026-10-27\run-all.ps1`（驱动脚本：逐个跑、单条超时、跑完查 `/api/state`，服务挂了自动拉起；日志/截图/汇总都在同目录）。
+
+首跑：**25 绿 / 12 红**。逐条归因（先分清「探针过期 / 环境 / 真缺陷」，再动手）：
+
+| 探针 | 现象 | 归因 |
+|---|---|---|
+| `probe-code-run` | C++ 编译执行 10.96s，超 10s 上限 | 环境：本机只有 MSVC，VsDevCmd 冷启动十几秒；复跑 13/13 |
+| `probe-start-screen` | 期望 4 个模型、当前是 Qwen3-5-4B | 探针过期：10-25 加了 0.5B（5 个），当前模型也不固定 |
+| `probe-model-add` | 同上（写死 4） | 探针过期 |
+| `probe-menu-stacking` | 同上（写死 4） | 探针过期 |
+| `probe-hero-modes` | 断言「推理模式开思考」，当时加载的是 7B | 探针过期：该看模型能力，不能写死 |
+| `probe-formula-find` | 搜 `turtle` 得 0 条 | 探针过期：靠开发期某个会话里正好有这个词 |
+| `probe-small-features` | 切会话后草稿里冒出 `$E=mc^2$` | 测试互相污染：公式面板探针把内容留在 `localai.draft.new` |
+| `probe-title-ui` | 崩在 `#moreMenu` | 探针过期：⋯ 菜单 10-22 已挪进设置 → 工具 |
+| `probe-ui-tools` | 刷新后工具卡片 0 张 | 探针过期：10-24 起启动页固定新对话，要点头像卡片才进会话 |
+| `probe-ui-web` | 位置量出 0/0、开关禁用态不对、刷新后 0 张 | 探针过期（开场白页输入区是隐藏的；10-24 起开场白默认 Agent 模式、工具本来就勾着）+ 真问题（禁用态没在启动时同步） |
+| `probe-ui-preload` | 取消 @ 后缺「已取消 + 释放」提示 | 见第二节，未定论 |
+| `probe-preload` | 第二意见 17.6s > 15s 阈值 | 机器变慢（预加载本身 17.8s）；判据改成 <25s，仍远小于装卸 30–45s |
+
+修完复跑：`start-screen` 12/12、`model-add` 4/4、`menu-stacking` 2/2、`hero-modes` 11/11、`formula-find` 8/8、`small-features` 6/6、`title-ui` 13/13（按现在的顶栏与五项右键菜单重写）、`ui-tools` 12/12、`ui-web` 39/39、`code-run` 13/13、`preload` 26/26。
+
+最终状态：**39 个探针，38 绿**；唯一红的是 `probe-ui-preload` 34/35，原因见第二节（提示语时有时无，释放本身正常）。
+
+顺带修的两处真问题：
+
+1. **联网开关的禁用态启动时没同步**：`renderWebState()` 只在「调用工具」变化时被调，刚打开页面时工具没勾、联网却看起来能点（点了也发不出 web 标记）。改成 `refresh()` 末尾同步一次。
+2. **模型不支持思考时，点「推理模式」没有可见反馈**：只有顶栏状态栏一行字，眼睛还在按钮上。现在开场白里的 `#heroHint` 也会写「当前模型不支持思考…」。
+
+### 二、遗留：取消 @ 之后的「已取消 + 释放 X GB」提示不稳定
+
+服务端确实释放了（`/api/preload` 回到空），但左下角提示时有时无：同一段逻辑直接调 `clearPreloadOne()` 必定出提示，走「点 ✕」这条路径偶发不出。`toastReleased(before, after)` 的 `before` 取的是页面里的 `preloadExtras` 快照，怀疑和 3 秒轮询抢写有关，**未定论**。不影响释放本身，只影响提示；`probe-ui-preload` 因此稳定 34/35。
+
+### 三、会话备份到别处（交接文档「下一步 1」）
+
+要解决的问题很具体：会话和它的 20 版快照都在 `<MODEL_DIR>\workspace` 里，同一块盘。盘坏、目录被误删，快照跟着一起没——10-25 已经因此丢过 13 条会话。
+
+**怎么做的**
+
+- 配置在 `workspace\backup.json`：`{enabled, dir, keepDays, intervalMin}`；关掉时所有入口都是空操作。
+- 落盘三件：`<dir>\sessions\<id>.json`（镜像）、`<dir>\daily\<yyyy-mm-dd>\`（当日第一份完整拷贝，保留 `keepDays` 天）、`<dir>\backup.json`（清单，含每个会话的 size/mtime）。
+- **只拷变化的**：按清单比对，不信 mtime（`copyFile` 不保留时间）。实测第二次备份 `copied=0`。
+- **源里没有、备份里有的会话不删**：那可能正是事故删掉的那份，留着还能捞。
+- 触发：会话写盘后 15 秒合并一次；启动查一次；之后每 60 秒看是否到了 `intervalMin`（默认 30 分钟）。
+- 校验前移：保存配置时就 `mkdir` + 写一个探针文件试写，盘没插/没权限当场 400；备份目录不许是会话目录或它的上级；同盘时界面黄字说明「只能防误删，防不了整盘损坏」。
+- 界面：设置 → 工具 → 会话备份（开关 / 目录 / 选磁盘… / 立即备份 / 状态一行 / 同盘提醒）。「选磁盘…」走 `/api/backup/drives`，列出本机盘符与剩余空间。
+
+**验证（`probe-backup` 28 项 + `probe-ui-backup` 14 项，全绿）**
+
+- 相对路径、会话目录本身、会话目录上级、开着却没填目录 → 全 400；
+- 保存合法目录 → 目录真的建出来；`keepDays` 9999 → 365、`intervalMin` 1 → 5（夹紧）；
+- 新建会话 → 立即备份 → 镜像、当日快照、清单三样都落盘，第二次 `copied=0`；
+- 改一句会话 → `copied=1`，镜像文件里拿到新内容；
+- **不点按钮等 15 秒**，新建的会话自己出现在备份目录（写盘触发生效）；
+- 造一个 2020-01-01 的 `daily` 目录 → 跑一次被清掉；
+- 界面：五个控件可见、磁盘按钮带剩余空间、立即备份出结果、服务端配置同步、关掉后配置清空。
+
+### 四、2026-10-28 收尾：修掉最后一条红探针 + 从备份恢复
+
+**1) 取消 @ 之后「已取消 + 释放 X GB」提示**
+
+根因不是释放失败，而是**提示的判据取自页面里的 `preloadExtras` 快照**（`toastReleased(before, after)` 做差集）。这个快照会被 3 秒轮询改写，取到空的时候就什么也不报。
+
+改法：让**服务端**回答「谁真的被释放了、多大」——`POST /api/preload/clear` 现在返回 `cleared: [{file, sizeGB}]`；前端优先按它逐条报，拿不到才退回原来的差集。`probe-ui-preload` 从 34/35 变 **35/35**。
+
+**2) 从备份恢复（补上第三节里「没有恢复按钮」这一条）**
+
+- 接口：`GET /api/backup/sessions`（列备份里的会话：标题/条数/备份时间/本机是否也有）+ `POST /api/backup/restore {id}`（需本地令牌，缺令牌 403、备份里没有 404）。
+- 恢复走 `writeSession`，所以**覆盖前先留一份历史版本**——恢复错了能从会话右键 →「历史版本…」撤回来（实测快照数 1 → 2）。
+- 界面：设置 → 工具 → 会话备份 →「从备份恢复…」→ 面板每行「备份于 / 条数 / 本机现在几条 / 恢复」，本机没有或更少的标黄。
+- 实测：本机加到 4 条（含 LOCAL-ONLY）→ 从备份恢复 → 回到 3 条、LOCAL-ONLY 消失、快照多一份；无令牌 403；备份里没有的 id 404。
+
+**验证**：`probe-backup` **36/36**（原 28 项 + 恢复 8 项）、`probe-ui-backup` **20/20**（原 14 项 + 面板 6 项）、`probe-ui-preload` **35/35**。
+
+至此全量 **39 个探针全绿**（0 红）。
+
+### 五、这一轮没做
+
+- 只镜像会话，不镜像 `session-snapshots`（历史版本）：会话本身小，快照最多 20 版/会话，真要连快照一起留，下一步再说。
+- 不支持压缩/加密；网络盘靠 Windows 凭据，没有自己的账号。
+- 恢复只做「整会话覆盖」，不能从备份里挑某几条消息合并回当前会话。
+---
+
+## 二十一、2026-10-28：侧栏搜索 + 文档检索（RAG）
+
+两件事都按「先定边界、再写最小实现、最后用探针钉住」的顺序做。
+
+### 一、侧栏搜索（标题 + 正文）
+
+以前会话多了只能滚。现在侧栏顶上多一个输入框，输入即搜（250ms 防抖），同时搜**标题**和**每一条消息正文**。
+
+- 接口：`GET /api/sessions/search?q=&limit`。逐个读会话文件，标题与正文各数一次命中，带上**第一条命中附近的片段**；最多返回 50 条，串行读、遇到坏文件就跳过。
+- 界面：结果行是「标题（命中处高亮）→ 片段（高亮）→ N 处 · 时间」，点一下即切到该会话；`✕` 与 `Esc` 清空，清空后自动回到完整列表。
+- 一个容易踩的点：列表每 3 秒会 `refreshSessions()` 重绘一次，搜索状态下重绘会把结果刷掉。改法是 `renderSessions()` 开头判断 `searchQuery`，搜索态直接渲染缓存的结果；输入框内容变化才重新请求。
+- 删掉/改名后结果会短暂陈旧（最多 3 秒，下一次搜索即新）——这是有意的取舍，不做额外订阅。
+
+### 二、文档检索（RAG，零依赖、全本地）
+
+目标不是"向量数据库"，而是让模型能回答「我的资料里怎么说」。所以选了最省、最可解释的一条路：**BM25 + 中文 bigram**。
+
+| 决定 | 为什么 |
+|---|---|
+| 只索引 workspace 里的 `.md/.markdown/.txt/.log/.rst/.csv` | 二进制/图片本来也没法给模型看；PDF 留给下一步（要加解析库） |
+| 切段：空行分段，超长段落按 500 字滑窗 | 段落是最自然的语义单位，比按字数硬切更少切断上下文 |
+| 中文按相邻两字（bigram）建词 | 不引分词器、不加词典，"量子纠缠"→量子/子纠/纠缠 三个词就能召回；代价是索引稍大，文档量级完全扛得住 |
+| 英文按单词（≥2 字符） | 与现有英文文档兼容 |
+| 索引落 `workspace\rag\index.json`，按 size+mtime 增量 | 换机器、重启都不丢；改一个文件只重切一个文件 |
+| 检索前自动同步，60 秒内不重复扫目录 | 用户丢进新文件不用点按钮；也不至于每次提问都扫盘 |
+| 同一文件最多出 2 段、最多 8 段 | 防止一份长文档把上下文占满 |
+
+**工具**：`search_documents(query, k)`，和内置工具同一个注册表、同一条 Agent 链路，界面上的卡片、耗时、日志都复用现有实现。描述里明确写了「问资料/文档/笔记时先调用它」，并要求拿到出处后可以再 `read_workspace_file` 读全文。
+
+**接口**：`GET /api/rag/status`、`POST /api/rag/rebuild`、`GET /api/rag/search?q=&k=`；另加了 `GET /api/tools` 方便界面与探针确认「当前到底注册了哪些工具」（以前只能靠日志）。
+
+**界面**：设置 → 工具 → 文档检索：`N 个文件 · N 段 · 索引时间`，一个「重建索引」按钮（重建完弹提示）。
+
+### 三、验证
+
+| 探针 | 结果 | 覆盖 |
+|---|---|---|
+| `probe-rag` | **13/13** | 建索引、中文 bigram 召回、英文按词、改文件后新内容进/旧内容出、删文件后不再召回、`search_documents` 已注册、空查询 400、复位后索引回到原样 |
+| `probe-sidebar-search` | **11/11** | 输入即搜、标题命中、正文命中并高亮、点结果切会话、✕/Esc 清空、无结果文案 |
+| `probe-ui-rag` | **6/6** | 状态行数字、重建按钮、结果提示、服务端数字同步 |
+
+回归（挑了会被牵动的 8 个）：`probe-sessions`、`probe-ui-new`、`probe-start-flow`、`probe-settings-tools`、`probe-small-features`、`probe-input-extras`、`probe-title-ui`、`probe-ctx-panel`。
+
+### 四、没做的
+
+- PDF / Word / Excel 不解析（要引库；`.md` 之外先靠用户自己导出成文本）。
+- 不做向量检索/重排：BM25 对"关键词能对上"的场景够用，语义近义改写会漏；真需要时再加一个小 embedding 模型，接口不用变。
+- 侧栏没有置顶/分组/标签——这次只做了搜索，别把列表做成第二套系统。
+- 搜索结果不分页（上限 50 条），会话上千条时要再想。
+---
+
+## 二十二、2026-10-29：文档格式、备份快照、插件开关
+
+这一轮把「还差一点」的三件事补齐：RAG 能读 Word/PDF、备份连历史版本一起走、插件能关掉。
+
+### 一、RAG 支持 docx / pdf（零依赖）
+
+新增 `server\doc-extract.mjs`，不引任何依赖：
+
+| 格式 | 做法 | 验证 |
+|---|---|---|
+| `.docx` | docx 本质是 zip：读中央目录找到 `word/document.xml`，`inflateRawSync` 解压，去标签、`</w:p>` 转换行、解 XML 实体 | 中文标题/段落/英文都抽得对 |
+| `.pdf` | 解析间接对象 → 解 `FlateDecode` 流 → 扫文本算子（`Tj`/`TJ`/`Tf`/`Tm`）；`Type0`/`Identity-H` 按 2 字节 CID 走，其余按 1 字节；用 `/ToUnicode` 的 `bfchar`/`bfrange` 映射回 Unicode | Edge 生成的 31KB 中文 PDF 抽出了「量子通信笔记 / 纠缠态… / Retrieval augmented generation…」 |
+
+几个踩到的坑（都写进代码注释了）：
+
+1. **`<<` 字典被当成十六进制字符串**：`<</MCID 0 >>` 里第二个 `<` 后面不是 `<`，第一版把它当 hex 字符串解，于是每段正文前多出 `Ð`、`\u0000\f` 这类垃圾。现在遇到 `<<`/`>>` 直接跳。
+2. **`Td` 不是换行**：Chromium 会把一个单词拆成几段分别 `Tj`，用 `Td` 做位移；把 `Td` 当空格会把 `Retrieval` 切成 `R etriev al`。现在只在 `T*`/`ET` 换行，词间空格来自字符串里的空格字形。
+3. **控制字符要清**：CID 映射失败会留下 `\u0000`，抽完统一清掉只留换行/制表。
+
+限制（如实写进界面提示与交接文档）：PDF 是尽力抽取——扫描件（纯图片）抽不出字；非常见字体、没有 `ToUnicode` 的 PDF 会乱码或少字。
+
+### 二、备份连历史版本一起镜像
+
+之前只镜像 `sessions\`，而「能回滚」靠的是 `session-snapshots\`——整盘坏掉时照样没了。现在备份目录多一个 `snapshots\<日期>\<id>.<时分秒-毫秒>.json`：
+
+- 快照是"写一次就不变"的文件，**缺了才拷**（不比对 mtime，避免每次全量重写）；
+- 上限 5000 份，超了只记日志不报错；
+- 状态里多报一项「历史版本 N 份（新增 M）」，界面状态行也显示。
+
+### 三、插件启用 / 禁用
+
+之前插件"丢进去就生效"，想临时关掉只能把文件挪走。现在：
+
+- 状态存 `workspace\plugins.json`，**只记被禁用的文件名**，新插件默认启用；
+- 禁用的插件不 import、不注册成工具（不占系统提示词），但仍在列表里显示「已禁用」；
+- `POST /api/plugins/toggle {file, enabled}`；文件名严格校验，`../evil.mjs` 直接 400；
+- 设置 → 工具 → 插件：每行一个「启用 / 禁用」按钮，失败行显示原因。
+
+### 四、验证
+
+| 探针 | 结果 |
+|---|---|
+| `probe-rag` | **16/16**（新增 docx/pdf 抽取召回、PDF 中文） |
+| `probe-backup` | **38/38**（新增历史版本镜像、状态报份数） |
+| `probe-plugins` | **11/11**（发现 → 禁用 → 工具消失 → 状态落盘 → 启用回来 → 删文件消失 → 非法名 400） |
+
+### 五、全量结果
+
+**43 个探针 / 562 条断言，全绿（0 红）**——这是这个项目第一次全量不留红。
+
+- 跑法：`server\docs\probe-full-2026-10-29\run-full.ps1`（驱动脚本同前：逐个跑、单条超时、跑完查 `/api/state`）；
+- 汇总：同目录 `RESULT.md`（每个探针一行：PASS / 失败数 / 结果行）；
+- 耗时约 35 分钟（真模型那几条：tools-agent 98s、web-tools、kv-long、context-switch、ui-preload、preload、second-opinion 各 40–70s）。
+
+跑之前把 `workspace\sessions` 整份备份到 `sessions-backup-before-suite`；`probe-ui-sessions` 照例清空会话，跑完把真实会话（30 条「Hello」）从备份拷回，探针留下的那条删掉。
+
+
+

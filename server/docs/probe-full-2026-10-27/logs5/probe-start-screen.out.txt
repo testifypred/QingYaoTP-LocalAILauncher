@@ -1,0 +1,15 @@
+STATE {"hero":true,"greet":"晚上好","sid":null,"msgs":0,"tabs":false,"btn":"DeepSeek-R1-0528-Qwen3-8B","sendIco":true,"recent":true,"recentTitle":"Hello"}
+ok   启动进入开场白
+ok   默认新对话（无 sessionId、无消息）  [sid=null]
+ok   问候语按时间  [晚上好]
+ok   顶栏无模型列表
+FAIL 模型按钮显示已加载模型  DeepSeek-R1-0528-Qwen3-8B / 已加载 null
+ok   发送键旁有模型图标
+ok   右下角提示上次对话  [Hello]
+ok   深度思考/联网在输入框下
+ok   模型菜单能打开
+ok   列出全部模型  [5 / 5]
+FAIL 标记当前运行模型   / 
+ok   点空白关闭菜单
+
+RESULT 10/12

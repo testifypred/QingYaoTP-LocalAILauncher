@@ -1,0 +1,1005 @@
+/**
+ * 本地 AI 桌面应用 —— 模型管理器 + OpenAI 兼容服务 + 内置界面
+ *
+ * 设计要点：
+ *  - 单进程管理 D:\LocalModels 下的所有 .gguf，一次只加载一个模型（显存/内存友好）
+ *  - 对外仍暴露 OpenAI 兼容接口 (/v1/chat/completions)，Cherry Studio / DSH 可直接接
+ *  - 界面通过 /api/* 控制加载与卸载
+ */
+import http from "node:http";
+import { randomUUID } from "node:crypto";
+import { readFile, readdir, stat } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+import { getLlama, resolveChatWrapper, LlamaChatSession, TokenMeter, defineChatSessionFunction, DraftSequenceTokenPredictor } from "node-llama-cpp";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const MODEL_DIR = process.env.MODEL_DIR ?? "D:\\LocalModels";
+const PORT = Number(process.env.PORT ?? 8099);
+const AUTO_LOAD = process.env.AUTO_LOAD ?? "";
+const DEFAULT_CONTEXT = Number(process.env.CONTEXT_SIZE ?? 16384);
+/** 未提供 system 消息时使用的默认提示词，避免 node-llama-cpp 的英文默认提示词污染中文回答 */
+const DEFAULT_SYSTEM =
+  process.env.DEFAULT_SYSTEM ?? "你是一个乐于助人的中文助手。回答要准确、简洁，用中文回答。";
+
+const UI = path.join(HERE, "app.html");
+const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
+
+/** 请求体上限：防止超大 POST 撑爆内存 */
+const MAX_BODY_BYTES = 4 * 1024 * 1024;
+
+/**
+ * 本地控制令牌：/api/shutdown 等破坏性接口需要它。
+ * 只有同源页面能通过 /api/state 读到（浏览器同源策略会挡住跨站读取），
+ * 因此外部网页无法伪造。每次启动重新生成。
+ */
+const LOCAL_TOKEN = randomUUID();
+
+/** 进行中的对话数：为 0 才允许加载/卸载/退出，避免销毁正在使用的 context */
+let activeChats = 0;
+
+// ---------------------------------------------------------------- 投机解码
+/**
+ * 投机解码配置：草稿模型先猜若干个 token，主模型一次批量验证。
+ * 带宽不变、产出翻倍——这正是本机 31% 带宽利用率下最划算的优化。
+ */
+const DRAFT_MODEL = process.env.DRAFT_MODEL ?? "";          // 指定文件名或子串；留空则自动挑
+const DRAFT_TOKENS = Math.max(1, Math.min(32, Number(process.env.DRAFT_TOKENS ?? 8)));
+
+/** 粗略判断模型家族，用于避免跨家族草稿模型（tokenizer 不同会直接产出乱码） */
+function modelFamily(name) {
+  const n = String(name).toLowerCase();
+  for (const k of ["qwen3.5", "qwen3", "qwen2.5", "qwen2", "phi-4", "phi-3", "llama-3", "llama", "gemma", "glm"]) {
+    if (n.includes(k)) return k;
+  }
+  return n.replace(/[^a-z0-9.]/g, "").slice(0, 10);
+}
+
+/** 取 GGUF 里的词表数组，用来校验草稿模型能否与主模型配合 */
+function tokenArrayOf(model) {
+  try {
+    const toks = model.fileInfo?.metadata?.tokenizer?.ggml?.tokens;
+    return Array.isArray(toks) ? toks : null;
+  } catch {
+    return null;
+  }
+}
+function vocabSizeOf(model) {
+  return tokenArrayOf(model)?.length ?? null;
+}
+
+/**
+ * 判断两个模型的 tokenizer 是否可共用（投机解码的硬要求）。
+ *
+ * 不能直接比长度是否相等：同族模型的 GGUF 常因「附加特殊 token」写法不同而长度不一，
+ * 例如 Qwen2.5 基础词表 151936，7B 的 GGUF 里是 152064（多 128 个附加 token）。
+ * 真正该校验的是共享前缀里的 token 字符串是否一致。
+ */
+function tokenizersCompatible(a, b) {
+  const ta = tokenArrayOf(a);
+  const tb = tokenArrayOf(b);
+  if (!ta || !tb) return { ok: true, reason: "读不到词表，按家族名放行" };
+  const diff = Math.abs(ta.length - tb.length);
+  if (diff > 256) return { ok: false, reason: `词表长度差 ${diff}，过大` };
+  const n = Math.min(ta.length, tb.length);
+  const probes = [0, 1, 100, 1000, 5000, 20000, 50000, 100000, n - 1].filter((i) => i >= 0 && i < n);
+  for (const i of probes) {
+    if (String(ta[i]) !== String(tb[i])) {
+      return { ok: false, reason: `词表第 ${i} 项不一致` };
+    }
+  }
+  return { ok: true, reason: `共享前缀 ${n} 项抽样一致（长度 ${ta.length} vs ${tb.length}）` };
+}
+
+/**
+ * 挑一个能与主模型配套的草稿模型；不匹配就返回 null（宁可不加速，也不出乱码）。
+ *
+ * 默认**不启用**：本机实测草稿模型是净亏损——
+ * 7B 4.36GB + 0.5B 0.47GB 同时驻留共享内存核显，草稿每次预猜都要多读 0.47GB 权重，
+ * 而带宽是固定的，等于往同一条窄路上再加车。实测：
+ *   基线（无草稿）10.85 tok/s
+ *   草稿预猜 8 个 → 5.65 tok/s（0.52x）
+ *   草稿预猜 3 个 → 3.34 tok/s（0.31x）
+ * 输出内容三题完全一致，即质量无损、只是更慢。故改为 opt-in：设 DRAFT_MODEL 才启用。
+ */
+function pickDraft(models, targetFile, targetModel) {
+  if (!DRAFT_MODEL) return null;
+  const others = models.filter((m) => m.file !== targetFile);
+  if (!others.length) return null;
+  const cand =
+    others.find((m) => m.file === DRAFT_MODEL) ??
+    others.find((m) => m.label.toLowerCase().includes(DRAFT_MODEL.toLowerCase())) ??
+    null;
+  if (!cand) return null;
+  // 校验 1：家族名
+  if (modelFamily(cand.file) !== modelFamily(targetFile)) {
+    log(`草稿模型跳过：家族不匹配（${modelFamily(cand.file)} vs ${modelFamily(targetFile)}）`);
+    return null;
+  }
+  return cand;
+}
+
+// ---------------------------------------------------------------- 模型状态
+let llama = null;
+const state = {
+  model: null,
+  context: null,
+  file: null,
+  contextSize: 0,
+  layers: 0,
+  gpu: null,
+  loading: false,
+  error: null,
+  wrapperThink: null,
+  wrapperNoThink: null,
+  hasJinja: false,
+  supportsThinking: false,
+  draftModel: null,
+  draftContext: null,
+  draftFile: null,
+  draftDisabledReason: null,
+};
+
+/**
+ * 为模型解析两套 chat wrapper：开启 / 关闭思考。
+ *
+ * 思考型模型（Qwen3 / Qwen3.5 / Qwen3.8 等）默认会把全部 token 花在 thought 段上，
+ * node-llama-cpp 又把 thought 段排除在 responseText 之外，结果就是"空回复"。
+ * reasoning:false 让模板直接作答——实测既修好了空回复，也快了约 6 倍。
+ */
+function buildWrappers(model) {
+  const make = (reasoning) => {
+    try {
+      return (
+        resolveChatWrapper(model, {
+          type: "jinjaTemplate",
+          customWrapperSettings: { jinjaTemplate: { reasoning } },
+          warningLogs: false,
+        }) ?? null
+      );
+    } catch {
+      return null;
+    }
+  };
+  const think = make(true);
+  const noThink = make(false);
+  return { think, noThink, hasJinja: Boolean(think || noThink) };
+}
+
+const isShard = (name) => /-0000\d-of-0000\d\.gguf$/i.test(name);
+const isFirstShard = (name) => /-00001-of-0000\d\.gguf$/i.test(name);
+
+async function scanModels() {
+  let entries = [];
+  try {
+    entries = await readdir(MODEL_DIR, { withFileTypes: true });
+  } catch (err) {
+    log("无法读取模型目录:", err.message);
+    return [];
+  }
+  const out = [];
+  for (const e of entries) {
+    if (!e.isFile()) continue;
+    const n = e.name;
+    if (!/\.gguf$/i.test(n)) continue;
+    if (isShard(n) && !isFirstShard(n)) continue; // 分片只列第一片
+    const full = path.join(MODEL_DIR, n);
+    let sizeGB = 0;
+    try {
+      sizeGB = +((await stat(full)).size / 1024 ** 3).toFixed(2);
+    } catch {}
+    out.push({
+      file: n,
+      path: full,
+      sizeGB,
+      label: n.replace(/\.gguf$/i, ""),
+      sharded: isFirstShard(n),
+    });
+  }
+  return out.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+async function unloadModel() {
+  // 草稿模型先释放：投机解码的 predictor 依赖它的 context
+  if (state.draftContext) {
+    try {
+      await state.draftContext.dispose();
+    } catch (e) {
+      log("dispose draft context:", e.message);
+    }
+    state.draftContext = null;
+  }
+  if (state.draftModel) {
+    try {
+      await state.draftModel.dispose();
+    } catch (e) {
+      log("dispose draft model:", e.message);
+    }
+    state.draftModel = null;
+  }
+  state.draftFile = null;
+  state.draftDisabledReason = null;
+  if (state.context) {
+    try {
+      await state.context.dispose();
+    } catch (e) {
+      log("dispose context:", e.message);
+    }
+    state.context = null;
+  }
+  if (state.model) {
+    try {
+      await state.model.dispose();
+    } catch (e) {
+      log("dispose model:", e.message);
+    }
+    state.model = null;
+  }
+  state.file = state.layers = state.contextSize = 0;
+  state.file = null;
+  state.wrapperThink = state.wrapperNoThink = null;
+  state.hasJinja = false;
+  state.supportsThinking = false;
+}
+
+async function loadModel(file, contextSize) {
+  if (state.loading) throw new Error("已有模型正在加载，请稍候");
+  state.loading = true;
+  state.error = null;
+  const t0 = Date.now();
+  try {
+    await unloadModel();
+    const full = path.join(MODEL_DIR, file);
+    log(`加载 ${file} (context ${contextSize}) ...`);
+    state.model = await llama.loadModel({ modelPath: full });
+    state.context = await state.model.createContext({ contextSize });
+    const w = buildWrappers(state.model);
+    state.wrapperThink = w.think;
+    state.wrapperNoThink = w.noThink;
+    state.hasJinja = w.hasJinja;
+    state.supportsThinking = detectThinkingSupport(state.model);
+
+    // ---- 投机解码：加载配套草稿模型（失败不影响主流程）----
+    state.draftModel = null;
+    state.draftContext = null;
+    state.draftFile = null;
+    state.draftDisabledReason = null;
+    try {
+      const models = await scanModels();
+      const cand = pickDraft(models, file, state.model);
+      if (!cand) {
+        state.draftDisabledReason = DRAFT_MODEL
+          ? `指定的草稿模型不可用：${DRAFT_MODEL}`
+          : "默认关闭（未设置 DRAFT_MODEL）：本机实测草稿模型更慢";
+      } else {
+        log(`加载草稿模型 ${cand.file} ...`);
+        const dm = await llama.loadModel({ modelPath: cand.path });
+        const compat = tokenizersCompatible(state.model, dm);
+        if (!compat.ok) {
+          state.draftDisabledReason = `词表不兼容：${compat.reason}`;
+          log(`草稿模型跳过：${state.draftDisabledReason}`);
+          try {
+            await dm.dispose();
+          } catch {}
+        } else {
+          state.draftContext = await dm.createContext({ contextSize });
+          state.draftModel = dm;
+          state.draftFile = cand.file;
+          log(`草稿模型就绪：${cand.file}（${compat.reason}，最多预猜 ${DRAFT_TOKENS} token）`);
+        }
+      }
+    } catch (e) {
+      state.draftDisabledReason = `草稿模型加载失败：${e.message}`;
+      log("草稿模型加载失败（不影响主流程）:", e.message);
+    }
+    state.file = file;
+    state.contextSize = state.context.contextSize ?? contextSize;
+    state.layers = state.model.gpuLayers ?? 0;
+    log(
+      `就绪: ${file} | context ${state.contextSize} | layers ${state.layers} | 思考能力${state.supportsThinking ? "支持" : "不支持"} | ${((Date.now() - t0) / 1000).toFixed(1)}s`,
+    );
+    return { ok: true, seconds: +((Date.now() - t0) / 1000).toFixed(1) };
+  } catch (err) {
+    state.error = String(err?.message ?? err);
+    log("加载失败:", state.error);
+    await unloadModel();
+    throw err;
+  } finally {
+    state.loading = false;
+  }
+}
+
+// ---------------------------------------------------------------- HTTP 工具
+function sendJson(res, code, obj) {
+  const body = JSON.stringify(obj);
+  res.writeHead(code, {
+    "content-type": "application/json; charset=utf-8",
+    "content-length": Buffer.byteLength(body),
+  });
+  res.end(body);
+}
+
+async function readBody(req) {
+  let raw = "";
+  let size = 0;
+  for await (const c of req) {
+    size += c.length;
+    if (size > MAX_BODY_BYTES) {
+      const err = new Error(`请求体超过 ${MAX_BODY_BYTES / 1024 / 1024} MB 上限`);
+      err.code = "BODY_TOO_LARGE";
+      throw err;
+    }
+    raw += c;
+  }
+  return JSON.parse(raw || "{}");
+}
+
+/** 估算一段文本的 token 数，带兜底 */
+function tokenCount(model, text) {
+  const s = String(text ?? "");
+  try {
+    return model.tokenize(s).length;
+  } catch {
+    return Math.ceil(s.length / 2);
+  }
+}
+
+/**
+ * 按 token 预算裁掉最老的历史。
+ *
+ * 估算上乘了 1.15 安全系数并计入每条的模板开销——低估的代价是把上下文撑爆，
+ * 实测会触发 `vk::Device::getFenceStatus: ErrorDeviceLost` 并直接让进程退出。
+ */
+function trimHistory(history, model, budgetTokens) {
+  if (!history.length) return { kept: history, dropped: 0, remaining: 0 };
+  const PER_ITEM_OVERHEAD = 12;
+  const costs = history.map((h) => {
+    const text = h.type === "user" ? h.text : Array.isArray(h.response) ? h.response.join(" ") : "";
+    return Math.ceil(tokenCount(model, text) * 1.15) + PER_ITEM_OVERHEAD;
+  });
+  let total = costs.reduce((a, b) => a + b, 0);
+  let start = 0;
+  // 至少保留最后一条
+  while (total > budgetTokens && start < history.length - 1) {
+    total -= costs[start];
+    start += 1;
+  }
+  return { kept: history.slice(start), dropped: start, remaining: total };
+}
+
+function toHistory(messages) {
+  return messages
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => {
+      const text = typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "");
+      return m.role === "user" ? { type: "user", text } : { type: "model", response: [text] };
+    });
+}
+
+/** 从会话历史里取出思考段文本（node-llama-cpp 不把 thought 段放进 responseText）。 */
+function extractThoughts(session) {
+  try {
+    return session
+      .getChatHistory()
+      .filter((h) => h.type === "model")
+      .flatMap((h) => h.response ?? [])
+      .filter((s) => s && typeof s === "object" && s.segmentType === "thought")
+      .map((s) => s.text)
+      .join("\n")
+      .trim();
+  } catch {
+    return "";
+  }
+}
+
+const EMPTY_HINT = "（模型没有产出任何内容——可以试试调大 max_tokens，或关闭深度思考）";
+
+/**
+ * 判断该模型是否**真的**支持思考。
+ *
+ * 只看聊天模板里有没有思考机制，而不是看有没有 Jinja 模板——
+ * Qwen2.5、Phi-4-mini 都有 Jinja 模板，但模板里连 think 字样都没有。
+ * Qwen3 系列用 `enable_thinking` 变量 + `<think>` 标签。
+ */
+function detectThinkingSupport(model) {
+  try {
+    const tpl = model.fileInfo?.metadata?.tokenizer?.chat_template;
+    const s = typeof tpl === "string" ? tpl : Array.isArray(tpl) ? tpl.join("\n") : "";
+    return /enable_thinking|<think>/i.test(s);
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------- 内置工具（演示 Agent）
+const WORKSPACE = path.join(MODEL_DIR, "workspace");
+
+/**
+ * 只允许数字、运算符、小数点、括号和空白的表达式求值。
+ * 白名单里没有任何字母/下划线/方括号，因此不可能注入代码。
+ */
+function safeEval(expr) {
+  const s = String(expr ?? "").trim();
+  if (!s) throw new Error("表达式为空");
+  if (s.length > 200) throw new Error("表达式过长");
+  if (!/^[0-9+\-*/%.() \t]+$/.test(s)) throw new Error("表达式含非法字符（只允许数字和 + - * / % ** ( )）");
+  // eslint-disable-next-line no-new-func
+  const v = Function(`"use strict"; return (${s});`)();
+  if (typeof v !== "number" || !Number.isFinite(v)) throw new Error("结果不是有限数值");
+  return v;
+}
+
+/**
+ * 构造内置工具集。
+ * 每个 handler 真实执行并把 ({name, args, result}) 记入 journal，
+ * 供界面展示——这是"工具真的跑了"和"模型编造执行过"的关键区别。
+ */
+function buildDemoTools(journal, onCall) {
+  const record = async (name, args, fn) => {
+    const t0 = Date.now();
+    let result;
+    try {
+      result = await fn();
+    } catch (err) {
+      result = { error: String(err?.message ?? err) };
+    }
+    const entry = { name, args, result, ms: Date.now() - t0 };
+    journal.push(entry);
+    try {
+      onCall?.(entry);
+    } catch {}
+    return result;
+  };
+
+  return {
+    get_current_time: defineChatSessionFunction({
+      description: "获取当前本地日期与时间。凡是问'现在几点''今天几号''今天星期几'都必须调用本函数，不要凭记忆回答。",
+      params: { type: "object", properties: {} },
+      handler: () =>
+        record("get_current_time", {}, () => {
+          const now = new Date();
+          return {
+            localTime: now.toLocaleString("zh-CN", { hour12: false }),
+            iso: now.toISOString(),
+            weekday: now.toLocaleDateString("zh-CN", { weekday: "long" }),
+          };
+        }),
+    }),
+
+    calculate: defineChatSessionFunction({
+      description: "精确计算一个数学表达式，支持 + - * / % ** 和括号。涉及具体数值计算时应调用，不要心算。",
+      params: {
+        type: "object",
+        properties: {
+          expression: { type: "string", description: "要计算的数学表达式，例如 (1234*56)+78" },
+        },
+        required: ["expression"],
+      },
+      handler: ({ expression }) =>
+        record("calculate", { expression }, () => ({ expression, value: safeEval(expression) })),
+    }),
+
+    list_local_models: defineChatSessionFunction({
+      description: "列出本机已下载的可用模型文件及其大小（GB）。",
+      params: { type: "object", properties: {} },
+      handler: () =>
+        record("list_local_models", {}, async () => {
+          const ms = await scanModels();
+          return { count: ms.length, models: ms.map((m) => ({ file: m.file, sizeGB: m.sizeGB })) };
+        }),
+    }),
+
+    read_workspace_file: defineChatSessionFunction({
+      description: "读取工作目录 workspace 下的一个文本文件内容。只能读该目录内的文件。",
+      params: {
+        type: "object",
+        properties: { name: { type: "string", description: "文件名，例如 note.txt" } },
+        required: ["name"],
+      },
+      handler: ({ name }) =>
+        record("read_workspace_file", { name }, async () => {
+          if (!name || name.includes("/") || name.includes("\\") || name.includes("..")) {
+            throw new Error("非法文件名");
+          }
+          const full = path.join(WORKSPACE, name);
+          const st = await stat(full);
+          if (!st.isFile()) throw new Error("不是文件");
+          if (st.size > 256 * 1024) throw new Error("文件超过 256KB，拒绝读取");
+          const text = await readFile(full, "utf8");
+          return { name, sizeBytes: st.size, content: text.slice(0, 8000) };
+        }),
+    }),
+  };
+}
+
+// ---------------------------------------------------------------- 聊天
+async function handleChat(payload, res) {
+  if (!state.context) {
+    return sendJson(res, 409, { error: { message: "当前没有已加载的模型，请先在界面上点「加载」" } });
+  }
+  const toolsEnabled = payload.tools === true;
+  const messages = Array.isArray(payload.messages) ? payload.messages : [];
+  const system =
+    messages
+      .filter((m) => m.role === "system")
+      .map((m) => (typeof m.content === "string" ? m.content : ""))
+      .join("\n")
+      .trim() || DEFAULT_SYSTEM;
+  const history = toHistory(messages);
+  const lastUser = history.filter((h) => h.type === "user").pop();
+  if (!lastUser) return sendJson(res, 400, { error: { message: "缺少 user 消息" } });
+  let priorHistory = history.slice(0, history.length - 1);
+
+  const maxTokens = Number(payload.max_tokens ?? 1024);
+  const temperature = Number(payload.temperature ?? 0.7);
+
+  // 上下文预算：为系统提示、末条用户消息、生成长度和模板误差都留出空间。
+  // 低估会撑爆上下文——实测会触发 Vulkan ErrorDeviceLost 并让进程退出，所以宁严勿松。
+  {
+    const ctxSize = state.contextSize || 8192;
+    const reserve = 512;
+    const fixedCost =
+      tokenCount(state.model, system) + tokenCount(state.model, lastUser.text) + reserve;
+    const available = ctxSize - maxTokens - fixedCost;
+    if (available < 256) {
+      return sendJson(res, 413, {
+        error: {
+          message:
+            `上下文空间不足：上下文 ${ctxSize} tok − max_tokens ${maxTokens} − 固定开销约 ` +
+            `${fixedCost} tok，历史已无可用空间。请调小 max_tokens 或换更大上下文。`,
+        },
+      });
+    }
+    const target = Math.floor(available * 0.9);
+    const { kept, dropped, remaining } = trimHistory(priorHistory, state.model, target);
+    priorHistory = kept;
+    if (dropped > 0) {
+      log(`历史超预算（预算 ${target} tok），裁掉最老 ${dropped} 条，保留约 ${remaining} tok`);
+    }
+  }
+  const modelId = state.file?.replace(/\.gguf$/i, "") ?? "local";
+  const id = "chatcmpl-" + Math.random().toString(36).slice(2, 12);
+  const created = Math.floor(Date.now() / 1000);
+
+  // 每次请求一个独立的 TokenMeter：计量输入/输出 token（_tokenMeter 是库内部约定的注入点）
+  const meter = new TokenMeter();
+
+  // ---- 投机解码：草稿序列 + predictor ----
+  // 任何一步失败都退回普通解码，绝不让"加速"变成"不能用"
+  let draftSeq = null;
+  let predictor = null;
+  if (state.draftContext) {
+    try {
+      draftSeq = state.draftContext.getSequence();
+      predictor = new DraftSequenceTokenPredictor(draftSeq, {
+        maxTokens: DRAFT_TOKENS,
+        minConfidence: 0.6,
+      });
+    } catch (e) {
+      log("草稿序列创建失败，退回普通解码:", e.message);
+      if (draftSeq) {
+        try {
+          await draftSeq.dispose();
+        } catch {}
+      }
+      draftSeq = predictor = null;
+    }
+  }
+
+  let sequence = null;
+  try {
+    sequence = state.context.getSequence({
+      _tokenMeter: meter,
+      ...(predictor ? { tokenPredictor: predictor } : {}),
+    });
+  } catch (err) {
+    if (predictor) {
+      log("带草稿模型的序列创建失败，退回普通解码:", err.message);
+      try {
+        predictor.dispose();
+      } catch {}
+      if (draftSeq) {
+        try {
+          await draftSeq.dispose();
+        } catch {}
+      }
+      predictor = draftSeq = null;
+      try {
+        sequence = state.context.getSequence({ _tokenMeter: meter });
+      } catch {}
+    }
+    if (!sequence) {
+      return sendJson(res, 503, {
+        error: { message: `上下文序列暂时用尽，请稍后重试（${err.message}）` },
+      });
+    }
+  }
+
+  let released = false;
+  const release = async () => {
+    if (released) return;
+    released = true;
+    try {
+      await sequence.dispose();
+    } catch {}
+    try {
+      predictor?.dispose();
+    } catch {}
+    if (draftSeq) {
+      try {
+        await draftSeq.dispose();
+      } catch {}
+    }
+  };
+
+  // 客户端断开（关窗口/刷新/断网）就中止生成，别让核显白跑满 max_tokens
+  const ac = new AbortController();
+  res.on("close", () => {
+    if (!res.writableFinished) {
+      log("客户端断开，中止生成");
+      ac.abort();
+    }
+  });
+
+  activeChats += 1;
+  try {
+    // thinking=true 走"允许思考"的 wrapper；默认关闭思考（思考模型的空回复问题由它解决）
+    const useThinking = payload.thinking === true;
+    const chatWrapper = (useThinking ? state.wrapperThink : state.wrapperNoThink) ?? "auto";
+    const session = new LlamaChatSession({
+      contextSequence: sequence,
+      chatWrapper,
+      systemPrompt: system || undefined,
+    });
+    if (priorHistory.length && typeof session.setChatHistory === "function") {
+      try {
+        session.setChatHistory(priorHistory);
+      } catch (e) {
+        log("setChatHistory 失败，忽略历史:", e.message);
+      }
+    }
+
+    // ---- 内置工具（必须传在 prompt 级，实测会话级不触发）----
+    const toolJournal = [];
+    let emitTool = () => {};
+    const toolFunctions = toolsEnabled ? buildDemoTools(toolJournal, (e) => emitTool(e)) : null;
+    // 顺带带上中止信号：客户端断开时立即停止，并按已生成内容正常收尾
+    const toolOpts = {
+      ...(toolFunctions ? { functions: toolFunctions } : {}),
+      signal: ac.signal,
+      stopOnAbortSignal: true,
+    };
+
+    // ---- 计时模块 ----
+    // 一次请求拆成三段：预填充(首个 token 之前) / 工具执行 / 生成。
+    // 关键作用：Agent 多轮调用时工具耗时混进总时长会拉低 tok/s，这里把它剔除。
+    const t0 = Date.now();
+    let ttftMs = null;
+    const onToken = () => {
+      if (ttftMs === null) ttftMs = Date.now() - t0;
+    };
+    const finishMetrics = () => {
+      const st = meter.getState();
+      const totalMs = Date.now() - t0;
+      const toolMs = toolJournal.reduce((sum, t) => sum + (Number(t.ms) || 0), 0);
+      const prefillMs = ttftMs ?? totalMs;
+      const genMs = Math.max(1, totalMs - prefillMs - toolMs);
+      const completionTokens = st.usedOutputTokens;
+      return {
+        promptTokens: st.usedInputTokens,
+        completionTokens,
+        totalTokens: st.usedInputTokens + completionTokens,
+        // —— 计时明细（毫秒）——
+        ttftMs: ttftMs ?? null,
+        prefillMs,
+        toolMs,
+        genMs,
+        totalMs,
+        // —— 派生速度 ——
+        tokPerSec: +(completionTokens / (genMs / 1000)).toFixed(2),
+        promptTokPerSec: +(st.usedInputTokens / (prefillMs / 1000)).toFixed(1),
+        // —— 工具统计 ——
+        toolCalls: toolJournal.length,
+        rounds: toolJournal.length + 1,
+      };
+    };
+
+    if (payload.stream === true) {
+      res.writeHead(200, {
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-cache",
+        connection: "keep-alive",
+      });
+      const chunk = (delta, finish = null, extra = undefined) =>
+        res.write(
+          `data: ${JSON.stringify({
+            id,
+            object: "chat.completion.chunk",
+            created,
+            model: modelId,
+            choices: [{ index: 0, delta, finish_reason: finish }],
+            ...(extra ?? {}),
+          })}\n\n`,
+        );
+      chunk({ role: "assistant", content: "" });
+      // 工具真正执行时立刻推给界面，证明"确实跑了"而不是模型编的
+      emitTool = (t) =>
+        chunk({
+          tool: { name: t.name, args: t.args, result: t.result, ms: t.ms },
+        });
+
+      let mainChars = 0;
+      let thinkChars = 0;
+      await session.promptWithMeta(lastUser.text, {
+        maxTokens,
+        temperature,
+        onToken,
+        ...toolOpts,
+        // 按 segmentType 分流：thought → reasoning_content（DeepSeek 风格字段），其余 → content
+        onResponseChunk: (c) => {
+          if (!c || !c.text) return;
+          if (ttftMs === null) ttftMs = Date.now() - t0;
+          if (c.segmentType === "thought") {
+            thinkChars += c.text.length;
+            chunk({ reasoning_content: c.text });
+          } else {
+            mainChars += c.text.length;
+            chunk({ content: c.text });
+          }
+        },
+      });
+
+      if (mainChars === 0) {
+        // 思考型模型在慢机器上可能把整个 token 预算用在 thought 段上。
+        chunk({
+          content:
+            thinkChars > 0
+              ? "（推理过程已在上方输出，但模型没来得及给出最终结论——可以把 max_tokens 调大，或关闭深度思考）"
+              : EMPTY_HINT,
+        });
+      }
+
+      const metrics = finishMetrics();
+      // 必须先归还序列再结束响应，否则客户端的下一个请求会撞上 "No sequences left"
+      await release();
+      chunk({}, "stop", {
+        usage: {
+          prompt_tokens: metrics.promptTokens,
+          completion_tokens: metrics.completionTokens,
+          total_tokens: metrics.totalTokens,
+        },
+        metrics,
+        tools: toolJournal,
+      });
+      res.write("data: [DONE]\n\n");
+      res.end();
+    } else {
+      const meta = await session.promptWithMeta(lastUser.text, {
+        maxTokens,
+        temperature,
+        onToken,
+        ...toolOpts,
+      });
+      let text = (meta.responseText ?? "").trim();
+      const reasoning = extractThoughts(session);
+      if (!text) {
+        text = reasoning
+          ? `（全部 token 都用在了思考上，没有得出最终结论。以下是它的推理过程）\n\n${reasoning}`
+          : EMPTY_HINT;
+      }
+      const metrics = finishMetrics();
+      await release();
+      sendJson(res, 200, {
+        id,
+        object: "chat.completion",
+        created,
+        model: modelId,
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: text,
+              ...(reasoning ? { reasoning_content: reasoning } : {}),
+            },
+            finish_reason: "stop",
+          },
+        ],
+        usage: {
+          prompt_tokens: metrics.promptTokens,
+          completion_tokens: metrics.completionTokens,
+          total_tokens: metrics.totalTokens,
+        },
+        metrics,
+        tools: toolJournal,
+      });
+    }
+  } catch (err) {
+    log("聊天错误:", err?.message ?? err);
+    await release();
+    if (!res.headersSent) sendJson(res, 500, { error: { message: String(err?.message ?? err) } });
+    else res.end();
+  } finally {
+    activeChats -= 1;
+    await release();
+  }
+}
+
+// ---------------------------------------------------------------- 路由
+async function handle(req, res) {
+  const url = (req.url ?? "").split("?")[0];
+
+  if (req.method === "GET" && (url === "/" || url === "/index.html")) {
+    try {
+      const html = await readFile(UI, "utf8");
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      return res.end(html);
+    } catch (err) {
+      return sendJson(res, 500, { error: { message: `app.html 读取失败: ${err.message}` } });
+    }
+  }
+
+  if (req.method === "GET" && url === "/health") {
+    return sendJson(res, 200, { status: "ok", model: state.file, context: state.contextSize, gpu: state.gpu });
+  }
+
+  if (req.method === "GET" && url === "/api/state") {
+    return sendJson(res, 200, {
+      models: await scanModels(),
+      modelDir: MODEL_DIR,
+      loaded: state.file,
+      context: state.contextSize,
+      layers: state.layers,
+      gpu: state.gpu,
+      loading: state.loading,
+      error: state.error,
+      hasJinja: state.hasJinja,
+      supportsThinking: state.supportsThinking,
+      localToken: LOCAL_TOKEN,
+      activeChats,
+      draftFile: state.draftFile,
+      draftTokens: DRAFT_TOKENS,
+      draftDisabledReason: state.draftDisabledReason,
+    });
+  }
+
+  if (req.method === "POST" && url === "/api/load") {
+    if (activeChats > 0) {
+      return sendJson(res, 409, {
+        error: { message: "有对话正在进行，先等它结束（或在界面点停止）再切换模型" },
+      });
+    }
+    let body;
+    try {
+      body = await readBody(req);
+    } catch (e) {
+      const code = e?.code === "BODY_TOO_LARGE" ? 413 : 400;
+      return sendJson(res, code, { error: { message: e?.message ?? "JSON 解析失败" } });
+    }
+    if (!body.file) return sendJson(res, 400, { error: { message: "缺少 file 参数" } });
+    // 防目录穿越：只允许模型目录内的文件名
+    if (body.file.includes("/") || body.file.includes("\\") || body.file.includes("..")) {
+      return sendJson(res, 400, { error: { message: "非法的文件名" } });
+    }
+    try {
+      const r = await loadModel(body.file, Number(body.contextSize ?? DEFAULT_CONTEXT));
+      return sendJson(res, 200, { ok: true, ...r, context: state.contextSize, layers: state.layers });
+    } catch (err) {
+      return sendJson(res, 500, { error: { message: String(err?.message ?? err) } });
+    }
+  }
+
+  if (req.method === "POST" && url === "/api/unload") {
+    if (activeChats > 0) {
+      return sendJson(res, 409, { error: { message: "有对话正在进行，无法卸载模型" } });
+    }
+    await unloadModel();
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (req.method === "POST" && url === "/api/shutdown") {
+    // 破坏性操作：必须带同源页面从 /api/state 拿到的令牌。
+    // 外部网页无法读取该令牌（同源策略），也无法带自定义头（无 CORS 授权）。
+    if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
+      return sendJson(res, 403, { error: { message: "缺少或错误的本地令牌，拒绝退出" } });
+    }
+    if (activeChats > 0) {
+      return sendJson(res, 409, { error: { message: "有对话正在进行，无法退出服务" } });
+    }
+    sendJson(res, 200, { ok: true });
+    log("收到退出指令，正在关闭 ...");
+    setTimeout(() => process.exit(0), 300);
+    return;
+  }
+
+  if (req.method === "GET" && url.startsWith("/v1/models")) {
+    return sendJson(res, 200, {
+      object: "list",
+      data: state.file
+        ? [{ id: state.file.replace(/\.gguf$/i, ""), object: "model", created: 0, owned_by: "local" }]
+        : [],
+    });
+  }
+
+  if (req.method === "POST" && url.startsWith("/v1/chat/completions")) {
+    let payload;
+    try {
+      payload = await readBody(req);
+    } catch (e) {
+      const code = e?.code === "BODY_TOO_LARGE" ? 413 : 400;
+      return sendJson(res, code, { error: { message: e?.message ?? "JSON 解析失败" } });
+    }
+    return handleChat(payload, res);
+  }
+
+  // ---- 本地静态资源（KaTeX 等），保持断网可用 ----
+  if (req.method === "GET" && url.startsWith("/vendor/")) {
+    let rel;
+    try {
+      rel = decodeURIComponent(url.slice("/vendor/".length));
+    } catch {
+      return sendJson(res, 400, { error: { message: "路径编码非法" } });
+    }
+    const VENDOR = path.join(HERE, "vendor");
+    const full = path.resolve(VENDOR, rel);
+    // 只允许读 vendor 目录内部的文件
+    if (!full.startsWith(path.resolve(VENDOR) + path.sep)) {
+      return sendJson(res, 400, { error: { message: "非法路径" } });
+    }
+    const types = {
+      ".js": "text/javascript; charset=utf-8",
+      ".css": "text/css; charset=utf-8",
+      ".woff2": "font/woff2",
+      ".woff": "font/woff",
+      ".ttf": "font/ttf",
+      ".svg": "image/svg+xml",
+      ".json": "application/json; charset=utf-8",
+    };
+    const ct = types[path.extname(full).toLowerCase()];
+    if (!ct) return sendJson(res, 404, { error: { message: "不支持的文件类型" } });
+    try {
+      const buf = await readFile(full);
+      res.writeHead(200, {
+        "content-type": ct,
+        "content-length": buf.length,
+        "cache-control": "public, max-age=86400",
+      });
+      return res.end(buf);
+    } catch {
+      return sendJson(res, 404, { error: { message: "文件不存在" } });
+    }
+  }
+
+  sendJson(res, 404, { error: { message: `无此路由: ${req.method} ${url}` } });
+}
+
+// ---------------------------------------------------------------- 启动
+log("初始化 llama.cpp (Vulkan) ...");
+try {
+  llama = await getLlama({ gpu: "vulkan" });
+  state.gpu = "vulkan";
+} catch (err) {
+  log("Vulkan 初始化失败，回退 CPU:", err.message);
+  llama = await getLlama({ gpu: false });
+  state.gpu = "cpu";
+}
+
+const server = http.createServer((req, res) => {
+  handle(req, res).catch((err) => {
+    log("未捕获错误:", err);
+    if (!res.headersSent) sendJson(res, 500, { error: { message: String(err?.message ?? err) } });
+  });
+});
+server.requestTimeout = 0; // 加载大模型耗时长，禁用请求超时
+server.headersTimeout = 0;
+server.listen(PORT, "127.0.0.1", () => log(`界面 http://127.0.0.1:${PORT}/   API http://127.0.0.1:${PORT}/v1`));
+
+if (AUTO_LOAD) {
+  const available = await scanModels();
+  const hit = available.find((m) => m.file === AUTO_LOAD) ?? available.find((m) => m.label.includes(AUTO_LOAD));
+  if (hit) {
+    loadModel(hit.file, DEFAULT_CONTEXT).catch((e) => log("自动加载失败:", e.message));
+  } else {
+    log(`AUTO_LOAD 指定的模型未找到: ${AUTO_LOAD}`);
+  }
+}

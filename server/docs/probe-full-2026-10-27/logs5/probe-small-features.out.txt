@@ -1,0 +1,8 @@
+ok   回答上有复制按钮  [count=10]
+ok   点复制拿到正文  [Hello! How can I assist you to]
+ok   切到别的会话不带草稿  [""]
+ok   回到新对话草稿还在  ["草稿测试ABC"]
+ok   滚上去后出现「回到最新」
+ok   点击后回到底部  [gap=151]
+
+RESULT 6/6

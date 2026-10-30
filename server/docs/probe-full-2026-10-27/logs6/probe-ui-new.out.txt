@@ -1,0 +1,50 @@
+
+== 结构 ==
+  ✅ 侧栏存在且可见 — 238px
+  ✅ 侧栏已渲染会话条目 — 1 条
+  ✅ @ 按钮存在
+  ✅ 底部朗读条已移除
+  ✅ 设置有生成与朗读选项卡 — gen,tts,tools,appear
+  ✅ 音色下拉已填充 — 7 个
+  ✅ 主体已切到网格布局 — 238px 1170px
+    截图: D:\LocalModels\server\docs\probe-full-2026-10-27\shots\ui-1-main.png
+
+== 侧栏收起 / 展开 ==
+  ✅ 点 ☰ 能收起侧栏 — 0px 1408px
+    截图: D:\LocalModels\server\docs\probe-full-2026-10-27\shots\ui-2-side-off.png
+  ✅ 再点一次能展开 — 238px
+
+== 设置 → 生成 / 朗读 ==
+  ✅ 设置面板打开
+  ✅ 默认停在「生成」页
+  ✅ 自动朗读默认关闭
+  ✅ 自动朗读归到「朗读」页
+    截图: D:\LocalModels\server\docs\probe-full-2026-10-27\shots\ui-3-settings-gen.png
+  ✅ 能切到「朗读」页
+  ✅ 引擎信息已探测 — Edge 神经语音（在线，音质最好） · Piper 也可用
+  ✅ 默认音色有值 — edge:zh-CN-XiaoxiaoNeural
+  ✅ 语速取值合法且标签自洽 — 1.3 / 1.3×
+    截图: D:\LocalModels\server\docs\probe-full-2026-10-27\shots\ui-4-settings-tts.png
+  ✅ 语速滑块联动标签
+  ✅ 保存后落进 localStorage — {"v":2,"maxTokens":1024,"temp":0.7,"autoRead":false,"ttsVoice":"edge:zh-CN-XiaoxiaoNeural","ttsSpeed":1.3,"preloadMulti":true,"preloadMuted":false,"webEnabled":false,"webMuted":false,"tools":true,"codeRun":true}
+  ✅ 保存后关闭面板
+
+== @ 菜单 ==
+  ✅ @ 菜单弹出
+  ✅ 菜单列出模型 — 5 个: DeepSeek-R1-0528-Qwen3-8B / Phi-4-mini / Qwen2.5-0.5B / Qwen2.5-7B-1M / Qwen3-5-4B
+  ✅ 没加载模型时没有行被置灰 — 0
+    截图: D:\LocalModels\server\docs\probe-full-2026-10-27\shots\ui-5-at-menu.png
+  ✅ 选中后出现标签 — @DeepSeek-R1-0528-Qwen3-8B✕
+  ✅ @ 按钮高亮
+  ✅ 提示文字让位给标签
+  ✅ 菜单保持打开可多选
+    截图: D:\LocalModels\server\docs\probe-full-2026-10-27\shots\ui-6-at-chip.png
+  ✅ 点空白处收起菜单
+  ✅ 标签可取消
+  ✅ 取消后按钮不再高亮
+
+== 亮色主题 ==
+    截图: D:\LocalModels\server\docs\probe-full-2026-10-27\shots\ui-7-light.png
+
+== 结果: 30 通过 / 0 失败 ==
+

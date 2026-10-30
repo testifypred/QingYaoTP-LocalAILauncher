@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>本地模型聊天</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--text:#e6e9ef;--dim:#8b93a7;--accent:#4c8dff;--user:#1e2739}
+  *{box-sizing:border-box}
+  body{margin:0;height:100vh;display:flex;flex-direction:column;background:var(--bg);color:var(--text);
+       font:15px/1.6 "Segoe UI","Microsoft YaHei",system-ui,sans-serif}
+  header{padding:12px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px;background:var(--panel)}
+  header b{font-size:15px}
+  #meta{color:var(--dim);font-size:12.5px}
+  #dot{width:8px;height:8px;border-radius:50%;background:#3fb950}
+  #msgs{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:16px}
+  .row{display:flex;flex-direction:column;gap:5px;max-width:80%}
+  .row.user{align-self:flex-end;align-items:flex-end}
+  .who{font-size:11.5px;color:var(--dim);letter-spacing:.04em}
+  .bubble{padding:10px 14px;border-radius:12px;background:var(--panel);border:1px solid var(--line);
+          white-space:pre-wrap;word-break:break-word}
+  .row.user .bubble{background:var(--user);border-color:#2c3purple}
+  .row.user .bubble{border-color:#2c3a55}
+  .err{color:#ff7b72}
+  form{border-top:1px solid var(--line);padding:14px;display:flex;gap:10px;background:var(--panel)}
+  textarea{flex:1;resize:none;height:56px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);
+           background:#0d0f13;color:var(--text);font:inherit;outline:none}
+  textarea:focus{border-color:var(--accent)}
+  button{padding:0 22px;border-radius:10px;border:0;background:var(--accent);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+  button:disabled{opacity:.45;cursor:default}
+  .hint{color:var(--dim);font-size:12px;text-align:center;padding:4px}
+</style>
+</head>
+<body>
+<header><span id="dot"></span><b>本地模型</b><span id="meta">连接中…</span></header>
+<main id="msgs"><div class="hint">模型跑在你自己的核显上，断网也能用。</div></main>
+<form id="f">
+  <textarea id="q" placeholder="输入问题，Enter 发送，Shift+Enter 换行"></textarea>
+  <button id="send">发送</button>
+</form>
+
+<script>
+const msgsEl = document.getElementById('msgs');
+const metaEl = document.getElementById('meta');
+const form = document.getElementById('f');
+const input = document.getElementById('q');
+const sendBtn = document.getElementById('send');
+const history = [];
+
+fetch('/health').then(r => r.json()).then(j => {
+  metaEl.textContent = `${j.model} · 上下文 ${j.context} · Vulkan`;
+}).catch(() => { metaEl.textContent = '服务不可用'; });
+
+function bubble(role, text) {
+  const row = document.createElement('div');
+  row.className = 'row ' + role;
+  const who = document.createElement('div');
+  who.className = 'who';
+  who.textContent = role === 'user' ? '你' : '模型';
+  const b = document.createElement('div');
+  b.className = 'bubble';
+  b.textContent = text;
+  row.append(who, b);
+  msgsEl.appendChild(row);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+  return b;
+}
+
+async function send(text) {
+  history.push({ role: 'user', content: text });
+  bubble('user', text);
+  input.value = '';
+  sendBtn.disabled = true;
+
+  const out = bubble('assistant', '…');
+  let acc = '';
+  try {
+    const res = await fetch('/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ messages: history, stream: true, max_tokens: 1024, temperature: 0.7 }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + (await res.text()).slice(0, 200));
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      for (const p of parts) {
+        const line = p.replace(/^data:\s*/, '').trim();
+        if (!line || line === '[DONE]') continue;
+        try {
+          const j = JSON.parse(line);
+          const d = j.choices?.[0]?.delta?.content;
+          if (d) { acc += d; out.textContent = acc; msgsEl.scrollTop = msgsEl.scrollHeight; }
+        } catch {}
+      }
+    }
+    if (!acc) out.textContent = '(空回复)';
+    out.classList.remove('err');
+  } catch (e) {
+    out.classList.add('err');
+    out.textContent = '请求失败：' + e.message;
+  } finally {
+    if (acc) history.push({ role: 'assistant', content: acc });
+    sendBtn.disabled = false;
+    input.focus();
+  }
+}
+
+form.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const t = input.value.trim();
+  if (t && !sendBtn.disabled) send(t);
+});
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    const t = input.value.trim();
+    if (t && !sendBtn.disabled) send(t);
+  }
+});
+input.focus();
+</script>
+</body>
+</html>

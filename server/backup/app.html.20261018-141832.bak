@@ -1,0 +1,883 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>本地 AI</title>
+<link rel="stylesheet" href="/vendor/katex/katex.min.css">
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--text:#e6e9ef;--dim:#8b93a7;
+        --accent:#4c8dff;--user:#1e2739;--ok:#3fb950;--warn:#d29922;--err:#ff7b72}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;display:flex;flex-direction:column;background:var(--bg);color:var(--text);
+       font:15px/1.6 "Segoe UI","Microsoft YaHei",system-ui,sans-serif;overflow:hidden}
+  header{padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel);
+         display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  header .brand{font-weight:700;letter-spacing:.02em;margin-right:4px}
+  select,button{font:inherit;border-radius:8px;border:1px solid var(--line);background:#0d0f13;
+                color:var(--text);padding:6px 10px;outline:none}
+  select:focus{border-color:var(--accent)}
+  button{cursor:pointer;background:var(--accent);border:0;color:#fff;font-weight:600;padding:6px 14px}
+  button.ghost{background:#222834;border:1px solid var(--line)}
+  button:disabled{opacity:.4;cursor:default}
+  #totals{font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums;margin-left:auto}
+  #totals:empty{display:none}
+  #status{font-size:12.5px;color:var(--dim);margin-left:12px;display:flex;align-items:center;gap:7px}
+  #dot{width:9px;height:9px;border-radius:50%;background:var(--dim);flex:none}
+  #dot.on{background:var(--ok)} #dot.busy{background:var(--warn)} #dot.err{background:var(--err)}
+  #msgs{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:15px}
+  .row{display:flex;flex-direction:column;gap:5px;max-width:80%}
+  .row.user{align-self:flex-end;align-items:flex-end}
+  .who{font-size:11.5px;color:var(--dim);letter-spacing:.04em}
+  .bubble{padding:10px 14px;border-radius:12px;background:var(--panel);border:1px solid var(--line);
+          white-space:normal;overflow-wrap:anywhere;word-break:break-word}
+  /* ---- Markdown 渲染样式 ---- */
+  .bubble p{margin:0 0 9px}
+  .bubble p:last-child{margin-bottom:0}
+  .bubble h1,.bubble h2,.bubble h3,.bubble h4,.bubble h5,.bubble h6{margin:12px 0 6px;line-height:1.35;color:#fff}
+  .bubble h1{font-size:19px}.bubble h2{font-size:17px}.bubble h3{font-size:15.5px}
+  .bubble h4,.bubble h5,.bubble h6{font-size:14.5px}
+  .bubble ul,.bubble ol{margin:6px 0;padding-left:22px}
+  .bubble li{margin:2px 0}
+  .bubble code{background:#0d1017;border:1px solid var(--line);border-radius:5px;
+               padding:1px 5px;font-family:Consolas,monospace;font-size:12.8px;color:#c7d3e8}
+  .bubble pre{background:#0b0e14;border:1px solid var(--line);border-radius:9px;
+              padding:10px 12px;overflow:auto;margin:9px 0}
+  .bubble pre code{background:none;border:0;padding:0;font-size:12.8px;line-height:1.55;color:#c7d3e8}
+  .bubble blockquote{margin:9px 0;padding:2px 0 2px 11px;border-left:3px solid #33405c;color:#a9b3c7}
+  .bubble a{color:#7fb0ff;text-decoration:none}
+  .bubble a:hover{text-decoration:underline}
+  .bubble hr{border:0;border-top:1px solid var(--line);margin:13px 0}
+  .bubble table{border-collapse:collapse;margin:9px 0;font-size:13px;display:block;overflow-x:auto}
+  .bubble th,.bubble td{border:1px solid var(--line);padding:5px 10px;text-align:left;white-space:nowrap}
+  .bubble th{background:#1b2130;color:#fff}
+  .bubble strong{color:#fff}
+  .row.user .bubble{background:var(--user);border-color:#2c3a55}
+  .bubble.err{color:var(--err);border-color:#40252a}
+  .hint{color:var(--dim);font-size:13px;text-align:center;padding:26px 10px;line-height:1.9}
+  details.think{border:1px solid var(--line);border-radius:10px;background:#12151b;
+                padding:7px 11px;font-size:13px;max-width:100%}
+  details.think summary{cursor:pointer;color:var(--dim);outline:none;user-select:none}
+  details.think summary:hover{color:var(--text)}
+  details.think .thinkText{white-space:pre-wrap;color:#98a1b6;margin-top:7px;
+                           max-height:300px;overflow:auto;line-height:1.55;font-size:12.5px}
+  .stats{font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums;
+         display:flex;gap:9px;flex-wrap:wrap}
+  .stats span{white-space:nowrap}
+  .tools{display:flex;flex-direction:column;gap:6px;max-width:100%}
+  .tool{border:1px solid #2b3a2f;border-left:3px solid #3fb950;border-radius:8px;
+        background:#111a14;padding:7px 10px;font-size:12.5px;line-height:1.5}
+  .tool b{color:#7ee787;font-weight:600}
+  .tool .io{color:#98a1b6;font-family:Consolas,monospace;font-size:11.5px;
+            white-space:pre-wrap;word-break:break-all;margin-top:4px}
+  /* ---- 系统提示词面板 ---- */
+  .modal{position:fixed;inset:0;background:rgba(6,8,12,.72);display:flex;
+         align-items:center;justify-content:center;z-index:50;backdrop-filter:blur(2px)}
+  .modal[hidden]{display:none}
+  .modalBox{width:min(720px,92vw);max-height:86vh;display:flex;flex-direction:column;
+            background:var(--panel);border:1px solid var(--line);border-radius:14px;
+            box-shadow:0 18px 60px rgba(0,0,0,.55);overflow:hidden}
+  .modalHead{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
+  .modalHead b{font-size:15px}
+  .modalHead .spacer{flex:1}
+  .promptMeta{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
+  .presets{display:flex;flex-wrap:wrap;gap:7px;padding:12px 16px 0}
+  .chip{font-size:12.5px;padding:4px 11px;border-radius:999px;border:1px solid var(--line);
+        background:#0d0f13;color:var(--dim);cursor:pointer}
+  .chip:hover{border-color:#3a4a66;color:var(--text)}
+  #promptText{flex:1;min-height:190px;margin:12px 16px;padding:11px 13px;resize:vertical;
+              border-radius:10px;border:1px solid var(--line);background:#0b0e13;color:var(--text);
+              font:13.5px/1.6 "Segoe UI","Microsoft YaHei",system-ui;outline:none}
+  #promptText:focus{border-color:var(--accent)}
+  .modalFoot{display:flex;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--line)}
+  .modalFoot .hintText{flex:1;font-size:11.5px;color:var(--dim);line-height:1.4}
+  #promptBtn.on{color:#8ab6ff;border-color:#2f4a72}
+  footer{border-top:1px solid var(--line);padding:12px 14px;display:flex;gap:10px;background:var(--panel)}
+  textarea{flex:1;resize:none;height:54px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);
+           background:#0d0f13;color:var(--text);font:inherit;outline:none}
+  textarea:focus{border-color:var(--accent)}
+  textarea:disabled{opacity:.5}
+  #meta{font-size:12px;color:var(--dim)}
+  label.chk{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--dim);
+            cursor:pointer;user-select:none;white-space:nowrap}
+  label.chk input{accent-color:var(--accent);cursor:pointer;width:15px;height:15px}
+  label.chk:has(input:disabled){opacity:.45;cursor:default}
+  .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--dim);
+        border-top-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">本地 AI</span>
+  <select id="modelSel" title="选择模型"></select>
+  <select id="ctxSel" title="上下文长度">
+    <option value="8192">上下文 8K</option>
+    <option value="16384" selected>上下文 16K</option>
+    <option value="32768">上下文 32K</option>
+    <option value="65536">上下文 64K</option>
+  </select>
+  <button id="promptBtn" class="ghost" title="编辑系统提示词（每次对话都会带上）">提示词</button>
+  <button id="newChatBtn" class="ghost" title="清空当前对话（模型保持加载）">新对话</button>
+  <button id="loadBtn">加载</button>
+  <button id="unloadBtn" class="ghost">卸载</button>
+  <label class="chk" title="开启后思考模型先输出推理过程：更慢、更耗 token，但复杂问题可能更准。默认关闭。">
+    <input type="checkbox" id="thinkChk">深度思考
+  </label>
+  <label class="chk" title="允许模型调用内置工具（查时间、精确计算、列模型、读 workspace 文件）。工具会在本机真实执行，界面上能看到输入和结果。">
+    <input type="checkbox" id="toolChk">调用工具
+  </label>
+  <button id="quitBtn" class="ghost">退出服务</button>
+  <span id="totals" title="本次会话累计"></span>
+  <span id="status"><span id="dot"></span><span id="statusText">正在连接…</span></span>
+</header>
+
+<main id="msgs">
+  <div class="hint" id="hint">
+    先在上面选一个模型，点「加载」<br>
+    模型全程跑在你自己的核显上，断网也能用
+  </div>
+</main>
+
+<footer>
+  <textarea id="q" placeholder="输入问题，Enter 发送，Shift+Enter 换行" disabled></textarea>
+  <button id="send" disabled>发送</button>
+</footer>
+
+<div id="promptModal" class="modal" hidden>
+  <div class="modalBox">
+    <div class="modalHead">
+      <b>系统提示词</b>
+      <span class="spacer"></span>
+      <span id="promptMeta" class="promptMeta"></span>
+      <button id="promptClose" class="ghost" title="关闭">✕</button>
+    </div>
+    <div class="presets" id="presetRow"></div>
+    <textarea id="promptText" spellcheck="false"
+      placeholder="留空则使用内置默认提示词。&#10;&#10;例如：你是一个乐于助人的中文助手。回答要准确、简洁，用中文回答。"></textarea>
+    <div class="modalFoot">
+      <span class="hintText">提示词会拼在每次请求最前面，占用输入 token；改完从下一轮开始生效。</span>
+      <button id="promptReset" class="ghost">恢复默认</button>
+      <button id="promptSave">保存并应用</button>
+    </div>
+  </div>
+</div>
+
+<script src="/vendor/katex/katex.min.js"></script>
+<script src="/vendor/katex/contrib/auto-render.min.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const msgsEl = $('msgs'), hintEl = $('hint'), modelSel = $('modelSel'), ctxSel = $('ctxSel');
+const loadBtn = $('loadBtn'), unloadBtn = $('unloadBtn'), quitBtn = $('quitBtn'), thinkChk = $('thinkChk'), toolChk = $('toolChk');
+const input = $('q'), sendBtn = $('send'), dot = $('dot'), statusText = $('statusText');
+const totalsEl = $('totals');
+
+// 本次会话累计
+const cum = { turns: 0, ms: 0, tools: 0, tokens: 0 };
+function renderTotals() {
+  const sec = cum.ms / 1000;
+  const human = sec < 60 ? sec.toFixed(1) + 's' : (sec / 60).toFixed(1) + 'min';
+  totalsEl.textContent =
+    `累计 ${cum.turns} 轮 · ${cum.tools} 次工具 · ↓${cum.tokens} tok · ${human}`;
+}
+
+let loaded = null;          // 当前已加载的模型文件名
+let busy = false;           // 加载中 / 生成中
+let supportsThinking = false; // 已加载的模型是否真的支持思考（由服务端从聊天模板判定）
+let localToken = '';          // 破坏性接口需要的本地令牌（仅同源页面能读到）
+const history = [];
+
+function setStatus(kind, text) {
+  dot.className = kind;
+  statusText.textContent = text;
+}
+function setBusy(on, label) {
+  busy = on;
+  loadBtn.disabled = on;
+  unloadBtn.disabled = on || !loaded;
+  sendBtn.disabled = on || !loaded;
+  input.disabled = on || !loaded;
+  toolChk.disabled = on || !loaded;
+  syncThinkChk();
+  if (on && label) setStatus('busy', label);
+}
+
+/** 只有已加载的模型确实支持思考时，才允许勾选「深度思考」。 */
+function syncThinkChk() {
+  const can = !!loaded && supportsThinking;
+  thinkChk.disabled = busy || !can;
+  if (!can) thinkChk.checked = false;
+  thinkChk.parentElement.title = can
+    ? '开启后模型先输出推理过程（该模型的聊天模板支持思考）'
+    : loaded
+      ? '当前模型不支持思考：它的聊天模板里没有 enable_thinking / think 机制'
+      : '先加载一个支持思考的模型';
+}
+function clearHint() { if (hintEl && hintEl.parentNode) hintEl.remove(); }
+
+async function refresh() {
+  const s = await (await fetch('/api/state')).json();
+  const prev = modelSel.value;
+  modelSel.innerHTML = '';
+  for (const m of s.models) {
+    const o = document.createElement('option');
+    o.value = m.file;
+    // ● 标出真正在跑的那个，避免"下拉选的和实际跑的不是一个"这种误会
+    o.textContent = `${m.file === s.loaded ? '● ' : ''}${m.label}  (${m.sizeGB} GB${m.sharded ? ', 分片' : ''})`;
+    modelSel.appendChild(o);
+  }
+  const keep = prev && s.models.some((m) => m.file === prev) ? prev : s.loaded;
+  if (keep && s.models.some((m) => m.file === keep)) modelSel.value = keep;
+
+  loaded = s.loaded;
+  supportsThinking = !!s.supportsThinking;
+  if (s.localToken) localToken = s.localToken;
+
+  if (s.loading) {
+    setBusy(true, '正在加载模型…');
+  } else if (s.error) {
+    setBusy(false);
+    setStatus('err', '加载失败：' + s.error.slice(0, 70));
+    unloadBtn.disabled = !loaded;
+  } else if (loaded) {
+    setBusy(false);
+    const name = loaded.replace(/\.gguf$/i, '');
+    const think = supportsThinking ? '可思考' : '不支持思考';
+    if (modelSel.value && modelSel.value !== loaded) {
+      // 关键提示：用户改了下拉但没点加载
+      setStatus('busy', `当前跑的是 ${name}（${think}）· 下拉选的是另一个，点「加载」才切换`);
+    } else {
+      setStatus('on', `${name} · ${think} · 上下文 ${s.context} · ${s.layers} 层 · ${s.gpu}`);
+    }
+  } else {
+    setBusy(false);
+    setStatus('', `未加载模型 · ${s.models.length} 个可用`);
+  }
+  return s;
+}
+
+loadBtn.onclick = async () => {
+  const file = modelSel.value;
+  if (!file) return;
+  setBusy(true, `正在加载 ${file.replace(/\.gguf$/i, '')} …（首次可能要几十秒）`);
+  try {
+    const r = await fetch('/api/load', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ file, contextSize: Number(ctxSel.value) }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error?.message || ('HTTP ' + r.status));
+    clearHint();
+    history.length = 0;
+    msgsEl.innerHTML = '';
+    // 关键：重新拉一次 /api/state，把 loaded / supportsThinking 同步过来。
+    // 少了这一步，思考勾选框会沿用上一个模型的能力（曾导致 Qwen3.5 被误判为不支持思考）。
+    await refresh();
+    setStatus('on', `${file.replace(/\.gguf$/i, '')} · 上下文 ${j.context} · ${j.layers} 层 · 加载耗时 ${j.seconds}s`);
+  } catch (e) {
+    setBusy(false);
+    setStatus('err', '加载失败：' + e.message.slice(0, 80));
+  }
+};
+
+unloadBtn.onclick = async () => {
+  setBusy(true, '正在卸载…');
+  await fetch('/api/unload', { method: 'POST' });
+  history.length = 0;
+  msgsEl.innerHTML = '';
+  await refresh();
+};
+
+quitBtn.onclick = async () => {
+  if (!confirm('确定要退出本地 AI 服务吗？')) return;
+  try {
+    const r = await fetch('/api/shutdown', {
+      method: 'POST',
+      headers: { 'x-local-token': localToken },
+    });
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      setStatus('err', '退出失败：' + (j.error?.message || ('HTTP ' + r.status)));
+      return;
+    }
+  } catch {}
+  setStatus('', '服务已退出，可以关闭此窗口');
+  setBusy(true, '服务已退出');
+  dot.className = '';
+};
+
+// ---------------------------------------------------------------- Markdown 渲染
+// 安全前提：先整体 HTML 转义，再用自己的正则插入固定标签集合。
+// 模型输出里的任何原始 HTML 都会变成可见文本，无法执行。
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function mdInline(escaped) {
+  let s = escaped;
+  s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
+  s = s.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+  s = s.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
+  s = s.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, label, url) => {
+    if (!/^https?:\/\/[A-Za-z0-9\-._~:\/?#\[\]@!$&'()*+,;=%]+$/.test(url)) return m;
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+  });
+  return s;
+}
+
+function renderMarkdown(src) {
+  const codes = [];
+  // 先把围栏代码块抽出来，避免内部内容被当作 Markdown 处理
+  let t = String(src ?? '').replace(/```([^\n`]*)\n?([\s\S]*?)```/g, (m, lang, body) => {
+    codes.push({ lang: (lang || '').trim(), body });
+    return `\u0000C${codes.length - 1}\u0000`;
+  });
+
+  // 公式也先抽出：否则 LaTeX 里的 * _ \ 会被 Markdown 的加粗/斜体规则吃掉
+  const maths = [];
+  const stash = (tex, display) => {
+    maths.push({ tex, display });
+    return `\u0000M${maths.length - 1}\u0000`;
+  };
+  t = t.replace(/\$\$([\s\S]+?)\$\$/g, (m, tex) => stash(tex, true));
+  t = t.replace(/\\\[([\s\S]+?)\\\]/g, (m, tex) => stash(tex, true));
+  t = t.replace(/\\\(([\s\S]+?)\\\)/g, (m, tex) => stash(tex, false));
+  t = t.replace(/(^|[^\\$])\$([^\n$]+?)\$(?!\$)/g, (m, pre, tex) => pre + stash(tex, false));
+
+  // 流式生成中公式常常还没闭合（只收到了开头的 \[ 或 $$）。
+  // 配对的已经抽走了，这里把「到结尾仍未闭合」的也兜住，否则会一直闪现原始 LaTeX。
+  t = t.replace(/\$\$([\s\S]+)$/, (m, tex) => stash(tex, true));
+  t = t.replace(/\\\[([\s\S]+)$/, (m, tex) => stash(tex, true));
+  t = t.replace(/\\\(([\s\S]+)$/, (m, tex) => stash(tex, false));
+  t = t.replace(/(^|[^\\$])\$([^\n$]+)$/, (m, pre, tex) => pre + stash(tex, false));
+
+  const out = [];
+  let para = [], list = null, items = [], quote = [], table = null;
+
+  const flushPara = () => {
+    if (para.length) {
+      out.push('<p>' + mdInline(escapeHtml(para.join('\n'))).replace(/\n/g, '<br>') + '</p>');
+      para = [];
+    }
+  };
+  const flushList = () => {
+    if (list) {
+      out.push(`<${list}>` + items.map((li) => '<li>' + mdInline(escapeHtml(li)) + '</li>').join('') + `</${list}>`);
+      list = null; items = [];
+    }
+  };
+  const flushQuote = () => {
+    if (quote.length) {
+      out.push('<blockquote>' + mdInline(escapeHtml(quote.join('\n'))).replace(/\n/g, '<br>') + '</blockquote>');
+      quote = [];
+    }
+  };
+  const flushTable = () => {
+    if (table) {
+      const rows = table.filter((r) => !/^[\s|:-]+$/.test(r));
+      if (rows.length) {
+        const cells = (r) => r.replace(/^\s*\|/, '').replace(/\|\s*$/, '').split('|').map((c) => c.trim());
+        const head = cells(rows[0]);
+        const body = rows.slice(1).map(cells);
+        out.push(
+          '<table><thead><tr>' + head.map((h) => '<th>' + mdInline(escapeHtml(h)) + '</th>').join('') + '</tr></thead><tbody>' +
+          body.map((r) => '<tr>' + r.map((c) => '<td>' + mdInline(escapeHtml(c)) + '</td>').join('') + '</tr>').join('') +
+          '</tbody></table>',
+        );
+      }
+      table = null;
+    }
+  };
+  const flushAll = () => { flushPara(); flushList(); flushQuote(); flushTable(); };
+
+  for (const line of t.split('\n')) {
+    const codeRef = /^\u0000C(\d+)\u0000$/.exec(line);
+    if (codeRef) {
+      flushAll();
+      out.push('<pre><code>' + escapeHtml(codes[Number(codeRef[1])].body.replace(/\n$/, '')) + '</code></pre>');
+      continue;
+    }
+    if (/^\s*$/.test(line)) { flushAll(); continue; }
+
+    let m;
+    if ((m = /^(#{1,6})\s+(.*)$/.exec(line))) {
+      flushAll();
+      out.push(`<h${m[1].length}>` + mdInline(escapeHtml(m[2])) + `</h${m[1].length}>`);
+      continue;
+    }
+    if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) { flushAll(); out.push('<hr>'); continue; }
+    if ((m = /^\s*>\s?(.*)$/.exec(line))) { flushPara(); flushList(); flushTable(); quote.push(m[1]); continue; }
+    if ((m = /^\s*[-*+]\s+(.*)$/.exec(line))) {
+      flushPara(); flushQuote(); flushTable();
+      if (list !== 'ul') { flushList(); list = 'ul'; }
+      items.push(m[1]);
+      continue;
+    }
+    if ((m = /^\s*\d+[.)]\s+(.*)$/.exec(line))) {
+      flushPara(); flushQuote(); flushTable();
+      if (list !== 'ol') { flushList(); list = 'ol'; }
+      items.push(m[1]);
+      continue;
+    }
+    if (/^\s*\|.*\|\s*$/.test(line)) {
+      flushPara(); flushList(); flushQuote();
+      if (!table) table = [];
+      table.push(line);
+      continue;
+    }
+    flushList(); flushQuote(); flushTable();
+    para.push(line);
+  }
+  flushAll();
+  // 还原公式：连同定界符一起放回，交给 KaTeX 的 auto-render 处理
+  let html = out.join('');
+  html = html.replace(/\u0000M(\d+)\u0000/g, (m, i) => {
+    const mm = maths[Number(i)];
+    const d = mm.display ? '$$' : '$';
+    return escapeHtml(d + mm.tex + d);
+  });
+  return html;
+}
+
+/** 渲染正文：Markdown → 再对含公式的节点跑 KaTeX */
+function renderAssistant(el, text) {
+  el.innerHTML = renderMarkdown(text);
+  if (typeof window.renderMathInElement !== 'function') return;
+  if (!/\$|\\\(|\\\[/.test(text)) return; // 没有公式就跳过，省掉每帧扫描
+  try {
+    window.renderMathInElement(el, {
+      delimiters: [
+        { left: '$$', right: '$$', display: true },
+        { left: '\\[', right: '\\]', display: true },
+        { left: '$', right: '$', display: false },
+        { left: '\\(', right: '\\)', display: false },
+      ],
+      throwOnError: false,
+      errorColor: '#ff7b72',
+      ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
+    });
+  } catch (e) {
+    console.warn('KaTeX 渲染失败:', e);
+  }
+}
+
+// ---------------------------------------------------------------- 系统提示词面板
+const promptBtn = document.getElementById('promptBtn');
+const promptModal = document.getElementById('promptModal');
+const promptText = document.getElementById('promptText');
+const promptMeta = document.getElementById('promptMeta');
+const presetRow = document.getElementById('presetRow');
+
+const PRESETS = [
+  { name: '默认（内置）', text: '' },
+  { name: '代码助手', text: '你是一个资深软件工程师。回答以可运行的代码为主，代码块必须标注语言；只有在必要时才补充解释，不要空谈。' },
+  { name: '翻译', text: '你是一个专业翻译。只输出译文，不解释、不加注、不保留原文。中英互译时保持术语前后一致。' },
+  { name: '极简', text: '回答尽量简短：直接给结论，不要客套、铺垫和总结。' },
+  { name: '结构化', text: '用 Markdown 组织回答：先给出结论，再用分点列表展开，需要对比时用表格。' },
+  { name: '严格输出', text: '只输出要求的格式本身，不要任何前后缀说明、不要 Markdown 代码围栏之外的文字。' },
+];
+
+let sysPrompt = '';
+try { sysPrompt = localStorage.getItem('localai.sysPrompt') || ''; } catch {}
+
+/** 粗估 token 数（中文按字、英文按词） */
+function estimateTokens(s) {
+  const t = String(s || '');
+  const cjk = (t.match(/[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff]/g) || []).length;
+  const rest = t.replace(/[\u3400-\u9fff\uf900-\ufaff\u3040-\u30ff]/g, ' ');
+  const words = (rest.match(/[A-Za-z0-9_]+/g) || []).length;
+  const symbols = (rest.match(/[^\sA-Za-z0-9_]/g) || []).length;
+  return Math.round(cjk + words * 1.3 + symbols * 0.5);
+}
+
+function syncPromptBtn() {
+  promptBtn.classList.toggle('on', !!sysPrompt.trim());
+  promptBtn.title = sysPrompt.trim()
+    ? `已启用自定义提示词（约 ${estimateTokens(sysPrompt)} token）`
+    : '编辑系统提示词（每次对话都会带上）';
+}
+
+function updatePromptMeta() {
+  const v = promptText.value;
+  if (!v.trim()) {
+    promptMeta.textContent = '留空 = 使用内置默认';
+    return;
+  }
+  promptMeta.textContent = `${v.length} 字 · 约 ${estimateTokens(v)} token`;
+}
+
+function renderPresets() {
+  presetRow.innerHTML = '';
+  for (const p of PRESETS) {
+    const b = document.createElement('button');
+    b.className = 'chip';
+    b.type = 'button';
+    b.textContent = p.name;
+    b.onclick = () => {
+      promptText.value = p.text;
+      updatePromptMeta();
+      promptText.focus();
+    };
+    presetRow.appendChild(b);
+  }
+}
+
+function openPrompt() {
+  promptText.value = sysPrompt;
+  updatePromptMeta();
+  renderPresets();
+  promptModal.hidden = false;
+  promptText.focus();
+}
+
+function closePrompt() {
+  promptModal.hidden = true;
+}
+
+function savePrompt() {
+  sysPrompt = promptText.value.trim();
+  try { localStorage.setItem('localai.sysPrompt', sysPrompt); } catch {}
+  syncPromptBtn();
+  closePrompt();
+  setStatus(dot.className || '', sysPrompt ? '已应用自定义提示词' : '已恢复默认提示词');
+}
+
+promptBtn.onclick = openPrompt;
+document.getElementById('promptClose').onclick = closePrompt;
+document.getElementById('promptReset').onclick = () => {
+  promptText.value = '';
+  updatePromptMeta();
+};
+document.getElementById('promptSave').onclick = savePrompt;
+promptText.addEventListener('input', updatePromptMeta);
+promptModal.addEventListener('click', (e) => { if (e.target === promptModal) closePrompt(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !promptModal.hidden) closePrompt();
+});
+syncPromptBtn();
+
+// ---------------------------------------------------------------- 对话持久化
+// 刷新/断线/重启后从 localStorage 恢复，避免"全白跑了"
+const STORE_KEY = 'localai.transcript.v1';
+const MAX_STORED = 40;
+let transcript = [];
+try {
+  const raw = localStorage.getItem(STORE_KEY);
+  if (raw) {
+    const arr = JSON.parse(raw);
+    if (Array.isArray(arr)) transcript = arr;
+  }
+} catch {}
+
+function saveTranscript() {
+  try {
+    while (transcript.length > MAX_STORED) transcript.shift();
+    localStorage.setItem(STORE_KEY, JSON.stringify(transcript));
+  } catch {}
+}
+
+/** 统一的指标行格式化（实时渲染与恢复渲染共用） */
+function formatStats(usage, metrics) {
+  const parts = [];
+  if (usage) parts.push(`↑${usage.prompt_tokens} ↓${usage.completion_tokens} tok`);
+  if (metrics) {
+    parts.push(`${metrics.tokPerSec} tok/s`);
+    const seg = [`预填充 ${((metrics.prefillMs ?? 0) / 1000).toFixed(2)}s`];
+    if ((metrics.toolMs ?? 0) > 0) {
+      seg.push(`工具 ${(metrics.toolMs / 1000).toFixed(2)}s${metrics.toolCalls ? '×' + metrics.toolCalls : ''}`);
+    }
+    seg.push(`生成 ${((metrics.genMs ?? 0) / 1000).toFixed(1)}s`);
+    parts.push(seg.join(' → '));
+    parts.push(`共 ${(metrics.totalMs / 1000).toFixed(1)}s`);
+  }
+  return parts.join(' · ');
+}
+
+/** 重建一条助手消息（刷新后恢复用） */
+function renderStoredAssistant(entry) {
+  const row = document.createElement('div');
+  row.className = 'row assistant';
+  const who = document.createElement('div');
+  who.className = 'who';
+  who.textContent = '模型';
+  row.appendChild(who);
+
+  if (entry.reasoning) {
+    const box = document.createElement('details');
+    box.className = 'think';
+    const sum = document.createElement('summary');
+    sum.textContent = `思维过程（${entry.reasoning.length} 字）`;
+    const txt = document.createElement('div');
+    txt.className = 'thinkText';
+    txt.textContent = entry.reasoning;
+    box.append(sum, txt);
+    row.appendChild(box);
+  }
+
+  if (Array.isArray(entry.tools) && entry.tools.length) {
+    const tb = document.createElement('div');
+    tb.className = 'tools';
+    for (const t of entry.tools) {
+      const el = document.createElement('div');
+      el.className = 'tool';
+      const head = document.createElement('div');
+      const b = document.createElement('b');
+      b.textContent = '🔧 ' + t.name;
+      head.appendChild(b);
+      head.appendChild(document.createTextNode('  ' + (t.ms ?? 0) + ' ms'));
+      const io = document.createElement('div');
+      io.className = 'io';
+      io.textContent = '输入 ' + JSON.stringify(t.args) + '\n结果 ' + JSON.stringify(t.result);
+      el.append(head, io);
+      tb.appendChild(el);
+    }
+    row.appendChild(tb);
+  }
+
+  const out = document.createElement('div');
+  out.className = 'bubble';
+  renderAssistant(out, entry.content || '');
+  row.appendChild(out);
+
+  const stats = document.createElement('div');
+  stats.className = 'stats';
+  stats.textContent = formatStats(entry.usage, entry.metrics);
+  row.appendChild(stats);
+
+  msgsEl.appendChild(row);
+}
+
+/** 从 transcript 重建整个会话 */
+function renderStored() {
+  if (!transcript.length) return;
+  clearHint();
+  msgsEl.innerHTML = '';
+  for (const e of transcript) {
+    if (e.role === 'user') bubble('user', e.content);
+    else renderStoredAssistant(e);
+  }
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+
+/** 清空对话（连同 localStorage） */
+function newChat() {
+  if (transcript.length && !confirm('清空当前对话？')) return;
+  transcript = [];
+  history.length = 0;
+  saveTranscript();
+  msgsEl.innerHTML = '';
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.id = 'hint';
+  hint.textContent = '对话已清空。模型仍在内存里，可以直接提问。';
+  msgsEl.appendChild(hint);
+}
+
+function bubble(role, text) {
+  const row = document.createElement('div');
+  row.className = 'row ' + role;
+  const who = document.createElement('div');
+  who.className = 'who';
+  who.textContent = role === 'user' ? '你' : '模型';
+  const b = document.createElement('div');
+  b.className = 'bubble';
+  b.textContent = text;
+  row.append(who, b);
+  msgsEl.appendChild(row);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+  return b;
+}
+
+async function send(text) {
+  history.push({ role: 'user', content: text });
+  transcript.push({ role: 'user', content: text, t: Date.now() });
+  saveTranscript();
+  clearHint();
+  bubble('user', text);
+  input.value = '';
+  setBusy(true, '生成中…');
+
+  // 助手行 = 思维过程（可折叠） + 正文 + 指标
+  const row = document.createElement('div');
+  row.className = 'row assistant';
+  const who = document.createElement('div');
+  who.className = 'who';
+  who.textContent = '模型';
+  const thinkBox = document.createElement('details');
+  thinkBox.className = 'think';
+  thinkBox.hidden = true;
+  thinkBox.open = true;
+  const thinkSum = document.createElement('summary');
+  const thinkText = document.createElement('div');
+  thinkText.className = 'thinkText';
+  thinkBox.append(thinkSum, thinkText);
+  const out = document.createElement('div');
+  out.className = 'bubble';
+  out.textContent = '…';
+  const stats = document.createElement('div');
+  stats.className = 'stats';
+  const toolsBox = document.createElement('div');
+  toolsBox.className = 'tools';
+  row.append(who, thinkBox, toolsBox, out, stats);
+  msgsEl.appendChild(row);
+  msgsEl.scrollTop = msgsEl.scrollHeight;
+
+  let acc = '';
+  let reasoning = '';
+  let usage = null;
+  let metrics = null;
+  const toolList = [];
+  const scroll = () => { msgsEl.scrollTop = msgsEl.scrollHeight; };
+
+  // 流式渲染节流：KaTeX 每次全量重排比较重，80ms 合并一次，收尾时再强制补一帧
+  let renderTimer = null;
+  const paint = () => {
+    if (renderTimer) { clearTimeout(renderTimer); renderTimer = null; }
+    renderAssistant(out, acc);
+    scroll();
+  };
+  const schedulePaint = () => {
+    if (renderTimer) return;
+    renderTimer = setTimeout(() => { renderTimer = null; paint(); }, 80);
+  };
+
+  try {
+    // 自定义提示词拼在最前面（服务端会从 messages 里取 system 角色）
+    const outMessages = sysPrompt.trim()
+      ? [{ role: 'system', content: sysPrompt.trim() }, ...history]
+      : history;
+    const res = await fetch('/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        messages: outMessages,
+        stream: true,
+        max_tokens: 1024,
+        temperature: 0.7,
+        thinking: thinkChk.checked,
+        tools: toolChk.checked,
+      }),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error('HTTP ' + res.status + ' ' + t.slice(0, 160));
+    }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      for (const p of parts) {
+        const line = p.replace(/^data:\s*/, '').trim();
+        if (!line || line === '[DONE]') continue;
+        let j;
+        try { j = JSON.parse(line); } catch { continue; }
+        const d = j.choices?.[0]?.delta;
+        if (d && d.reasoning_content) {
+          reasoning += d.reasoning_content;
+          thinkText.textContent = reasoning;
+          thinkSum.textContent = `思维过程（${reasoning.length} 字）`;
+          thinkBox.hidden = false;
+          scroll();
+        }
+        if (d && d.tool) {
+          const t = d.tool;
+          toolList.push(t);
+          const el = document.createElement('div');
+          el.className = 'tool';
+          const head = document.createElement('div');
+          const b = document.createElement('b');
+          b.textContent = '🔧 ' + t.name;
+          head.appendChild(b);
+          head.appendChild(document.createTextNode('  ' + (t.ms ?? 0) + ' ms'));
+          const io = document.createElement('div');
+          io.className = 'io';
+          io.textContent =
+            '输入 ' + JSON.stringify(t.args) + '\n结果 ' + JSON.stringify(t.result);
+          el.append(head, io);
+          toolsBox.appendChild(el);
+          scroll();
+        }
+        if (d && d.content) {
+          acc += d.content;
+          schedulePaint();
+        }
+        if (j.usage) usage = j.usage;
+        if (j.metrics) metrics = j.metrics;
+      }
+    }
+    if (!acc) out.textContent = '(空回复)';
+  } catch (e) {
+    out.classList.add('err');
+    out.textContent = '请求失败：' + e.message;
+  } finally {
+    if (acc) { paint(); history.push({ role: 'assistant', content: acc }); }
+    stats.textContent = formatStats(usage, metrics);
+
+    // 落盘：断线/刷新后还能恢复
+    if (acc || reasoning || (toolList && toolList.length)) {
+      transcript.push({
+        role: 'assistant',
+        content: acc,
+        reasoning: reasoning || undefined,
+        usage: usage || undefined,
+        metrics: metrics || undefined,
+        tools: toolList && toolList.length ? toolList : undefined,
+        t: Date.now(),
+      });
+      saveTranscript();
+    }
+
+    // 会话累计
+    if (metrics) {
+      cum.turns += 1;
+      cum.ms += metrics.totalMs ?? 0;
+      cum.tools += metrics.toolCalls ?? 0;
+      cum.tokens += (usage?.completion_tokens ?? 0);
+      renderTotals();
+    }
+    setBusy(false);
+    if (loaded) setStatus('on', `${loaded.replace(/\.gguf$/i, '')} · 就绪`);
+    input.focus();
+    scroll();
+  }
+}
+
+$('send').onclick = () => {
+  const t = input.value.trim();
+  if (t && !busy && loaded) send(t);
+};
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    const t = input.value.trim();
+    if (t && !busy && loaded) send(t);
+  }
+});
+
+// 改下拉立刻刷新状态提示，让"选了但没加载"这件事马上显形
+modelSel.addEventListener('change', () => { refresh().catch(() => {}); });
+
+// 新对话按钮 + 启动时恢复上次的会话
+document.getElementById('newChatBtn').onclick = newChat;
+renderStored();
+
+refresh().catch((e) => setStatus('err', '无法连接服务：' + e.message));
+// 空闲时每 4 秒校准一次状态，防止外部改动或其他页面加载后本页状态失同步。
+// 注意：周期必须在创建时就是固定值——写成 loaded ? A : B 只会求值一次。
+setInterval(() => {
+  if (busy) return;
+  refresh().catch(() => {});
+}, 4000);
+input.focus();
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+langs: {"javascript":{"ok":true,"label":"JavaScript"},"python":{"ok":true,"label":"Python","hint":""},"java":{"ok":false,"label":"Java","hint":"未找到 JDK（javac/java），装好 JDK 17+ 后重启应用"},"cpp":{"ok":true,"label":"C++","hint":""},"c":{"ok":true,"label":"C","hint":""},"go":{"ok":false,"label":"Go","hint":"未找到 go"},"rust":{"ok":false,"label":"Rust","hint":"未找到 rustc"}}
+ok   语言列表含 JavaScript
+ok   语言列表含 Python
+ok   语言列表含 C++
+ok   Java 明确标为不可用或可用  [ok=false]
+ok   Python 执行成功  [{"ok":true,"lang":"python","code":0,"stdout":"你好 42\r\n","stderr":"","ms":209,"timedOut":false,"truncated":false}]
+ok   JavaScript 执行成功
+ok   C++ 编译并执行  [ms=9309]
+ok   Java 缺 JDK 时给出明确提示  [未找到 JDK（javac/java），装好 JDK 17+ 后重启应用]
+ok   缺本地令牌拒绝执行  [status=403]
+ok   未知语言被拒  [暂不支持 brainfuck]
+ok   空代码被拒  [代码为空]
+ok   超时会被杀掉  [10782ms]
+ok   输出超限会截断  [len=65536]
+
+RESULT 13/13
