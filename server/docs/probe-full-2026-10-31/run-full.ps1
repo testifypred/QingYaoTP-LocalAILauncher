@@ -9,21 +9,52 @@ $summary=Join-Path $out 'summary.txt'
 Remove-Item $summary -Force -ErrorAction SilentlyContinue
 $M='qwen2.5-7b-instruct-1m-q4_k_m.gguf'
 
-# 有一批界面/接口探针默认「模型已加载」（hero-modes / start-flow / status / ctx-panel /
-# small-features / session-jump / ui-tools / ui-web / auto-title / chat-plain）。
-# 10-31 那次没加载，它们全红——所以驱动自己先把模型装上，别指望环境。
-"# 预加载 $M" | Out-File -Append -Encoding utf8 $summary
-try {
-  $body = @{ file = $M; contextSize = 16384 } | ConvertTo-Json
-  $null = Invoke-RestMethod -Method Post -Uri ($base + '/api/load') -ContentType 'application/json' -Body $body -TimeoutSec 300
-  for ($i = 0; $i -lt 90; $i++) {
-    $st = Invoke-RestMethod ($base + '/api/state') -TimeoutSec 5
-    if ($st.loaded) { break }
-    Start-Sleep -Seconds 2
+# 有两件事不能让环境背锅，驱动自己负责：
+#  1) 一批探针默认「模型已加载」（hero-modes / start-flow / status / ctx-panel / small-features /
+#     session-jump / ui-tools / ui-web / auto-title / chat-plain），开跑前先装模型；
+#  2) Vulkan 后端在「生成中途断开」时可能 device lost 直接退出进程（已知问题 2）。裸跑 node
+#     没有启动器兜底，所以探针之间发现服务没了就拉起来、再把模型装回去。
+$restarts = 0
+
+function Test-Server {
+  try { $null = Invoke-RestMethod ($base + '/api/state') -TimeoutSec 5; return $true } catch { return $false }
+}
+
+function Start-Server {
+  $script:restarts++
+  $so = Join-Path $out ('server-restart-' + $script:restarts + '.out.txt')
+  $se = Join-Path $out ('server-restart-' + $script:restarts + '.err.txt')
+  $null = Start-Process -FilePath 'node' -ArgumentList 'app.mjs' -WorkingDirectory 'D:\LocalModels\server' -PassThru -WindowStyle Hidden -RedirectStandardOutput $so -RedirectStandardError $se
+  for ($i = 0; $i -lt 60; $i++) {
+    Start-Sleep -Milliseconds 1000
+    if (Test-Server) { return $true }
   }
-  ('  已加载: ' + (Invoke-RestMethod ($base + '/api/state') -TimeoutSec 5).loaded) | Tee-Object -Append -FilePath $summary
-} catch {
-  ('  预加载失败（后面的界面探针会因此变红）: ' + $_) | Tee-Object -Append -FilePath $summary
+  return $false
+}
+
+function Load-Model {
+  try {
+    $body = @{ file = $M; contextSize = 16384 } | ConvertTo-Json
+    $null = Invoke-RestMethod -Method Post -Uri ($base + '/api/load') -ContentType 'application/json' -Body $body -TimeoutSec 300
+    for ($i = 0; $i -lt 90; $i++) {
+      $st = Invoke-RestMethod ($base + '/api/state') -TimeoutSec 5
+      if ($st.loaded) { return $true }
+      Start-Sleep -Seconds 2
+    }
+  } catch { }
+  return $false
+}
+
+function Ensure-Server {
+  if (Test-Server) { return }
+  '  [driver] 服务已退出（多半是 Vulkan device lost），尝试拉起 …' | Tee-Object -Append -FilePath $summary
+  if (Start-Server) {
+    ('  [driver] 服务已起来，重新预加载 ' + $M) | Tee-Object -Append -FilePath $summary
+    if (Load-Model) { '  [driver] 模型已就绪' | Tee-Object -Append -FilePath $summary }
+    else { '  [driver] 模型没装回来，后面的界面探针可能变红' | Tee-Object -Append -FilePath $summary }
+  } else {
+    '  [driver] 拉不起来，后面的探针会全红' | Tee-Object -Append -FilePath $summary
+  }
 }
 
 $probes=@(
@@ -74,6 +105,9 @@ $probes=@(
   @{n='probe-second-opinion'; a=@($base); t=420}
 )
 "# full suite $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')  ($($probes.Count) probes)" | Out-File -Encoding utf8 $summary
+"# 预加载 $M" | Out-File -Append -Encoding utf8 $summary
+if (Load-Model) { ('  已加载: ' + $M) | Tee-Object -Append -FilePath $summary }
+else { '  预加载失败（后面的界面探针会因此变红）' | Tee-Object -Append -FilePath $summary }
 foreach ($p in $probes) {
   $o=Join-Path $logs ($p.n + '.out.txt'); $e=Join-Path $logs ($p.n + '.err.txt')
   Remove-Item $o, $e -Force -ErrorAction SilentlyContinue
@@ -91,7 +125,7 @@ foreach ($p in $probes) {
   $fails = if (Test-Path $o) { (Get-Content $o -Encoding utf8 | Select-String -Pattern ('FAIL|' + [char]0x274C) | Measure-Object).Count } else { '?' }
   $flag = if ($to) { 'TIMEOUT' } elseif ($proc.ExitCode -eq 0) { 'PASS' } else { 'FAIL(exit ' + $proc.ExitCode + ')' }
   ('{0,-24} {1,-14} {2,6}s fails={3} {4}' -f $p.n, $flag, $secs, $fails, $res.Trim()) | Tee-Object -Append -FilePath $summary
-  try { $null = Invoke-RestMethod ($base + '/api/state') -TimeoutSec 5 } catch { '  [driver] SERVER DOWN after ' + $p.n | Tee-Object -Append -FilePath $summary }
+  Ensure-Server
 }
 "# done $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" | Out-File -Append -Encoding utf8 $summary
 'FULL SUITE DONE'

@@ -31,6 +31,10 @@ server/docs/*.mp3
 server/docs/session-backups/
 server/docs/probe-full-*/logs/
 server/docs/probe-full-*/shots/
+server/docs/probe-full-*/rerun/
+server/docs/probe-full-*/server-restart-*
+# 驱动自己写的 summary.txt 是混合编码（表头 utf8 + 逐条 utf16），只作运行留档，正式汇总看 RESULT.md
+server/docs/probe-full-*/summary.txt
 
 # 解压第三方包时的临时目录
 tmp-*/

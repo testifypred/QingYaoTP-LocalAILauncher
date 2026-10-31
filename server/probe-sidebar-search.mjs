@@ -30,9 +30,25 @@ ws.on("message", (raw) => { const m = JSON.parse(raw.toString()); if (m.id && pe
 const send = (method, params = {}) => new Promise((res) => { const i = ++id; pend.set(i, res); ws.send(JSON.stringify({ id: i, method, params })); });
 const ev = async (e) => { const r = await send("Runtime.evaluate", { expression: e, returnByValue: true, awaitPromise: true }); if (r.result?.exceptionDetails) throw new Error(String(r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text).slice(0, 300)); return r.result?.result?.value; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// 输入后别迷信固定 sleep：搜索是 250ms 防抖 + 一次请求，负载高时 900ms 可能还没回来
+// （10-30/10-31 都因此红过）。这里等提示条出现结论再继续，最多 3s。
+const hintText = async () => String((await ev('document.getElementById("sessionSearchHint").textContent')) || "");
+const itemCount = async () => Number(await ev('document.querySelectorAll("#sessionList .sessionItem").length')) || 0;
+const waitItems = async (n, ms = 4000) => {
+  for (let i = 0; i < ms / 100; i++) { if ((await itemCount()) === n) return true; await sleep(100); }
+  return false;
+};
+
+// 输入后别迷信固定 sleep：搜索是 250ms 防抖 + 一次请求，负载高时 900ms 可能还没回来
+// （10-30/10-31 都因此红过）。但提示条会保留上一次的文本，所以必须「等到它变了」再继续。
 const type = async (q) => {
+  const before = await hintText();
   await ev('(() => { const i = document.getElementById("sessionSearch"); i.value = ' + JSON.stringify(q) + '; i.dispatchEvent(new Event("input", { bubbles: true })); return 1; })()');
-  await sleep(900);
+  for (let i = 0; i < 40; i++) {
+    await sleep(100);
+    const hint = await hintText();
+    if (hint && hint !== before && /条匹配|没有匹配|无匹配/.test(hint)) return;
+  }
 };
 const snapshot = async () => JSON.parse(await ev('JSON.stringify({ items: [...document.querySelectorAll("#sessionList .sessionItem")].map((x) => ({ id: x.dataset.id, t: x.querySelector(".t")?.textContent || "", snip: x.querySelector(".snip")?.textContent || "", marks: x.querySelectorAll("mark").length })), hint: document.getElementById("sessionSearchHint").textContent, empty: document.querySelector("#sessionList .sideEmpty")?.textContent || "" })'));
 
@@ -57,10 +73,10 @@ const s2 = await snapshot();
 ok("正文命中也能搜到", s2.items.some((x) => x.id === idB), JSON.stringify(s2.items.map((x) => x.id)));
 ok("片段里带正文上下文", s2.items[0]?.snip.includes("深空探测"), s2.items[0]?.snip);
 
-await ev('document.getElementById("sessionSearchClear").click(); 1');
-await sleep(600);
-const cleared = await snapshot();
 const total = (await api("/api/sessions")).j.sessions.length;
+await ev('document.getElementById("sessionSearchClear").click(); 1');
+await waitItems(total);
+const cleared = await snapshot();
 ok("✕ 清空后恢复完整列表", cleared.items.length === total && cleared.items.length >= 2, "items=" + cleared.items.length + " total=" + total);
 ok("清空后输入框是空的", (await ev('document.getElementById("sessionSearch").value')) === "");
 
@@ -69,7 +85,7 @@ const s3 = await snapshot();
 ok("无结果给出文案", s3.items.length === 0 && /没有匹配/.test(s3.empty), s3.empty);
 
 await ev('(() => { const i = document.getElementById("sessionSearch"); i.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); return 1; })()');
-await sleep(600);
+await waitItems(total);
 ok("Esc 也能清空", (await ev('document.getElementById("sessionSearch").value')) === "" && (await snapshot()).items.length === total);
 
 await fetch(APP + "/api/sessions/" + idA, { method: "DELETE" });

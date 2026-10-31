@@ -1180,6 +1180,55 @@ export async function run(args, ctx) {
 
 另：本轮用编辑器改 `run-full.ps1` 时 BOM 被悄悄剥掉了（前 3 字节从 `EF BB BF` 变成 `0A 24 62`）。已用 `ReadAllBytes` 补回，并**用 PowerShell 5.1 的 Parser 复验**通过——以后凡改 .ps1 都要做这两步。
 
+## 二十四、2026-10-31：45 条探针整跑（含两次 Vulkan 崩溃）与三处探针加固
+
+交接文档「下一步 1」是先把 45 条整跑钉住。这一轮做了，过程比预想的曲折：**第一次红在「没装模型」，第二次崩在 Vulkan**，最后 45 条全绿（其中 5 条是崩溃后单独复跑）。
+
+### 一、第一次整跑：11 条红，全是「模型没加载」
+
+驱动只跑探针、不装模型；而有一批探针默认「模型已加载」（`hero-modes` / `start-flow` / `status` / `ctx-panel` / `small-features` / `session-jump` / `ui-tools` / `ui-web` / `auto-title` / `chat-plain`）。结果 34 绿 11 红。
+
+加载 7B 后把这 11 条复跑，**全绿**——坐实是环境假设，不是代码回归。顺带发现 `probe-ui-backup` 也红两条：前面探针把 `sessions` 清空了，备份里自然 0 行。
+
+两处修掉（提交 `d5ba635`）：
+
+- 驱动开跑前自己 `POST /api/load`，探针没打结果行时不再对 `$null` 调 `.Trim()`；
+- `probe-ui-backup` 备份前若没有会话，自己造一个临时会话，跑完删掉。
+
+### 二、第二次整跑：Vulkan 崩了两次，反而验证了两个兜底
+
+| 时间 | 事件 |
+|---|---|
+| 22:52:3x | `probe-tools-agent` 的对话 500：`vk::Device::getFenceStatus: ErrorDeviceLost`，进程退出（已知问题 2） |
+| 22:52:40 | 驱动看护第 1 次拉起服务，重新预加载 7B |
+| 22:53:07 | 又一次 device lost |
+| 22:53:15 | 第 2 次拉起；应用按「10 分钟内崩两次」**自动切 CPU**（`server\vulkan-crash.log` 有了 3 条时间戳），此后稳定 |
+| 22:53:07 前后 | `probe-web-tools` / `probe-context-switch` / `probe-ui-preload` 撞在服务空档，秒退 |
+
+整跑 **40 绿 / 5 红**；这 5 条单独复跑**全绿**——注意是在 **CPU 后端**上跑的：7B 约 3 tok/s，`probe-tools-agent` 依然 24/24，`probe-kv-long` 首轮 70.4s、二三轮 1.6s / 1.4s、复用 99%。
+
+这一轮真正的收获不是「绿了」，而是**两个兜底同时被验证**：
+
+1. **驱动看护**（新加）：探针之间发现 `/api/state` 不通就 `Start-Process node app.mjs` 拉起、等端口、重新装模型。裸跑 node 时这是唯一的重启手段。
+2. **应用自愈**：崩溃后自己写好 `vulkan-crash.log`，下次启动读到 ≥2 条就切 CPU，并明确提示「删掉这个文件可恢复 Vulkan」。
+
+### 三、侧栏搜索探针：固定 sleep 是错的，要等状态
+
+`probe-sidebar-search` 在 10-30、10-31 各红过一次，都是「第二次搜索 900ms 内没换掉结果」。第一次修只改成「等到提示条出现结论」——**没用**：提示条会保留上一次的文本，于是立刻返回旧结论，反而多红了 3 条。
+
+正确写法：**等提示条变了且是结论**（`hint !== before && /条匹配|没有匹配/`）；清空后**轮询列表条数**回到总数，而不是 `sleep(600)`。改完连跑两次 11/11。
+
+### 四、结果
+
+`server\docs\probe-full-2026-10-31\RESULT.md`：**45 条探针 / 585 条断言 / 0 红**（585 = 上轮 562 + `probe-version` 14 + `probe-ui-version` 9），逐条标了「整跑通过」还是「崩溃后被波及、单独复跑」。
+
+### 五、遗留（都不算新缺陷）
+
+- `probe-tools-agent` 仍会触发 Vulkan device lost（已知问题 2：生成中途断开/中止），这台机器的固有取舍；
+- 驱动的 `summary.txt` 是**混合编码**：表头 `Out-File -Encoding utf8`、逐条 `Tee-Object -Append`（默认 UTF-16），一个文件两种编码，读的时候要分别解。下次统一改成 `[IO.File]::AppendAllText(..., UTF8)`；这一轮先用 `RESULT.md` 当正式汇总；
+- CPU 后端整跑会慢很多（`tools-agent` 80s → 分钟级），驱动里那些 300–420s 的上限要预留。
+
+
 ### 六、这一轮没做
 
 - **真·更新检查**：要做就得先定「版本清单从哪来」。没有分发通道就不做假按钮；将来做，按 `/api/version` 的形状比对即可。
