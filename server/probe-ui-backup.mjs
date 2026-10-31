@@ -63,6 +63,25 @@ const drives = JSON.parse(await ev('JSON.stringify([...document.querySelectorAll
 check("点了「选磁盘」列出可用磁盘", Array.isArray(drives) && drives.length >= 1, JSON.stringify(drives).slice(0, 120));
 check("磁盘按钮带剩余空间", drives.length > 0 && /剩\s*[\d.]+\s*GB/.test(drives[0]), drives[0] || "");
 
+// 后面要验「备份里的会话能列出来」：先确保至少有一个会话。
+// 有些探针（probe-ui-sessions / probe-sessions）会把 sessions 清空，那之后这里必然 0 行——
+// 10-31 那一轮就是栽在这上面（0 个会话 → 备份 0 行 → 两条红）。
+const sesBefore = await api("/api/sessions");
+const beforeCount = Array.isArray(sesBefore.j?.sessions) ? sesBefore.j.sessions.length : 0;
+let createdSession = "";
+if (beforeCount === 0) {
+  const made = await api("/api/sessions", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      title: "探针临时会话",
+      messages: [{ role: "user", content: "备份用的一句话", t: Date.now() }],
+    }),
+  });
+  createdSession = made.j?.id || "";
+}
+console.log("  备份前会话数: " + beforeCount + (createdSession ? "（补了一个 " + createdSession + "）" : ""));
+
 // 填目录 + 打开开关 + 立即备份
 await ev('(() => { const d = document.getElementById("setBackupDir"); d.value = ' + JSON.stringify(TARGET) + '; d.dispatchEvent(new Event("input", { bubbles: true })); document.getElementById("setBackupOn").checked = true; return 1; })()');
 await ev('document.getElementById("setBackupNow").click(); 1');
@@ -102,6 +121,9 @@ const info2 = String(await ev('document.getElementById("setBackupInfo").textCont
 check("关掉后状态文字回到未开启", /未开启/.test(info2), info2.slice(0, 80));
 
 await rm(TARGET, { recursive: true, force: true }).catch(() => {});
+if (createdSession) {
+  await fetch(APP + "/api/sessions/" + encodeURIComponent(createdSession), { method: "DELETE" }).catch(() => {});
+}
 await api("/api/backup", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled: false, dir: "" }) }).catch(() => {});
 console.log("\n== 结果: " + pass + " 通过 / " + fail + " 失败 ==\n");
 ws.close();
