@@ -1478,6 +1478,64 @@ Windows 任务栏要 16/24/32px，只能缩——所以永远发虚。
 DPI 不感知的 PowerShell 里调用 `GetWindowRect` 得到的是**虚拟化后**的尺寸（2065×1505 变成 1180×860），
 于是 `PrintWindow` 只截到左上角一块。抓图脚本开头也要 `SetProcessDpiAwarenessContext(-4)`。
 
+## 三十二、2026-11-01 会话收尾：这一轮到底改了什么（索引）
+
+这个会话从「读交接文档」开始，一共 15 个提交（`b6a9175` → `af0eb0c`）。按主题列一下，方便下个会话按需回看：
+
+### 一、工程基建
+
+| 提交 | 内容 |
+|---|---|
+| `b6a9175` | 代码入库（基线）：322 文件 / 26.9MB，`.gitignore` 挡模型/发布包/运行数据，`.gitattributes` 保证字节不变 |
+| `d9f5147` | v1.0.0：`APP_VERSION` 单一来源、`/api/version`、设置→关于；构建标识只认「文件被 git 跟踪」 |
+
+### 二、验证体系
+
+| 提交 | 内容 |
+|---|---|
+| `d5ba635` | 驱动开跑前预加载 7B；`probe-ui-backup` 自造会话；`.Trim()` 空值崩溃 |
+| `501f5da` | **45 条 / 585 断言全绿**；驱动加「服务挂了自动拉起 + 重装模型」；`probe-sidebar-search` 去掉固定 sleep |
+| （11-01）| 新增 `probe-debug`（25）、`probe-ui-debug`（19）；全量驱动扩到 47 条 |
+
+### 三、Debugging Tool
+
+| 提交 | 内容 |
+|---|---|
+| `b235e7b` | `buildDiag()` 17 项检查、`/debug` 页、`localai-debug.mjs`（`--ui`/`--json`/`--logs`）、顶栏 Debug 按钮 |
+| `d4ae1a4` | 调试窗口改成独立 `DebugTool.exe`（WebView2 宿主 + `debug.ico`），任务栏图标不再糊 |
+| `af0eb0c` | DPI：显式 `SetProcessDpiAwarenessContext(-4)` + `GetDpiForWindow` 定尺寸（否则 175% 屏上又小又糊） |
+
+### 四、品牌与图标
+
+| 提交 | 内容 |
+|---|---|
+| `1ebda27` | 模型按钮迷你标记（第一版，∂） |
+| `dd1ca9b` | 恢复本体 `∫`；黑底块字色固定 `#f6f8fa`（原来跟 `--text`，浅色主题下看不见） |
+| `cb65012` | **两套身份分开**：本体 `∫+AI`、调试 `∂+AI+?`；启动器重编译 |
+| `868f0d7` | 原始白底图标归档到 `server\icons\`；桌面快捷方式 `IconLocation` 改指 `localai.ico` |
+| `e1fa8f1` | 顶栏窄窗（175% 缩放 ~850 CSS px）不再挤成竖排；16/32px 图标用简化稿 |
+
+### 五、打包
+
+| 提交 | 内容 |
+|---|---|
+| `cb85870` | 打包清单补调试工具四个文件 |
+| `7111ecb` | 打包清单补 `doc-extract.mjs`——**这一条漏了会让整包起不来**（10-29 起一直是手工拷的）；`technique\05` 新增「打包后必须自检」清单 |
+
+### 六、这一轮新踩的坑（都写进 `technique\07` / `08`）
+
+1. **启动器是单实例**：`Start-Process` 只激活旧实例，不会重启服务（误判成「代码没生效」花了不少时间）；
+2. **打包脚本不报错 ≠ 包完整**：漏一个 import 的文件，包就起不来；
+3. **PowerShell 的 `>` 写二进制会变成 UTF-16**：从 git 取 ico 必须 `cmd /c`；
+4. **DPI 三件套**：清单不够，要显式声明 + 用 `GetDpiForWindow` + 在 `Load` 里定尺寸；连抓图脚本都得先声明；
+5. **`$env:ProgramFiles(x86)`** 在 PowerShell 里取不到值，要写 `${env:ProgramFiles(x86)}`。
+
+### 七、收尾状态
+
+- 15 个提交，工作区干净，HEAD = `af0eb0c`；
+- 应用在 `dist\LocalAI` 跑着（v1.0.0，`buildSource=mtime`），调试窗口 `DebugTool.exe` 可正常打开；
+- **47 条全量尚未整跑**；`build-portable.ps1` 新增的「编译 DebugTool.exe」步骤也还没整跑验证。
+
 
 
 
