@@ -161,7 +161,10 @@ header::after{
   background:linear-gradient(90deg,transparent,var(--cyan),var(--violet),transparent);
   opacity:.6;
 }
-.topbar{display:flex;align-items:center;gap:12px;min-width:0}
+/* 窄窗（例如 175% 缩放下的 850 CSS px）放不下时：换行，而不是把按钮压到文字竖排、把主题键挤出屏幕 */
+.topbar{display:flex;align-items:center;gap:12px;min-width:0;flex-wrap:wrap;row-gap:8px}
+.topbar > *{flex:none}
+.topbar button{white-space:nowrap}
 .brand{display:flex;align-items:center;gap:10px;flex:none;user-select:none}
 .brand .logo{
   width:32px;height:32px;border-radius:9px;display:grid;place-items:center;

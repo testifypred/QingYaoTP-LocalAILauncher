@@ -86,6 +86,24 @@ await send("Page.navigate", { url: BASE + "/" });
 await sleep(2200);
 ok("能回到主界面", await ev("!!document.getElementById('debugBtn')"));
 
+// ---- 窄窗回归：175% 缩放下窗口只有 ~850 CSS px ----
+// 11-01 加 Debug 按钮后，顶栏在窄窗里把按钮压到文字竖排、主题键被挤出屏幕。
+// 断言「按钮不竖排 + 页面不横向溢出」，防止下次再加按钮时复发。
+await send("Emulation.setDeviceMetricsOverride", { width: 850, height: 700, deviceScaleFactor: 1, mobile: false });
+await send("Page.navigate", { url: BASE + "/" });
+await sleep(2600);
+const narrow = await ev(`(() => {
+  const btns = [...document.querySelectorAll("header button")].filter(b => b.getBoundingClientRect().width > 0);
+  const stacked = btns.filter(b => b.getBoundingClientRect().height > 44).map(b => (b.textContent || "").trim());
+  return { win: innerWidth, bodyScroll: document.body.scrollWidth, stacked: stacked, headerH: Math.round(document.querySelector("header").getBoundingClientRect().height) };
+})()`);
+ok("窄窗（850px）按钮不竖排", narrow.stacked.length === 0, JSON.stringify(narrow.stacked));
+ok("窄窗不横向溢出", narrow.bodyScroll <= narrow.win + 2, narrow.bodyScroll + " vs " + narrow.win);
+ok("窄窗顶栏允许换行（高度 > 60）", narrow.headerH > 60, "headerH=" + narrow.headerH);
+await send("Emulation.clearDeviceMetricsOverride");
+await send("Page.navigate", { url: BASE + "/" });
+await sleep(2000);
+
 console.log("\nRESULT " + pass + "/" + (pass + fail));
 ws.close();
 process.exit(fail ? 1 : 0);

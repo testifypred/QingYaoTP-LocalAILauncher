@@ -1271,6 +1271,44 @@ export async function run(args, ctx) {
 - 图标 16px 下 `?` 基本糊掉（32px 尚可）——小尺寸已是极简形式，再压只能去掉 `?`；
 - 调试程序目前是 `.cmd`（自带 runtime 时优先用它），**没做成独立 exe**：要 exe 得用 csc 包一层，和启动器一样重编译。
 
+## 二十六、2026-11-01：修「顶栏挤坏」与「小尺寸图标糊掉」
+
+用户截图反馈：顶栏按钮变成竖排的「文/件」、最右边的主题键被切掉、窗口图标糊成一团。三条根因，不在同一个层面。
+
+### 一、顶栏：nowrap 的 flex + 可收缩的按钮
+
+`.topbar` 原来是 `display:flex` 且不换行，按钮没有 `white-space:nowrap`、默认还能收缩。175% 缩放下窗口 CSS 宽度只有 ~850px，加上新加的 Debug 按钮后放不下 —— 浏览器不会报错，它只是**把每个按钮压窄、文字折成竖排**，再把最后一个挤出屏幕。
+
+修法（`app.html`）：
+
+```css
+.topbar{display:flex;align-items:center;gap:12px;min-width:0;flex-wrap:wrap;row-gap:8px}
+.topbar > *{flex:none}
+.topbar button{white-space:nowrap}
+```
+
+实测三档：850px → 顶栏 107px 两行、无竖排、页面不横向溢出；1100/1452px → 仍是一行 60px。
+
+### 二、图标：16px 里塞了三个元素
+
+`localai.ico` 的 16/32 是从 512 完整稿（∂ + AI + ?）缩下来的，16px 下三个元素叠成一团墨。
+
+改成**按尺寸选源稿**：16px 只画一个大 `∂`；32px 画 `∂` + 角落小 `?`；48px 以上才用完整稿。`docs\resize-icon.ps1` 按这个映射缩放，`make-ico.mjs` 照旧打包。
+
+### 三、流程：我改源码，你跑发布包
+
+最关键的一条：布局修复只落在 `server\app.html`，而用户双击的是 `dist\LocalAI\启动本地AI.exe`，它读的是 `dist\LocalAI\app\app.html`。**没同步 = 没修**。
+
+这也解释了为什么我自己的 headless 测试「看起来没问题」：测的是源码端口，用户看的是发布包。以后改完 UI 要**两份都验**，并且**在窄窗下验**。
+
+### 四、验证与收尾
+
+- `probe-ui-debug` 从 16 条加到 **19 条**：新增「850px 下按钮不竖排」「不横向溢出」「顶栏允许换行」三条；
+- 发布包：重编译启动器（新 ico，58368 字节）+ 同步 app.mjs / app.html / debug.html / localai-debug.*；
+- 应用已用新代码重启（服务 `v1.0.0`，`buildSource=mtime`）；
+- 教训写进 `technique\07-坑与约定.md`。
+
+
 
 ### 五、遗留（都不算新缺陷）
 
