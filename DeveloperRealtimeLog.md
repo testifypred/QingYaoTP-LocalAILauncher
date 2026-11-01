@@ -1369,6 +1369,39 @@ export async function run(args, ctx) {
 
 验证：取回后头部是 `00 00 01 00`，大小 12543 字节，与原始一致；再从里面导出 256px PNG 存成 `original-white.png`。
 
+## 二十九、2026-11-01：真跑一次打包，抓到「包里缺 doc-extract.mjs」
+
+用户选了「A：先把包的安全性钉死」。跑了完整 `build-portable.ps1`，结果**挖出一个会让整个发布包起不来的缺陷**。
+
+### 一、doc-extract.mjs 从来没进过打包清单
+
+`app.mjs` 第一行就 `import { extractTextBuffer } from "./doc-extract.mjs"`，但 `build-portable.ps1` 的复制清单里**从来没有这个文件**。
+
+为什么之前没暴露：10-29 加 RAG 抽取功能时，是**手工**把 `doc-extract.mjs` 拷进 `dist\LocalAI\app\` 的，之后所有验证都跑在那份手工拷贝上。这次重新打包（先清空 dist），包里的 `app\doc-extract.mjs` 直接没了，**exe 双击也起不来**。
+
+修法：清单 + 依赖检查都补上（缺文件时 `Die`，别静默通过）。补回后启动成功、`probe-rag` 16/16。
+
+### 二、这轮打包的其余结果
+
+| 项 | 结果 |
+|---|---|
+| 产物体积 | 258.1 MB / **3439** 文件（比上次多 4 个＝调试工具那四个） |
+| 调试工具四个文件 | `debug.html` / `localai-debug.mjs` / `localai-debug.cmd` / `debug-icon-64.png` 都在 |
+| 图标 | 根目录 `localai.ico`（31308 字节）；exe 内嵌图标读回来是 `∫ + AI` |
+| 源码一致性 | app.mjs / app.html / doc-extract.mjs 三份 SHA256 与 `server\` 相同 |
+| 包内自检 | `GET /debug` 200、`GET /debug-icon.png` 200、无令牌 `POST /api/debug/open` 403 |
+| 包内探针 | `probe-debug` **25/25**、`probe-rag` **16/16** |
+
+### 三、桌面图标
+
+`本地 AI.lnk` 的 `IconLocation` 已改指 `dist\LocalAI\localai.ico,0`，并跑了 `ie4uinit -show` + 重启 Explorer 清缓存。以后换图标不用重建快捷方式。
+
+### 四、给打包加的「自检清单」
+
+`technique\05-打包与部署.md` 新增一节：**打包后必须自检**（关键文件齐 / 三份哈希 / 能不能起 / 调试工具三条接口 / 两条探针）。
+这次的事说明：打包脚本不报错 ≠ 包是完整的。
+
+
 
 
 

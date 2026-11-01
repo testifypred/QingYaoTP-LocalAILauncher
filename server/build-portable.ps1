@@ -34,6 +34,8 @@ function Die($msg) { Write-Host "!!  $msg" -ForegroundColor Red; exit 1 }
 foreach ($need in @(
     (Join-Path $Server 'app.mjs'),
     (Join-Path $Server 'app.html'),
+    # app.mjs 里 import 了它（docx/pdf 抽文本）；漏了整包起不来
+    (Join-Path $Server 'doc-extract.mjs'),
     (Join-Path $Server 'localai.mjs'),
     (Join-Path $Server 'localai.cmd'),
     (Join-Path $Server 'localai-tui.mjs'),
@@ -92,6 +94,7 @@ if ($dataBackup) { Move-Item $dataBackup (Join-Path $resolved 'data') -Force }
 Step '复制服务端与界面'
 Copy-Item (Join-Path $Server 'app.mjs') $AppDir -Force
 Copy-Item (Join-Path $Server 'app.html') $AppDir -Force
+Copy-Item (Join-Path $Server 'doc-extract.mjs') $AppDir -Force
 # 命令行客户端：跟着 app 一起进包，npm 那套东西它一样不依赖
 Copy-Item (Join-Path $Server 'localai.mjs') $AppDir -Force
 Copy-Item (Join-Path $Server 'localai.cmd') $AppDir -Force
