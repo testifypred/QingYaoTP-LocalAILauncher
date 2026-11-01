@@ -50,6 +50,17 @@ pre{background:#05060a;border:1px solid var(--line);border-radius:8px;padding:10
 .seg button.sel{background:rgba(34,211,238,.14);border-color:var(--cyan);color:var(--cyan)}
 .hint{color:var(--dim);font-size:11.5px}
 .err{border-color:rgba(248,113,113,.5)}
+/* 实时资源卡 */
+.met{margin-bottom:9px}
+.metTop{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:12px;color:var(--dim);margin-bottom:4px}
+.metTop b{font-family:var(--mono);color:var(--text);font-size:12.5px;font-weight:600;text-align:right}
+.bar{height:7px;border-radius:999px;background:#1b2130;border:1px solid var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,#22d3ee,#38bdf8);transition:width .45s ease,background .3s}
+.bar i.warn{background:linear-gradient(90deg,#fbbf24,#f59e0b)}
+.bar i.err{background:linear-gradient(90deg,#f87171,#ef4444)}
+.resNote{color:var(--dim);font-size:11px;font-family:var(--mono);margin-top:4px;word-break:break-word}
+#resSpark{display:block;width:100%;height:56px;margin-top:10px;border:1px solid var(--line);border-radius:8px;background:#05060a}
+#resCard .kv{margin-top:10px}
 </style>
 </head>
 <body>
@@ -69,6 +80,22 @@ pre{background:#05060a;border:1px solid var(--line);border-radius:8px;padding:10
   </div>
 
   <div style="display:grid;gap:14px;align-content:start">
+    <div class="card" id="resCard">
+      <h2>实时资源 <span class="hint" id="resUpdated">等待采样…</span></h2>
+      <div class="met">
+        <div class="metTop"><span>CPU 占用</span><b id="resCpu">—</b></div>
+        <div class="bar"><i id="resCpuBar" style="width:0%"></i></div>
+        <div class="resNote" id="resCpuNote">—</div>
+      </div>
+      <div class="met">
+        <div class="metTop"><span>内存</span><b id="resMem">—</b></div>
+        <div class="bar"><i id="resMemBar" style="width:0%"></i></div>
+        <div class="resNote" id="resMemNote">—</div>
+      </div>
+      <div class="kv" id="resKv"></div>
+      <canvas id="resSpark" width="560" height="56"></canvas>
+      <div class="resNote">最近 60 次采样（约 2 分钟）· 青 = CPU% · 紫 = 内存% · 黄虚线 = 70%</div>
+    </div>
     <div class="card">
       <h2>运行环境</h2>
       <div class="kv" id="env"></div>
@@ -138,6 +165,118 @@ function fmtUptime(sec) {
   if (s < 5400) return Math.round(s / 60) + ' 分钟';
   return (s / 3600).toFixed(1) + ' 小时';
 }
+function fmtMB(n) { return Math.round(Number(n) || 0) + ' MB'; }
+
+// ---------------------------------------------------------------- 实时资源
+// 2 秒轮询 /api/diag/resources；CPU 首次采样为 null（服务刚起没有基准），先显示「—」，
+// 1 秒后自动补采一次，之后每 2 秒刷新。条形颜色按阈值：>=70% 黄、>=90% 红。
+let resLast = null;
+const resHist = [];
+let resRetry = 0;
+
+function barLevel(pct) { return pct >= 90 ? 'err' : pct >= 70 ? 'warn' : ''; }
+function setBar(el, pct) {
+  const p = Math.max(0, Math.min(100, Number(pct) || 0));
+  el.style.width = p + '%';
+  el.className = barLevel(p);
+}
+
+function drawSpark() {
+  const cv = $('resSpark');
+  if (!cv) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(240, Math.round(cv.clientWidth || 560)), h = 56;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+  }
+  const ctx = cv.getContext('2d');
+  if (!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const top = 4, span = h - 8;
+  const yOf = (v) => top + span * (1 - Math.max(0, Math.min(100, v)) / 100);
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(36,43,55,.9)';
+  for (const f of [0, 0.5, 1]) {
+    const y = Math.round(top + span * f) + 0.5;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+  }
+  const y70 = Math.round(yOf(70)) + 0.5;
+  ctx.save();
+  ctx.setLineDash([3, 4]);
+  ctx.strokeStyle = 'rgba(251,191,36,.35)';
+  ctx.beginPath(); ctx.moveTo(0, y70); ctx.lineTo(w, y70); ctx.stroke();
+  ctx.restore();
+  const n = resHist.length;
+  if (!n) return;
+  // 不足 60 个点时按全宽铺开（刚打开页面也像折线图）；满 60 点后就是左→右的时间序列
+  const slot = (i) => (n <= 1 ? w / 2 : (i / (n - 1)) * w);
+  const drawLine = (key, color) => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.6;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < n; i++) {
+      const v = resHist[i][key];
+      if (v == null) { started = false; continue; }
+      const x = slot(i), y = yOf(v);
+      if (started) ctx.lineTo(x, y); else { ctx.moveTo(x, y); started = true; }
+    }
+    ctx.stroke();
+    for (let i = n - 1; i >= 0; i--) {
+      const v = resHist[i][key];
+      if (v == null) continue;
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(slot(i), yOf(v), 2, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+  };
+  drawLine('mem', '#a78bfa');
+  drawLine('cpu', '#22d3ee');
+}
+
+function renderRes(r) {
+  if (!r) return;
+  resLast = r;
+  const cpu = r.cpu || {}, mem = r.mem || {}, proc = r.proc || {}, mdl = r.model || {};
+  const cpuPct = typeof cpu.usagePct === 'number' ? cpu.usagePct : null;
+  $('resCpu').textContent = cpuPct == null ? '—' : cpuPct + '%';
+  setBar($('resCpuBar'), cpuPct == null ? 0 : cpuPct);
+  $('resCpuNote').textContent = (cpu.cores ? cpu.cores + ' 核 · ' + (cpu.model || '') : '—') + (cpuPct == null ? ' · 首次采样中，1 秒后补上' : '');
+  const memPct = Math.max(0, Math.min(100, Number(mem.usedPct) || 0));
+  $('resMem').textContent = fmtGB(mem.usedGB) + ' / ' + fmtGB(mem.totalGB) + ' · ' + memPct + '%';
+  setBar($('resMemBar'), memPct);
+  $('resMemNote').textContent = '空闲 ' + fmtGB(mem.freeGB);
+  kvRows($('resKv'), [
+    ['进程', 'pid ' + (proc.pid || '—') + ' · RSS ' + fmtMB(proc.rssMB) + ' · heap ' + fmtMB(proc.heapUsedMB) + ' · 外部 ' + fmtMB(proc.externalMB)],
+    ['磁盘', r.disk && r.disk.path ? '剩余 ' + fmtGB(r.disk.freeGB) + ' / ' + fmtGB(r.disk.totalGB) + ' · ' + r.disk.path : '—（取不到）'],
+    ['模型', (mdl.file || '未加载') + (mdl.context ? ' · ' + mdl.context + ' tok' : '')],
+    ['后端', (mdl.gpu === 'vulkan' ? 'Vulkan（核显）' : (mdl.gpu || '—')) + ' · KV 量化 ' + (mdl.kvQuant || '—')],
+    ['并发', (mdl.activeChats || 0) + ' 个进行中 · KV 缓存常驻 ' + (mdl.cachedTokens || 0) + ' token'],
+    ['崩溃', (r.crash || 0) + ' 条（近 10 分钟）'],
+  ]);
+  $('resUpdated').textContent = '· ' + fmtTime(r.now) + ' · 每 2 秒刷新';
+  resHist.push({ cpu: cpuPct, mem: memPct });
+  while (resHist.length > 60) resHist.shift();
+  drawSpark();
+  if (cpuPct == null && !resRetry) {
+    resRetry = setTimeout(() => {
+      resRetry = 0;
+      if (document.visibilityState === 'visible') loadRes().catch(() => {});
+    }, 1100);
+  }
+}
+
+async function loadRes() {
+  const r = await api('/api/diag/resources');
+  if (r.status !== 200) {
+    $('resUpdated').textContent = '· 接口不可用 HTTP ' + r.status;
+    return;
+  }
+  renderRes(r.j);
+}
 
 function render() {
   if (!diag) return;
@@ -176,6 +315,7 @@ function render() {
     ['上下文', m.context ? m.context + ' tok' : '—'],
     ['层数', m.layers || '—'],
     ['KV 缓存', (m.kvReuse ? '复用开' : '复用关') + ' · 常驻 ' + (m.cachedTokens || 0) + ' token'],
+    ['KV 量化', (m.kvQuant || '—') + (m.kvQuantFallback ? '（回退：' + m.kvQuantFallback + '）' : '')],
     ['模型库', (m.count || 0) + ' 个 .gguf'],
   ]);
 
@@ -213,6 +353,13 @@ function reportText() {
   lines.push('生成时间: ' + fmtTime(diag.now));
   lines.push('服务: 127.0.0.1:' + diag.server.port + ' · pid ' + diag.server.pid + ' · 后端 ' + diag.server.gpu);
   lines.push('系统: ' + diag.system.platform + ' ' + diag.system.arch + ' · ' + diag.system.cpus + ' 核 · 内存 ' + fmtGB(diag.system.totalGB) + '（可用 ' + fmtGB(diag.system.freeGB) + '） · node ' + diag.system.node);
+  if (resLast) {
+    const rc = resLast.cpu || {}, rm = resLast.mem || {}, rp = resLast.proc || {}, rd = resLast.disk;
+    lines.push('实时资源: CPU ' + (typeof rc.usagePct === 'number' ? rc.usagePct + '%' : '—') +
+      ' · 内存 ' + fmtGB(rm.usedGB) + '/' + fmtGB(rm.totalGB) + ' (' + (rm.usedPct || 0) + '%)' +
+      ' · 进程 RSS ' + fmtMB(rp.rssMB) +
+      ' · 磁盘剩余 ' + (rd && rd.path ? fmtGB(rd.freeGB) : '—'));
+  }
   lines.push('模型: ' + (diag.model.file || '未加载') + ' · 上下文 ' + diag.model.context + ' · ' + diag.model.layers + ' 层 · KV ' + diag.model.cachedTokens);
   lines.push('--- 检查 ---');
   for (const c of diag.checks) {
@@ -228,6 +375,7 @@ $('logApp').onclick = () => { logWhich = 'app'; $('logApp').classList.add('sel')
 $('logCrash').onclick = () => { logWhich = 'crash'; $('logCrash').classList.add('sel'); $('logApp').classList.remove('sel'); loadLog(); };
 
 $('copy').onclick = async () => {
+  if (!resLast) await loadRes().catch(() => {});
   const t = reportText();
   try { await navigator.clipboard.writeText(t); } catch {
     const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
@@ -252,7 +400,9 @@ $('ragRebuild').onclick = () => act('/api/rag/rebuild', {}, '文档索引已重�
 $('unload').onclick = () => act('/api/unload', {}, '模型已卸载，内存已释放');
 
 loadDiag().then(loadLog).catch(() => {});
+loadRes().catch(() => {});
 setInterval(() => { if (document.visibilityState === 'visible') loadDiag().catch(() => {}); }, 5000);
+setInterval(() => { if (document.visibilityState === 'visible') loadRes().catch(() => {}); }, 2000);
 </script>
 </body>
 </html>

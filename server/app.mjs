@@ -210,6 +210,14 @@ async function buildDiag() {
     const cached = state.sequence?.nextTokenIndex ?? 0;
     add("kv", "ok", "KV 缓存", `常驻序列 ${Number(cached) || 0} token · 复用 ${KV_REUSE ? "开" : "关"}`,
       KV_REUSE ? "" : "KV 复用关着（kvReuse=0）：每轮都会整段重算，慢但不影响正确性");
+    const kvQ = state.kvQuant;
+    add("kvquant",
+      kvQ === "q8_0" ? "ok" : KV_QUANT_ON ? "warn" : "ok",
+      "KV 缓存量化",
+      kvQ === "q8_0" ? "q8_0（同样内存下上下文翻倍）" : kvQ === "f16" ? "f16（未量化）" : "未加载",
+      KV_QUANT_ON && kvQ === "f16"
+        ? "量化没生效：" + (state.kvQuantFallback || "后端不支持（需要 flash attention）") + "；可试 KV_QUANT=q4_0"
+        : "");
   } else {
     add("loaded", "warn", "已加载模型", "未加载（连界面都不能问答）", "点左上角「∫ 模型」选一个加载，或看「模型」页");
   }
@@ -274,7 +282,7 @@ async function buildDiag() {
     now: new Date().toISOString(),
     version: { version: APP_VERSION, commit: BUILD.commit, dirty: BUILD.dirty, builtAt: BUILD.builtAt },
     server: { port: PORT, pid: process.pid, uptimeSec: Math.round(process.uptime()), activeChats, gpu, backendNote: backendNote.text },
-    model: { file: state.file || "", context: state.contextSize || 0, layers: state.layers || 0, cachedTokens: state.sequence?.nextTokenIndex ?? 0, kvReuse: KV_REUSE, count: models.length },
+    model: { file: state.file || "", context: state.contextSize || 0, layers: state.layers || 0, cachedTokens: state.sequence?.nextTokenIndex ?? 0, kvReuse: KV_REUSE, kvQuant: state.kvQuant, kvQuantFallback: state.kvQuantFallback, count: models.length },
     system: { totalGB, freeGB, cpus: os.cpus().length, platform: os.platform(), arch: os.arch(), node: process.version },
     paths: { dir: HERE, modelDir: MODEL_DIR, sessions: SESSION_DIR, logs: logCandidates().find((p) => existsSync(p)) || logCandidates()[0], crashLog: CRASH_LOG },
     checks,
@@ -283,6 +291,76 @@ async function buildDiag() {
       warn: checks.filter((c) => c.level === "warn").length,
       ok: checks.filter((c) => c.level === "ok").length,
     },
+  };
+}
+
+/**
+ * 实时资源快照（Debugging Tool 的「实时资源」卡用，2 秒轮询）。
+ * CPU 占用率用两次 os.cpus() 的 delta 计算；服务刚起来第一次调用没有基准，usagePct 为 null。
+ */
+let cpuPrev = null;
+function cpuUsagePct() {
+  const cpus = os.cpus();
+  let idle = 0, total = 0;
+  for (const c of cpus) {
+    const t = c.times || {};
+    idle += t.idle || 0;
+    total += (t.user || 0) + (t.nice || 0) + (t.sys || 0) + (t.idle || 0) + (t.irq || 0);
+  }
+  let pct = null;
+  if (cpuPrev) {
+    const dTotal = total - cpuPrev.total;
+    const dIdle = idle - cpuPrev.idle;
+    if (dTotal > 0) pct = Math.min(100, Math.max(0, Math.round((1 - dIdle / dTotal) * 100)));
+  }
+  cpuPrev = { idle, total };
+  return { pct, model: (cpus[0]?.model || "").trim(), cores: cpus.length };
+}
+
+/** 进程 + 系统 + 模型的实时占用：给调试页画条、给 CLI 看数字 */
+async function buildResources() {
+  const memTotal = os.totalmem();
+  const memFree = os.freemem();
+  const used = Math.max(0, memTotal - memFree);
+  const cpu = cpuUsagePct();
+  const proc = process.memoryUsage();
+  let disk = null;
+  try {
+    const st = await statfs(MODEL_DIR);
+    disk = {
+      path: MODEL_DIR,
+      totalGB: +((st.blocks * st.bsize) / 2 ** 30).toFixed(1),
+      freeGB: +((st.bavail * st.bsize) / 2 ** 30).toFixed(1),
+    };
+  } catch {}
+  return {
+    now: new Date().toISOString(),
+    cpu: { usagePct: cpu.pct, cores: cpu.cores, model: cpu.model },
+    mem: {
+      totalGB: +(memTotal / 2 ** 30).toFixed(2),
+      usedGB: +(used / 2 ** 30).toFixed(2),
+      freeGB: +(memFree / 2 ** 30).toFixed(2),
+      usedPct: Math.round((used / memTotal) * 100),
+    },
+    proc: {
+      pid: process.pid,
+      uptimeSec: Math.round(process.uptime()),
+      rssMB: Math.round(proc.rss / 2 ** 20),
+      heapUsedMB: Math.round(proc.heapUsed / 2 ** 20),
+      externalMB: Math.round(proc.external / 2 ** 20),
+    },
+    disk,
+    model: {
+      file: state.file || "",
+      context: state.contextSize || 0,
+      layers: state.layers || 0,
+      gpu: state.gpu || "",
+      kvQuant: state.kvQuant || "",
+      kvReuse: KV_REUSE,
+      cachedTokens: state.sequence?.nextTokenIndex ?? 0,
+      activeChats,
+    },
+    crash: (await recentCrashes()).length,
   };
 }
 
@@ -642,6 +720,40 @@ const DRAFT_TOKENS = Math.max(1, Math.min(32, Number(process.env.DRAFT_TOKENS ??
  */
 const KV_REUSE = (process.env.KV_REUSE ?? "1") !== "0";
 
+// ---------------------------------------------------------------- KV 缓存量化
+/**
+ * 默认开：KV 缓存用 q8_0（每个元素 ~1 字节，f16 是 2 字节），同样内存下上下文翻倍。
+ *   - 7B 级模型：16K 约 0.9GB → 0.45GB；128K 约 7.3GB → 3.7GB
+ *   - 需要 flash attention；后端不支持时会自动回退 f16（只记日志，不影响启动）
+ * 关掉：KV_QUANT=f16（精度优先/排障）；设为 other 也可试 q4_0 等（llama.cpp 的 ggml type 名）。
+ */
+const KV_QUANT = String(process.env.KV_QUANT ?? "q8_0").toLowerCase().trim();
+const KV_QUANT_ON = KV_QUANT !== "" && KV_QUANT !== "0" && KV_QUANT !== "off" && KV_QUANT !== "f16";
+
+/**
+ * 创建主上下文：KV 量化开就先按量化建，失败自动回退 f16。
+ * 返回 { context, kvQuant }，kvQuant 是实际生效的类型（写进 /api/state 供界面/排障看）。
+ */
+async function createMainContext(model, contextSize) {
+  if (!KV_QUANT_ON) {
+    const context = await model.createContext({ contextSize });
+    return { context, kvQuant: "f16" };
+  }
+  try {
+    const context = await model.createContext({
+      contextSize,
+      experimentalKvCacheKeyType: KV_QUANT,
+      experimentalKvCacheValueType: KV_QUANT,
+      flashAttention: "auto",
+    });
+    return { context, kvQuant: KV_QUANT };
+  } catch (e) {
+    log(`KV 缓存量化（${KV_QUANT}）不可用，回退 f16：${String(e?.message ?? e).slice(0, 160)}`);
+    const context = await model.createContext({ contextSize });
+    return { context, kvQuant: "f16", kvQuantFallback: String(e?.message ?? e).slice(0, 160) };
+  }
+}
+
 /** 粗略判断模型家族，用于避免跨家族草稿模型（tokenizer 不同会直接产出乱码） */
 function modelFamily(name) {
   const n = String(name).toLowerCase();
@@ -738,6 +850,8 @@ const state = {
   // ---- KV 缓存复用用到的常驻对象 ----
   sequence: null, // 常驻上下文序列：KV 缓存就活在这里
   meter: null, // 常驻令牌计量器（跨请求累计，用差值算单次请求）
+  kvQuant: null, // 实际生效的 KV 缓存类型（q8_0 / f16）
+  kvQuantFallback: "", // 量化不可用时的回退原因（用于调试页解释「为什么没省内存」）
   session: null, // 常驻会话：保留自己的历史与上次评估窗口
   sessionKey: null, // 会话对应的配置指纹（模型/上下文/思考/工具/系统提示）
   sessionSig: null, // 会话已知历史的指纹，与客户端回传一致才可直接续聊
@@ -957,6 +1071,8 @@ async function unloadModel() {
   }
   state.file = state.layers = state.contextSize = 0;
   state.file = null;
+  state.kvQuant = null;
+  state.kvQuantFallback = "";
   state.wrapperThink = state.wrapperNoThink = null;
   state.hasJinja = false;
   state.supportsThinking = false;
@@ -974,7 +1090,10 @@ async function loadModel(file, contextSize) {
     const full = path.join(MODEL_DIR, file);
     log(`加载 ${file} (context ${contextSize}) ...`);
     state.model = await llama.loadModel({ modelPath: full });
-    state.context = await state.model.createContext({ contextSize });
+    const mainCtx = await createMainContext(state.model, contextSize);
+    state.context = mainCtx.context;
+    state.kvQuant = mainCtx.kvQuant;
+    state.kvQuantFallback = mainCtx.kvQuantFallback || "";
     const w = buildWrappers(state.model);
     state.wrapperThink = w.think;
     state.wrapperNoThink = w.noThink;
@@ -1053,7 +1172,7 @@ async function loadModel(file, contextSize) {
     state.contextSize = state.context.contextSize ?? contextSize;
     state.layers = state.model.gpuLayers ?? 0;
     log(
-      `就绪: ${file} | context ${state.contextSize} | layers ${state.layers} | 思考能力${state.supportsThinking ? "支持" : "不支持"} | ${((Date.now() - t0) / 1000).toFixed(1)}s`,
+      `就绪: ${file} | context ${state.contextSize} | layers ${state.layers} | KV ${state.kvQuant} | 思考能力${state.supportsThinking ? "支持" : "不支持"} | ${((Date.now() - t0) / 1000).toFixed(1)}s`,
     );
     return { ok: true, seconds: +((Date.now() - t0) / 1000).toFixed(1) };
   } catch (err) {
@@ -3677,13 +3796,15 @@ async function preloadModel(file) {
   const model = await llama.loadModel({ modelPath: full });
   let context = null;
   try {
-    context = await model.createContext({ contextSize: PRELOAD_CONTEXT });
+    const pre = await createMainContext(model, PRELOAD_CONTEXT);
+    context = pre.context;
     const wrappers = buildWrappers(model);
     extras.set(file, {
       file,
       model,
       context,
       wrappers,
+      kvQuant: pre.kvQuant,
       bytes: st.size,
       loadedAt: Date.now(),
       busy: false,
@@ -4336,6 +4457,11 @@ async function handle(req, res) {
     return sendJson(res, 200, await buildDiag());
   }
 
+  // 实时资源（CPU/内存/磁盘/进程/模型）：调试页 2 秒轮询，只读、不需要令牌
+  if (req.method === "GET" && url === "/api/diag/resources") {
+    return sendJson(res, 200, await buildResources());
+  }
+
   if (req.method === "GET" && url.startsWith("/api/diag/logs")) {
     const q = new URL(req.url, "http://127.0.0.1");
     const which = q.searchParams.get("which") === "crash" ? "crash" : "app";
@@ -4412,6 +4538,8 @@ async function handle(req, res) {
       activeChats,
       // KV 缓存复用状态：cachedTokens 是当前常驻序列里已经评估过的 token 数
       kvReuse: KV_REUSE,
+      kvQuant: state.kvQuant,
+      kvQuantFallback: state.kvQuantFallback,
       cachedTokens: state.sequence?.nextTokenIndex ?? 0,
       draftFile: state.draftFile,
       draftTokens: DRAFT_TOKENS,

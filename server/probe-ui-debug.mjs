@@ -18,7 +18,16 @@ if (!page) { console.log("no page"); process.exit(2); }
 const ws = new WebSocket(page.webSocketDebuggerUrl, { perMessageDeflate: false });
 await new Promise((r, j) => { ws.once("open", r); ws.once("error", j); });
 let id = 0; const pend = new Map();
-ws.on("message", (raw) => { const m = JSON.parse(raw.toString()); if (m.id && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } });
+// 调试页断言「没有未捕获异常」用：CDP 会在 Runtime.exceptionThrown 里报页面里的未捕获错误
+let jsErrors = [];
+ws.on("message", (raw) => {
+  const m = JSON.parse(raw.toString());
+  if (m.method === "Runtime.exceptionThrown") {
+    const d = m.params?.exceptionDetails || {};
+    jsErrors.push(String(d.exception?.description || d.text || "exception").split("\n")[0].slice(0, 200));
+  }
+  if (m.id && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); }
+});
 const send = (m, p = {}) => new Promise((res) => { const i = ++id; pend.set(i, res); ws.send(JSON.stringify({ id: i, method: m, params: p })); });
 const ev = async (e) => {
   const r = await send("Runtime.evaluate", { expression: e, returnByValue: true, awaitPromise: true });
@@ -87,6 +96,7 @@ ok("点按钮会调 /api/debug/open", clicked && clicked.n === 1, "calls=" + (cl
 ok("成功后给出提示", /调试窗口/.test(String(clicked?.toast || "")), String(clicked?.toast || "").slice(0, 60));
 
 // ---- 调试页面本身 ----
+jsErrors = [];
 await send("Page.navigate", { url: BASE + "/debug" });
 await sleep(2600);
 const ui = await ev("({ checks: document.querySelectorAll('#checks li').length, pills: document.querySelectorAll('#pills .pill').length, log: (document.getElementById('logBox').textContent || '').length, title: document.title, env: document.querySelectorAll('#env b').length, model: document.querySelectorAll('#model b').length })");
@@ -98,6 +108,33 @@ ok("日志面板有内容", ui.log > 20, "chars=" + ui.log);
 
 const copy = await ev("(async () => { document.getElementById('copy').click(); await new Promise((r) => setTimeout(r, 400)); return document.getElementById('copy').textContent; })()");
 ok("复制报告有反馈", /已复制/.test(String(copy || "")), String(copy || ""));
+
+// ---- 实时资源卡（2 秒轮询 /api/diag/resources）----
+// 页面加载时立刻采一次；CPU 首采可能没有基准（显示「—」），1 秒后补采，
+// 所以等 ~3 秒（导航后 2.6s + 上面复制反馈 0.4s）再断言，数值必然已经有。
+const resUi = await ev(`(() => {
+  const g = (i) => document.getElementById(i);
+  const card = g('resCard');
+  if (!card) return null;
+  const bar = (i) => { const el = g(i); return el ? Math.round(el.getBoundingClientRect().width) : -1; };
+  const cv = g('resSpark');
+  let painted = -1;
+  try { const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; painted = n; } catch {}
+  return {
+    has: /实时资源/.test(card.textContent || ''),
+    cpu: (g('resCpu').textContent || '').trim(),
+    mem: (g('resMem').textContent || '').trim(),
+    cpuBar: bar('resCpuBar'), memBar: bar('resMemBar'),
+    spark: cv ? { w: cv.width, h: cv.height } : null,
+    painted: painted,
+    updated: (g('resUpdated').textContent || '').trim(),
+  };
+})()`);
+ok("调试页有实时资源卡与 sparkline", !!resUi && resUi.has && !!resUi.spark && resUi.spark.w > 100 && resUi.spark.h > 0 && resUi.painted > 0,
+  resUi ? resUi.spark.w + "x" + resUi.spark.h + " · painted " + resUi.painted : "missing");
+ok("2.6s 后 CPU/内存有数值且条形有宽度", !!resUi && /^\d+%$/.test(resUi.cpu) && /\d+%/.test(resUi.mem) && resUi.cpuBar > 2 && resUi.memBar > 2,
+  resUi ? resUi.cpu + " / " + resUi.mem + " · bars " + resUi.cpuBar + "/" + resUi.memBar + "px · " + resUi.updated : "missing");
+ok("调试页无未捕获 JS 异常", jsErrors.length === 0, jsErrors.slice(0, 3).join(" | "));
 
 // 回到主界面，别把共用页面留在调试页
 await send("Page.navigate", { url: BASE + "/" });

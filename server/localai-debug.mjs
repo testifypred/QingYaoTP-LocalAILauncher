@@ -120,6 +120,14 @@ async function report() {
   line("服务 " + BASE + " · pid " + j.server.pid + " · 运行 " + Math.round(j.server.uptimeSec / 60) + " 分钟 · 后端 " + j.server.gpu);
   line("系统 " + j.system.platform + " " + j.system.arch + " · " + j.system.cpus + " 核 · 内存 " + j.system.totalGB + " GB（可用 " + j.system.freeGB + "）");
   line("模型 " + (j.model.file || "未加载") + " · 上下文 " + j.model.context + " · " + j.model.layers + " 层 · KV " + j.model.cachedTokens + " token");
+  // 实时资源（与调试页「实时资源」卡同一接口，2 秒轮询；这里只取一次快照）
+  const rs = await getJson("/api/diag/resources", 4000);
+  if (rs.status === 200 && rs.j) {
+    const rr = rs.j;
+    const cpu = typeof rr.cpu?.usagePct === "number" ? rr.cpu.usagePct + "%" : "—";
+    line("实时资源 CPU " + cpu + " · 内存 " + rr.mem?.usedGB + "/" + rr.mem?.totalGB + " GB (" + rr.mem?.usedPct + "%)" +
+      " · RSS " + rr.proc?.rssMB + " MB · 磁盘剩余 " + (rr.disk ? rr.disk.freeGB + " GB" : "—"));
+  }
   line("");
   line("检查项：" + j.summary.error + " 错误 / " + j.summary.warn + " 警告 / " + j.summary.ok + " 正常");
   printChecks(j.checks);
@@ -164,7 +172,12 @@ if (has("--ui")) process.exit(openWindow());
 else if (has("--logs")) process.exit(await logs());
 else if (has("--json")) {
   const d = await getJson("/api/diag", 8000);
-  process.stdout.write(JSON.stringify(d.status === 200 ? d.j : { ok: false, status: d.status, error: d.error }, null, 2) + "\n");
+  const out = d.status === 200 ? { ...d.j } : { ok: false, status: d.status, error: d.error };
+  if (d.status === 200) {
+    const r = await getJson("/api/diag/resources", 4000);
+    if (r.status === 200) out.resources = r.j;
+  }
+  process.stdout.write(JSON.stringify(out, null, 2) + "\n");
   process.exit(d.status === 200 ? 0 : 2);
 } else {
   process.exit(await report());

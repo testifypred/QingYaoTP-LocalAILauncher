@@ -1664,6 +1664,56 @@ Qwen2.5-7B（28 层、4 个 KV 头、head_dim 128、f16 KV）≈ **56KB/token**�
 - 用法：模型菜单底部「上下文」选档 → 点一下模型行重新加载（约 15–60s，看档位）。
 - 断言口径：629 → 630（三轮）→ **631**（本轮 `probe-ctx-panel` +1）。
 
+## 三十六、2026-11-01（第五轮）：KV 缓存量化（默认开）+ 调试工具实时资源观测
+
+用户两条要求：① KV 量化**默认开启**（同样内存下上下文翻倍）；② Debugging Tool 里加**实时系统资源观测**。这轮用了子智能体：`debug-ui` 做调试页与探针，Lead 做 app.mjs 的 KV 量化与集成验收。
+
+### 一、KV 缓存量化（`app.mjs`，默认开）
+
+| 项 | 做法 |
+|---|---|
+| 主上下文 | `createMainContext()` 默认 `experimentalKvCacheKeyType/ValueType = "q8_0"` + `flashAttention: "auto"`；**失败自动回退 f16**（只记日志，不影响启动） |
+| 可观测 | `/api/state` 加 `kvQuant`（q8_0/f16）与 `kvQuantFallback`；`/api/diag` 加「KV 缓存量化」检查（检查项 17 → **18**）；启动日志 `就绪: … | KV q8_0 |` |
+| 预加载 | 第二意见常驻模型（`preloadModel`）的上下文同样量化 |
+| 关闭 | 环境变量 `KV_QUANT=f16` 后重启（`off/0` 同义）；换类型也可试 `KV_QUANT=q4_0` |
+
+实测（7B Q4_K_M、Vulkan、31.4GB 内存、q8_0 KV）：
+
+| 上下文 | 加载耗时 | 加载后系统可用内存 |
+|---|---|---|
+| 16K | 12–15s | ≈6.8GB |
+| 64K | 16.4s | ≈3.8GB |
+| 128K | 22.2s | ≈0.2GB（能装下但几乎吃光，系统会紧） |
+
+非量化时 128K 光 KV 就要 7.3GB（f16 56KB/token），这台「32GB 里系统先占 16GB」的机器装不下；量化后能跑，日常建议 **≤64K**。
+
+### 二、调试工具：实时系统资源观测
+
+- 新接口 **`GET /api/diag/resources`**（只读、不需要令牌、给 2 秒轮询用）：`cpu{usagePct,cores,model}`、`mem{totalGB,usedGB,freeGB,usedPct}`、`proc{pid,uptimeSec,rssMB,heapUsedMB,externalMB}`、`disk`、`model{file,context,layers,gpu,kvQuant,kvReuse,cachedTokens,activeChats}`、`crash`。
+  - CPU 用两次 `os.cpus()` 的 delta；服务刚起第一次 `usagePct=null`（页面显示「—」并 1.1s 后补采；探针只断言第二次，避免抖）。
+- `debug.html`：右侧第一张卡「实时资源」——CPU/内存百分比条（≥70% 黄、≥90% 红）、进程 RSS/heap、磁盘、模型/后端/KV 量化/并发/崩溃、60 点 canvas sparkline（CPU 青 / 内存 紫 / 70% 黄虚线）、2 秒轮询（仅页面可见时）；「模型与推理」加 KV 量化行；「复制报告」补一行实时资源。
+- `localai-debug.mjs`：文本报告加一行实时资源；`--json` 加 `resources` 字段（服务不可达时不加，保持原行为）。
+
+### 三、验证
+
+| 探针 | 结果 |
+|---|---|
+| `probe-debug` | 25 → **34/34**（+9 条：200 无令牌、字段形状、内存自洽、RSS、磁盘、第二次 CPU 采样、now 推进、kvQuant 与 `/api/state` 一致） |
+| `probe-ui-debug` | 20 → **23/23**（+3 条：资源卡 + sparkline 已绘制、2.6s 后有数值与条形宽度、调试页无未捕获 JS 异常） |
+| `probe-ctx-panel` | 25/25 |
+| `probe-version` | 14/14 |
+| `probe-chat-plain` | 11/11（量化 KV 下对话正常） |
+| `probe-func` / `probe-kv-long` | 9/9、通过（KV 复用照旧，复用率 70–99%） |
+
+- 页面实测（1440×900）：CPU 13% · 内存 25.3/31.4GB(81%) · 进程 RSS 9738MB · 磁盘剩余 303.5GB · KV 量化 q8_0。证据：`server\docs\debug-resources\RESULT.md` + `page.png`。
+- 断言口径：631 → **643**（`probe-debug` +9、`probe-ui-debug` +3），下次全量整跑按 643 核对。
+
+### 四、落地与遗留
+
+- 已同步 dist：`app.mjs` / `debug.html` / `localai-debug.mjs`；应用已用新代码重启（7B · ctx 16384 · q8_0 · Vulkan）。
+- 遗留：完整打包还没重跑——下次打包会把新 app.mjs/debug.html/localai-debug.mjs 带进发布包；**当前发布包里的 `localai-debug.mjs` 已手工同步**，所以 CLI 的 `--json resources` 现在就能用。
+- 量化是「省内存」不是「零代价」：q8_0 KV 有极小精度损失；如果哪天回答质量可疑，`KV_QUANT=f16` 重启可对照。
+
 
 
 

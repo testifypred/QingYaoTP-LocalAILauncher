@@ -66,6 +66,41 @@ ok("日志内容不是空字符乱码", !String(la.data?.text || "").includes("\
 const lc = await j("GET", "/api/diag/logs?which=crash&lines=10");
 ok("崩溃日志接口结构完整", lc.status === 200 && typeof lc.data?.text === "string", "HTTP " + lc.status);
 
+// ---- 实时资源（调试页 2 秒轮询的只读接口）----
+// 采样两次：第一次可能正好是服务启动后的首采（CPU 没有基准，usagePct=null），
+// 第二次必然有基准，所以 CPU 数值只断言第二次，避免抖动。
+const num = (v) => typeof v === "number" && Number.isFinite(v);
+const r1 = await j("GET", "/api/diag/resources");
+const res1 = r1.data || {};
+ok("资源接口可用（无令牌 GET）", r1.status === 200 && !!res1.now, "HTTP " + r1.status);
+ok("资源字段形状完整（含 ISO 时间）", !!(
+  !Number.isNaN(Date.parse(res1.now || "")) &&
+  res1.cpu && num(res1.cpu.cores) && res1.cpu.cores > 0 &&
+  res1.mem && num(res1.mem.totalGB) && num(res1.mem.usedGB) && num(res1.mem.freeGB) && num(res1.mem.usedPct) &&
+  res1.proc && num(res1.proc.pid) && num(res1.proc.rssMB) && num(res1.proc.heapUsedMB) &&
+  res1.model && typeof res1.model.file === "string" && num(res1.model.context)
+), "cpu/mem/proc/model/now");
+ok("内存 已用+空闲 ≈ 总量（±0.1 GB）",
+  Math.abs((res1.mem.usedGB + res1.mem.freeGB) - res1.mem.totalGB) <= 0.1,
+  res1.mem.usedGB + " + " + res1.mem.freeGB + " vs " + res1.mem.totalGB);
+ok("内存百分比与用量自洽（0–100）",
+  res1.mem.usedPct >= 0 && res1.mem.usedPct <= 100 &&
+  Math.abs(res1.mem.usedPct - (res1.mem.usedGB / res1.mem.totalGB) * 100) <= 2,
+  res1.mem.usedPct + "%");
+ok("进程 RSS > 0 且 heap 合理", res1.proc.rssMB > 0 && res1.proc.heapUsedMB >= 0, "RSS " + res1.proc.rssMB + " MB · heap " + res1.proc.heapUsedMB + " MB");
+ok("磁盘剩余可读（disk 为 null 或 freeGB ≥ 0）",
+  res1.disk === null || (res1.disk && num(res1.disk.freeGB) && res1.disk.freeGB >= 0 && num(res1.disk.totalGB) && res1.disk.totalGB > 0),
+  res1.disk ? res1.disk.freeGB + " / " + res1.disk.totalGB + " GB" : "null");
+await new Promise((r) => setTimeout(r, 1300));
+const r2 = await j("GET", "/api/diag/resources");
+const res2 = r2.data || {};
+const cpu2 = res2.cpu?.usagePct;
+ok("第二次采样 CPU 占用是 0–100 的数字", typeof cpu2 === "number" && cpu2 >= 0 && cpu2 <= 100, "usagePct=" + JSON.stringify(cpu2));
+ok("第二次采样 now 推进", r2.status === 200 && Date.parse(res2.now) > Date.parse(res1.now), res1.now + " → " + res2.now);
+const st2 = await j("GET", "/api/state");
+ok("模型 KV 量化与 /api/state 一致", typeof res1.model.kvQuant === "string" && res1.model.kvQuant.length > 0 && res1.model.kvQuant === st2.data?.kvQuant,
+  res1.model.kvQuant + " vs " + (st2.data?.kvQuant ?? "?"));
+
 // ---- 令牌 ----
 ok("清崩溃记录必须带令牌", (await j("POST", "/api/diag/clear-crash", {})).status === 403);
 ok("打开调试窗口必须带令牌", (await j("POST", "/api/debug/open", {})).status === 403);
