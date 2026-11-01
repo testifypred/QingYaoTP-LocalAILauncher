@@ -13,7 +13,9 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 const BASE = process.argv[2] || "http://127.0.0.1:8099";
 const HERE = "D:\\LocalModels\\server";
-const CRASH = HERE + "\\vulkan-crash.log";
+// 崩溃记录的真实路径从 /api/diag 的 paths.crashLog 取：
+// 跑源码时是 server\vulkan-crash.log，跑发布包时是 dist\LocalAI\app\vulkan-crash.log
+let CRASH = HERE + "\\vulkan-crash.log";
 
 let pass = 0, fail = 0;
 const ok = (n, c, d = "") => { if (c) { pass++; console.log("  ok   " + n + (d ? "  [" + d + "]" : "")); } else { fail++; console.log("  FAIL " + n + "  " + d); } };
@@ -34,6 +36,9 @@ console.log("\n== 目标 " + BASE + " ==\n");
 const page = await j("GET", "/debug");
 ok("/debug 页面可访问", page.status === 200 && page.text.includes("Debugging Tool"), "HTTP " + page.status + " · " + page.text.length + " 字节");
 ok("页面自带检查项容器", page.text.includes('id="checks"') && page.text.includes('id="logBox"'));
+ok("调试页声明了自己的图标", page.text.includes('rel="icon"') && page.text.includes("/debug-icon.png"));
+const iconResp = await fetch(BASE + "/debug-icon.png");
+ok("调试工具图标可取（png）", iconResp.status === 200 && String(iconResp.headers.get("content-type") || "").includes("image/png"), "HTTP " + iconResp.status + " · " + iconResp.headers.get("content-type"));
 
 // ---- 诊断 ----
 const d = await j("GET", "/api/diag");
@@ -51,6 +56,7 @@ ok("summary 与检查项自洽", (() => {
 ok("带版本信息", !!(diag.version && diag.version.version), JSON.stringify(diag.version || {}));
 ok("带服务与系统信息", !!(diag.server && diag.system && diag.system.node), (diag.server && diag.server.port) + " / " + (diag.system && diag.system.node));
 ok("带路径（含日志与崩溃记录）", !!(diag.paths && diag.paths.logs && diag.paths.crashLog), (diag.paths && diag.paths.crashLog) || "");
+if (diag.paths && diag.paths.crashLog) CRASH = diag.paths.crashLog;
 
 // ---- 日志 ----
 const la = await j("GET", "/api/diag/logs?which=app&lines=20");

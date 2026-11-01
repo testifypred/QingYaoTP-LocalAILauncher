@@ -4309,6 +4309,18 @@ async function handle(req, res) {
     }
   }
 
+  // 调试工具自己的图标（∂ + AI + ?），用于调试窗口的标题栏 / favicon
+  if (req.method === "GET" && url === "/debug-icon.png") {
+    try {
+      const buf = await readFile(path.join(HERE, "debug-icon-64.png"));
+      res.writeHead(200, { "content-type": "image/png", "cache-control": "max-age=3600" });
+      return res.end(buf);
+    } catch {
+      res.writeHead(404);
+      return res.end();
+    }
+  }
+
   if (req.method === "GET" && url === "/api/diag") {
     return sendJson(res, 200, await buildDiag());
   }

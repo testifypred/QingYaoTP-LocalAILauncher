@@ -1308,6 +1308,38 @@ export async function run(args, ctx) {
 - 应用已用新代码重启（服务 `v1.0.0`，`buildSource=mtime`）；
 - 教训写进 `technique\07-坑与约定.md`。
 
+## 二十七、2026-11-01：两套图标身份（本体 ∫+AI / 调试 ∂+AI+?）
+
+用户指出：「我的软件本体叫本地 AI，图标是**不定积分 + AI**；Debugging Tool 的图标才是 **Partial + AI + ?**。别弄混。」
+
+我之前把两者合成了一套（把本体的 `∫` 换成了 `∂`），错在**身份划分**，不是画法。
+
+### 一、重新分工
+
+| 身份 | 记号 | 源文件 | 落地 |
+|---|---|---|---|
+| 本地 AI（本体） | `∫ + AI` | `icon-app.svg`（16/24 用 `icon-app-small.svg`，只画 ∫） | `localai.ico` → 启动器 exe / 托盘 / 任务栏 / 标题栏；界面左上角模型按钮的迷你标记 |
+| Debugging Tool | `∂ + AI + ?` | `icon-debug.svg` | `debug-icon-64.png` → `GET /debug-icon.png`，调试页 favicon（调试窗口标题栏） |
+
+### 二、顺带修掉的三个问题
+
+1. **本体标记看不见**：迷你标记的字色原来跟 `var(--text)`，浅色主题下 `--text` 是深色，黑底上几乎不可见。改成固定 `#f6f8fa`。
+2. **本体标记混进了问号**：`?` 属于调试工具，本体只留 `∫`。
+3. **调试页没有自己的图标**：加了 `/debug-icon.png` 路由 + `<link rel="icon">`，调试窗口的标题栏/任务栏现在显示 `∂AI?`。
+
+### 三、踩到的坑（差点让我误判）
+
+**启动器是单实例**：改了 `app.mjs` 后我 `Start-Process 启动本地AI.exe`，它只把已有实例激活、**根本没有重启服务**，新路由于是 404，我一度以为「代码没生效」。
+正确做法：先结束启动器进程（或托盘「停止服务并退出」）再启动。已写进 `technique\07-坑与约定.md`。
+
+### 四、验证
+
+- `probe-debug` **25/25**（新增「调试页声明了自己的图标」「/debug-icon.png 返回 png」两条；崩溃记录路径改为从 `/api/diag.paths.crashLog` 取，跑发布包时不再误判）；
+- `probe-ui-debug` **19/19**（本体标记断言改成「是 ∫ 且没有 ?」）；
+- 从 exe 里 `ExtractAssociatedIcon` 读回 32px：是 `∫ + AI`；
+- 发布包已同步（app.mjs / debug.html / debug-icon-64.png），启动器已重编译（57344 字节），应用已重启。
+
+
 
 
 ### 五、遗留（都不算新缺陷）
