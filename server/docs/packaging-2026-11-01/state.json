@@ -1,0 +1,25 @@
+﻿{
+    "checkedAt":  "2026-11-01 11:05:25",
+    "httpStatus":  200,
+    "waitSec":  29.7,
+    "loaded":  "qwen2.5-7b-instruct-1m-q4_k_m.gguf",
+    "context":  16384,
+    "gpu":  "vulkan",
+    "layers":  29,
+    "loading":  false,
+    "error":  null,
+    "modelDir":  "D:\\LocalModels",
+    "version":  {
+                    "version":  "1.0.0",
+                    "commit":  "",
+                    "commitAt":  "",
+                    "builtAt":  "2026-11-01T02:26:06.104Z",
+                    "buildSource":  "mtime",
+                    "dirty":  false,
+                    "startedAt":  "2026-11-01T03:05:05.030Z",
+                    "node":  "v24.19.0",
+                    "dir":  "D:\\LocalModels\\dist\\LocalAI\\app",
+                    "pid":  20084,
+                    "port":  8099
+                }
+}

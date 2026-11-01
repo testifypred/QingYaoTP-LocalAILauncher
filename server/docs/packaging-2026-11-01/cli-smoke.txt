@@ -1,0 +1,23 @@
+﻿# 包内 CLI 冒烟（2026-11-01 11:06:03）
+
+## localai-debug.cmd（包内 runtime\node.exe）  exit=0  elapsed=0.4s
+本地 AI · Debugging Tool —— v1.0.0
+服务 http://127.0.0.1:8099 · pid 20084 · 运行 1 分钟 · 后端 vulkan
+系统 win32 x64 · 22 核 · 内存 31.4 GB（可用 12.6）
+...
+  ✓ 已加载模型 — qwen2.5-7b-instruct-1m-q4_k_m.gguf · 上下文 16384 · 29 层
+  ✓ KV 缓存 — 常驻序列 0 token · 复用 开
+  ✓ 会话 — 1 个 · 11 KB
+  ✓ 文档检索 — 2 个文件 / 8 段
+  ✓ 插件 — 3 个可用 / 3 个文件
+  ✓ 发布包与源码 — 三份文件哈希一致
+
+## localai.cmd models  exit=0  elapsed=0.4s
+DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf  4.68GB
+  Phi-4-mini-instruct-Q4_K_M.gguf  2.32GB
+  qwen2.5-0.5b-instruct-q4_k_m.gguf  0.46GB
+* qwen2.5-7b-instruct-1m-q4_k_m.gguf  4.36GB
+  qwen3-5-4B-Q4_K_M.gguf  2.52GB
+localai.cmd : 5 个模型，当前已加载：qwen2.5-7b-instruct-1m-q4_k_m.gguf
+所在位置 行:17 字符: 7
++ $o2 = & "$app\localai.cmd" models 2>&1 | Out-String

@@ -1556,6 +1556,56 @@ DPI 不感知的 PowerShell 里调用 `GetWindowRect` 得到的是**虚拟化后
 - **版本写进 exe 元数据**：要改 `Launcher.cs` + 重编译启动器，收益（资源管理器里能看到版本）小于风险，先放在界面上。
 - 打标签（`git tag v1.0.0`）：只在本地有意义，等真有第二台机器对版本时再打。
 
+## 三十三、2026-11-01（第二轮）：47 条全量整跑 + 完整打包自检
+
+交接文档「下一步 1、2」在这一轮一次做掉：**47 条全量探针整跑**（把 11-01 新增的 `probe-debug` / `probe-ui-debug` 并进大盘）与**完整打包一次**（验证 `build-portable.ps1` 新增的「编译 DebugTool.exe」步骤）。两件事交给两个队员并行编排：Lead 备环境（备份会话、裸 node + headless Edge）并收尾恢复，`probe-runner` 跑大盘，`packager` 打包自检。
+
+### 一、47 条全量：629 断言 / 全绿 / 0 崩溃
+
+| 项 | 值 |
+|---|---|
+| 环境 | 裸 node（`node app.mjs`，无启动器兜底）、headless Edge CDP 9333（Edg/156）、Vulkan、7B ctx 16384 |
+| 时间 | 10:44:42 → 10:59:06，**864.5s（约 14m25s）** |
+| 结果 | **47 条全绿 / 0 真红；629 条断言**（首跑 628 通过 + 1 首跑红、复跑通过） |
+| 崩溃 | **0 次**：无 device lost、无 `server-restart-*`、服务 `startedAt` 全程未变、`vulkan-crash.log` 无新增（10-31 的 3 条旧记录还在） |
+
+唯一红项 `probe-code-run`：首跑 `FAIL C++ 编译并执行 ms=11773`（12/13），撞上服务端硬超时 `RUN_TIMEOUT_MS=10000`（`app.mjs:5369`）；同参数复跑两次都是 **13/13**（C++ 9445ms / 8562ms）。归因是**冷机 MSVC 编译卡 10s 边界**（VC 分支把 vcvars + cl + 运行塞进同一次 spawn，`app.mjs≈5544`），不是探针过期、也不是本轮改动引入的回归。建议下轮给「编译类语言」单独放宽超时（编译 30s / 运行 10s 分开计时）。
+
+会话数据按约定先备份到 `server\docs\session-backups\2026-11-01_10-42-34\workspace-full`（294 文件 / 189KB），跑完从备份恢复 `workspace\`（1 个真实会话 10842B 回来了，探针清掉的会话没有丢）。
+
+### 二、完整打包：19.7s / 258.1MB / 12/12 自检
+
+| 项 | 结果 |
+|---|---|
+| 打包 | PowerShell 5.1 跑 `build-portable.ps1`：**exit 0 / 19.7s**，8 个步骤全执行，含**首次整跑**的 `==> 编译调试工具（独立窗口 + 自己的 ico）` |
+| 产物 | **258.1MB / 3442 文件**（起服务后 3445 = +2 个 log + `app\server.pid`）；app\ 144.1MB，与基线一致 |
+| DebugTool.exe | 42,496B、11:04:29 重编、MZ 头 `4D 5A`；启动器 57,344B 同时重编 |
+| 源码一致 | app.mjs / app.html / doc-extract.mjs 三份 SHA256 3/3 与 `server\` 相同 |
+| 能起来 | `/api/state` 200（29.7s 就绪，7B ctx 16384 vulkan）；`/api/version` 的 dir=`dist\LocalAI\app`（证明跑的是发布包，不是源码 dev 服务） |
+| 调试工具 | `/debug` 200（12456B）、`/debug-icon.png` 200、`/debug-icon.ico` 200、无令牌 `POST /api/debug/open` **403** |
+| 回归 | `probe-debug` **25/25**、`probe-rag` **16/16**；包内 `localai-debug.cmd`（17 项检查全 ok）/ `localai.cmd models` 均 exit 0 |
+| 收尾 | 发布包保持运行（启动器 PID 7560 + 服务 PID 20084，桌面快捷方式指向新包） |
+
+### 三、口径与踩点（写给下次）
+
+1. **文件数三个基线要分清**：文档里的 3439 是「调试工具还没进清单」的旧基线；3444 是旧 dist（含 2 个运行期 log）；本轮新包 3442，起服务后 +3 个运行期文件 = 3445。**看文件数先问「含不含 logs / server.pid」**。
+2. **`/api/version` 的 `source=mtime` 不是错**：发布包 `app\` 不在 git 跟踪内，构建标识按约定回落文件 mtime；`Copy-Item` 保留源文件时间，所以 builtAt 是源文件修改时间（10:26）而不是打包时间（11:04）。
+3. **`probe-debug` 的「清崩溃记录」会删文件再写回**：`vulkan-crash.log` 的 CreationTime 会变成当天，但内容逐字节不变——别把它当成「本轮又崩了」。
+4. **打包脚本的 `Write-Host` 不进普通管道**：要留完整日志，外层包 `Start-Transcript`（或直接 5.1 控制台跑）；`-File ... > out.txt` 只能拿到一部分。
+5. **探针里有 2 条「观察型」**（`probe-ui-metric` / `probe-kv-long`，只打印指标、无断言）：它们绿只代表进程正常退出，断言统计里记 0，别按「少了断言」去查。
+6. **打包前必须全停**：本轮实测有两个「看似都在跑」的服务——源码 dev 服务占 8099、发布包启动器占 `dist\data`。打包前按 technique/05 精确杀（按 CommandLine 过滤），别用 `Stop-Process -Name msedgewebview2`（会误杀 DSH）。
+
+### 四、证据
+
+- 全量：`server\docs\probe-full-2026-11-01\RESULT.md`（47 行逐条表 + 红项归因）+ `logs\`（各条 out/err、两次复跑）
+- 打包：`server\docs\packaging-2026-11-01\RESULT.md` + `build.out.txt` / `prebuild.txt` / `verify.txt` / `state.json` / `http.txt` / `probe-*.out.txt` / `cli-smoke.txt`
+- 会话备份：`server\docs\session-backups\2026-11-01_10-42-34\workspace-full`（gitignored，可删）
+
+### 五、这一轮没做
+
+- **没改产品代码**：C++ 编译超时只记下来（建议下轮单独小修）；
+- 没打 tag、没做发布分发（仍无分发通道）。
+
 
 
 

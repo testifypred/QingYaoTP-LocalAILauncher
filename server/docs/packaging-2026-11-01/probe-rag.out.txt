@@ -1,0 +1,23 @@
+﻿
+== 目标 http://127.0.0.1:8099 ==
+
+  ok   索引状态可读  [{"files":2,"chunks":8,"builtAt":1793499599949,"dir":"D:\\LocalModels\\workspace\\rag","indexBytes":0]
+  ok   重建索引成功  [{"ok":true,"files":4,"chunks":10,"builtAt":1793502355451,"dir":"D:\\LocalModels\\workspace\\rag","in]
+  ok   新文件进了索引  [files=4]
+  ok   中文 bigram 能召回  [[{"file":"rag-probe/alpha.md","score":7.34,"text":"# 量子笔记\n\n纠缠态可以用来做量子通信。\n\n第二段讲退相干与测量。"}]]
+  ok   命中片段带出处  [rag-probe/alpha.md]
+  ok   英文按词召回  [[{"file":"rag-probe/beta.txt","score":6.34,"text":"Retrieval augmented generation needs chunking and]
+  ok   改完能搜到新内容  [[{"file":"rag-probe/alpha.md","score":15.78,"text":"# 量子笔记\n\n量子退相干是退相干的特例，讲量子测量。"}]]
+  ok   旧内容不再从该文件召回  [[]]
+  ok   docx 抽文本后能召回  [[{"file":"rag-probe/sample.docx","score":6.33,"text":"量子通信笔记（DOCX）\n\n纠缠态可以用来做量子通信，退相干会破坏它。\n\nRetri]
+  ok   pdf 抽文本后能召回  [[{"file":"rag-probe/sample.pdf","score":5.64,"text":"量子通信笔记\n纠缠态可以用来做量子通信，退相干会破坏它。\nRetrieval augmen]
+  ok   pdf 里的中文也抽得出来  [[{"file":"rag-probe/sample.pdf","score":11.22,"text":"量子通信笔记\n纠缠态可以用来做量子通信，退相干会破]
+  ok   删掉的文件不再被召回  [[{"file":"rag-probe/sample.pdf","score":4.71,"text":"量子通信笔记\n纠缠态可以用来做量子通信，退相干会破坏它。\nRetrieval augmen]
+  ok   工具清单里有 search_documents  [get_current_time,calculate,list_local_models,read_workspace_file,list_workspace_files,write_workspace_file,run_code,search_documents,web_search,fetch_url,disk_space,hello_plugin,workspace_note]
+  ok   工具参数是 query/k  [["query","k"]]
+  ok   空查询被拒
+  ok   复位后索引回到原样  [files=2 / 原 2]
+
+== 结果: 16 通过 / 0 失败 ==
+
+

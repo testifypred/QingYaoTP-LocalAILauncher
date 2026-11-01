@@ -1,0 +1,53 @@
+﻿# 打包后只读核验（2026-11-01 11:04:43）
+
+## 1. 产物体积/文件数（不含 data\）
+合计 258.1 MB / 3442 个文件
+其中 logs\ 运行期文件：0 个（新包 logs 为空 → 3442；起服务后会 +app.log/launcher.log 到 3444）
+data\ 体积：165.7 MB
+
+## 2. 关键文件
+  app\app.mjs                        OK  233,344 B
+  app\app.html                       OK  266,338 B
+  app\doc-extract.mjs                OK  10,750 B
+  app\debug.html                     OK  12,456 B
+  app\localai-debug.mjs              OK  7,604 B
+  app\localai-debug.cmd              OK  225 B
+  app\debug-icon-64.png              OK  3,371 B
+  app\debug.ico                      OK  33,273 B
+  localai.ico                        OK  31,308 B
+  DebugTool.exe                      OK  42,496 B
+  启动本地AI.exe                         OK  57,344 B
+  runtime\node.exe                   OK  92,825,416 B
+  config.ini                         OK  630 B
+  使用说明.txt                           OK  4,656 B
+  Microsoft.Web.WebView2.Core.dll    OK  698,208 B
+  Microsoft.Web.WebView2.WinForms.dll OK  38,752 B
+  WebView2Loader.dll                 OK  194,912 B
+  vc_redist.x64.exe                  OK  25,635,768 B
+  plugins\*.mjs 数量：3（期望 3）
+  app\vendor\katex\katex.min.js：True
+  app\node_modules\node-llama-cpp：True
+  app\node_modules 包数：41
+
+## 3. 三份源码 SHA256 与 server\ 一致性
+  app.mjs            dist=0B658397E640DC96…  server=0B658397E640DC96…  一致
+  app.html           dist=2755FCD549E26155…  server=2755FCD549E26155…  一致
+  doc-extract.mjs    dist=9E08B87B04751950…  server=9E08B87B04751950…  一致
+
+## 4. DebugTool.exe（新编译）
+  存在：True
+  大小：42,496 B   修改时间：2026/11/1 11:04:29
+  MZ 头：4D 5A（PE 可执行期望 4D 5A）
+  启动器大小/时间：57,344 B  2026/11/1 11:04:29
+
+## 5. 配置与运行时
+  config.ini:
+port=8099
+modelDir=D:\LocalModels
+autoLoad=qwen2.5-7b-instruct-1m-q4_k_m.gguf
+contextSize=16384
+kvReuse=1
+gpu=auto
+  runtime\node.exe 版本：v24.19.0
+  logs\ 启动前文件数：0
+  data\ 顶层：webview2, webview2-debug

@@ -1,0 +1,5 @@
+﻿# 调试工具接口检查（2026-11-01 11:05:38）  目标 http://127.0.0.1:8099
+GET /debug                -> HTTP 200  content-type=text/html; charset=utf-8  12456 字节  含'Debugging Tool'=True
+GET /debug-icon.png       -> HTTP 200  content-type=image/png  3371 字节
+GET /debug-icon.ico       -> HTTP 200  content-type=image/x-icon  33273 字节
+POST /api/debug/open 无令牌 -> HTTP 403（期望 403）  body=
