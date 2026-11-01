@@ -1401,6 +1401,53 @@ export async function run(args, ctx) {
 `technique\05-打包与部署.md` 新增一节：**打包后必须自检**（关键文件齐 / 三份哈希 / 能不能起 / 调试工具三条接口 / 两条探针）。
 这次的事说明：打包脚本不报错 ≠ 包是完整的。
 
+## 三十、2026-11-01：调试窗口改成自己的 exe（任务栏图标不再发虚）
+
+用户反馈「Debugging Tool 的任务栏图标是虚化的」。原因不在画法，而在**宿主**：
+
+调试窗口原来是 `localai-debug.mjs --ui` 用 Edge 的 `--app=` 打开，窗口图标取自网页 favicon（64px PNG），
+Windows 任务栏要 16/24/32px，只能缩——所以永远发虚。
+
+### 一、做法：给它一个真正的程序
+
+新增 `server\launcher\DebugTool.cs`：一个最小的 WebView2 宿主（~100 行），编译成 `DebugTool.exe`，
+用 `/win32icon:debug.ico` 把**多尺寸 ico** 烧进 exe。这样任务栏/标题栏直接取对应尺寸，不再缩放。
+
+| 项 | 说明 |
+|---|---|
+| 窗口 | 1180×860（按 DPI 缩放），标题 `Debugging Tool · 本地 AI` |
+| 图标 | `debug.ico`（16 ∂ / 24-48 ∂+? / 64+ ∂AI?） |
+| 数据目录 | `<程序目录>\data\webview2-debug`，与主界面互不影响 |
+| 服务没起 | 先探端口，1.2 秒连不上就弹提示，不会开一个白屏窗口 |
+| WebView2 缺失 | 回退默认浏览器打开 |
+
+`POST /api/debug/open` 现在的顺序：**有 `DebugTool.exe` 就用它**，没有才回退 `localai-debug.mjs --ui`。
+
+### 二、调试工具自己的图标族
+
+之前调试身份只有一张 512 完整稿（∂+AI+?），直接缩到 16px 必然糊。现在补了两份：
+
+| 文件 | 用在 | 内容 |
+|---|---|---|
+| `icon-debug-small.svg` | 16 | 只画 ∂ |
+| `icon-debug-mid.svg` | 24 / 32 / 48 | ∂ + 小 ? |
+| `icon-debug.svg` | 64 / 128 / 256 | ∂ + AI + ? |
+
+`docs\resize-debug-icon.ps1` → `icon-parts-debug\` → `make-ico.mjs`（第二个参数指定输出）→ `debug.ico`。
+网页一侧同时提供 `/debug-icon.ico` 与 `/debug-icon.png`，Edge 回退路径也不至于太糊。
+
+### 三、验证
+
+- 编译 `DebugTool.exe` 41KB；从 exe 读回 32px 图标 = `∂` + 青色 `?`（清晰，不是缩放出来的）；
+- `POST /api/debug/open` 返回 `{ok:true, pid:21780, exe:true}`，进程的 `MainWindowTitle` 是 `Debugging Tool · 本地 AI`；
+- 服务端日志：`打开调试工具（DebugTool.exe，pid 21780）`。
+
+### 四、打包
+
+`build-portable.ps1` 增加一步「编译调试工具」，依赖检查补 `launcher\DebugTool.cs` 与 `debug.ico`；
+`debug.ico` 也拷进 `app\`（`/debug-icon.ico` 直接读它）。
+
+
 
 
 

@@ -48,6 +48,8 @@ foreach ($need in @(
     (Join-Path $Server 'vendor\katex\katex.min.js'),
     $Nlc,
     (Join-Path $Server 'launcher\Launcher.cs'),
+    (Join-Path $Server 'launcher\DebugTool.cs'),
+    (Join-Path $Server 'debug.ico'),
     (Join-Path $Server 'launcher\app.manifest'),
     (Join-Path $Server 'launcher\webview2\Microsoft.Web.WebView2.Core.dll'),
     (Join-Path $Server 'launcher\webview2\Microsoft.Web.WebView2.WinForms.dll'),
@@ -106,6 +108,7 @@ Copy-Item (Join-Path $Server 'debug.html') $AppDir -Force
 Copy-Item (Join-Path $Server 'localai-debug.mjs') $AppDir -Force
 Copy-Item (Join-Path $Server 'localai-debug.cmd') $AppDir -Force
 Copy-Item (Join-Path $Server 'debug-icon-64.png') $AppDir -Force
+Copy-Item (Join-Path $Server 'debug.ico') $AppDir -Force
 # localai.ico 在下面「写图标」那步统一拷到根目录（桌面快捷方式的 IconLocation 指向它）
 
 # VC++ 运行库：全新 Windows 必缺，缺了模型根本加载不了，随包带一份让启动器直接装
@@ -175,6 +178,11 @@ $wv2 = Join-Path $Server 'launcher\webview2'
     "/r:$wv2\Microsoft.Web.WebView2.WinForms.dll" `
     "/out:$exe" (Join-Path $Server 'launcher\Launcher.cs')
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path $exe)) { Die '启动器编译失败' }
+
+Step '编译调试工具（独立窗口 + 自己的 ico）'
+$dbgExe = Join-Path $resolved 'DebugTool.exe'
+& $Csc /nologo /codepage:65001 /target:winexe /platform:anycpu /optimize+ /utf8output "/win32icon:$(Join-Path $Server 'debug.ico')" /r:System.dll /r:System.Core.dll /r:System.Windows.Forms.dll /r:System.Drawing.dll "/r:$wv2\Microsoft.Web.WebView2.Core.dll" "/r:$wv2\Microsoft.Web.WebView2.WinForms.dll" "/out:$dbgExe" (Join-Path $Server 'launcher\DebugTool.cs')
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path $dbgExe)) { Die '调试工具编译失败' }
 
 # WebView2 的两个托管 DLL + 原生加载器，必须和 exe 同目录
 Copy-Item (Join-Path $wv2 '*.dll') $resolved -Force

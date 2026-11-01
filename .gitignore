@@ -46,6 +46,9 @@ server/icon-app-512.png
 server/icon-app-small-512.png
 server/icon-debug-512.png
 server/icon-*.html
+server/icon-parts-debug/
+server/icon-debug-small-512.png
+server/icon-debug-mid-512.png
 server/icon-preview*.png
 server/debug-icon-16.png
 server/debug-icon-32.png

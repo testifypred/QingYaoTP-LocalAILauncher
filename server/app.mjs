@@ -4321,6 +4321,17 @@ async function handle(req, res) {
     }
   }
 
+  if (req.method === "GET" && url === "/debug-icon.ico") {
+    try {
+      const buf = await readFile(path.join(HERE, "debug.ico"));
+      res.writeHead(200, { "content-type": "image/x-icon", "cache-control": "max-age=3600" });
+      return res.end(buf);
+    } catch {
+      res.writeHead(404);
+      return res.end();
+    }
+  }
+
   if (req.method === "GET" && url === "/api/diag") {
     return sendJson(res, 200, await buildDiag());
   }
@@ -4349,17 +4360,27 @@ async function handle(req, res) {
     if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
       return sendJson(res, 403, { error: { message: "缺少或错误的本地令牌，拒绝打开调试工具" } });
     }
+    // 首选：独立的 DebugTool.exe（自带 ico，标题栏/任务栏清晰）
+    // 回退：node localai-debug.mjs --ui（用 Edge 应用模式开窗，图标来自 favicon，可能偏软）
+    const exe = path.join(HERE, "..", "DebugTool.exe");
     const script = path.join(HERE, "localai-debug.mjs");
-    if (!existsSync(script)) {
-      return sendJson(res, 500, { error: { message: "找不到 localai-debug.mjs（发布包不完整？）" } });
-    }
     try {
-      const child = spawn(process.execPath, [script, "--ui", "--base", `http://127.0.0.1:${PORT}`], {
-        cwd: HERE, detached: true, stdio: "ignore", windowsHide: false,
-      });
+      let child;
+      if (existsSync(exe)) {
+        child = spawn(exe, [`http://127.0.0.1:${PORT}/debug`], {
+          cwd: path.dirname(exe), detached: true, stdio: "ignore", windowsHide: false,
+        });
+        log("打开调试工具（DebugTool.exe，pid " + child.pid + "）");
+      } else if (existsSync(script)) {
+        child = spawn(process.execPath, [script, "--ui", "--base", `http://127.0.0.1:${PORT}`], {
+          cwd: HERE, detached: true, stdio: "ignore", windowsHide: false,
+        });
+        log("打开调试工具（localai-debug.mjs --ui，pid " + child.pid + "）");
+      } else {
+        return sendJson(res, 500, { error: { message: "调试工具缺失（DebugTool.exe 与 localai-debug.mjs 都没有）" } });
+      }
       child.unref();
-      log("打开调试工具（独立进程 pid " + child.pid + "）");
-      return sendJson(res, 200, { ok: true, pid: child.pid });
+      return sendJson(res, 200, { ok: true, pid: child.pid, exe: existsSync(exe) });
     } catch (e) {
       return sendJson(res, 500, { error: { message: "启动调试工具失败：" + String(e?.message ?? e) } });
     }
