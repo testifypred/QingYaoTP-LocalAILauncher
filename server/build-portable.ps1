@@ -38,6 +38,11 @@ foreach ($need in @(
     (Join-Path $Server 'localai.cmd'),
     (Join-Path $Server 'localai-tui.mjs'),
     (Join-Path $Server 'localai-tui.cmd'),
+    # 调试工具：页面 + 独立程序 + 它自己的图标（漏了它，包里「Debug」按钮会 500）
+    (Join-Path $Server 'debug.html'),
+    (Join-Path $Server 'localai-debug.mjs'),
+    (Join-Path $Server 'localai-debug.cmd'),
+    (Join-Path $Server 'debug-icon-64.png'),
     (Join-Path $Server 'vendor\katex\katex.min.js'),
     $Nlc,
     (Join-Path $Server 'launcher\Launcher.cs'),
@@ -93,6 +98,12 @@ Copy-Item (Join-Path $Server 'localai.cmd') $AppDir -Force
 # 终端界面（TUI）：顶栏「终端」按钮靠它开窗口
 Copy-Item (Join-Path $Server 'localai-tui.mjs') $AppDir -Force
 Copy-Item (Join-Path $Server 'localai-tui.cmd') $AppDir -Force
+# 调试工具（Debugging Tool）：独立程序 + 调试页 + 它自己的图标
+Copy-Item (Join-Path $Server 'debug.html') $AppDir -Force
+Copy-Item (Join-Path $Server 'localai-debug.mjs') $AppDir -Force
+Copy-Item (Join-Path $Server 'localai-debug.cmd') $AppDir -Force
+Copy-Item (Join-Path $Server 'debug-icon-64.png') $AppDir -Force
+# localai.ico 在下面「写图标」那步统一拷到根目录（桌面快捷方式的 IconLocation 指向它）
 
 # VC++ 运行库：全新 Windows 必缺，缺了模型根本加载不了，随包带一份让启动器直接装
 $vcRedist = Join-Path $Server 'vendor\vc_redist.x64.exe'
