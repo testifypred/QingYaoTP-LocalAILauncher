@@ -1606,6 +1606,32 @@ DPI 不感知的 PowerShell 里调用 `GetWindowRect` 得到的是**虚拟化后
 - **没改产品代码**：C++ 编译超时只记下来（建议下轮单独小修）；
 - 没打 tag、没做发布分发（仍无分发通道）。
 
+## 三十四、2026-11-01（第三轮）：模型按钮显示对应模型的图标
+
+用户截图指出：顶栏模型按钮一直显示本体 `∫`，要求「选中哪个模型就展示对应模型的图标」。以前品牌图标只用在**发送键旁的下拉小图标**和**下拉菜单行**里（`vendor\models\*.png`：microsoft / qwen / openai / deepseek），顶栏按钮这一处是漏的。
+
+### 一、做法（`app.html` 三处 + 探针一处）
+
+| 层 | 改动 |
+|---|---|
+| 结构 | 按钮里的 `<span class="int"><b>∫</b></span>` 增加一个隐藏的 `<img id="modelBtnImg">`，`∫` 保留作回退 |
+| 样式 | `.int.has-brand` 去掉黑底/边框，品牌图标 22×22 `object-fit:contain`；没有品牌时仍是 `∫` 黑底标记（自定义 gguf 不会变空白） |
+| 逻辑 | `updateModelBtn()` 里复用已有的 `brandOf()`：加载谁就换谁的图标，同时管顶栏按钮与发送键旁图标；认不出品牌 → 回退 `∫` |
+| 探针 | `probe-ui-debug` 原来断言「标记是 ∫ / 底色黑」，改成「品牌图标可见且 src 与 `/api/state` 的 `loaded` 对应品牌一致 + 有 22×22 尺寸 + 回退 ∫ 仍在」；断言 19 → **20**，期望品牌由服务端状态推出（以后换模型探针不该红） |
+
+> 边界：品牌判断顺序沿用 `brandOf()` 的既有约定（DeepSeek 的蒸馏模型名里带 qwen，必须先判 deepseek）；未知品牌一律回退本体标记，不猜。
+
+### 二、验证
+
+- 相关 UI/结构探针复跑全绿：`probe-ui-debug` **20/20**、`probe-start-screen` 12/12、`probe-hero-modes` 11/11、`probe-model-add` 4/4、`probe-ui-new` 30/30、`probe-menu-stacking` 2/2、`probe-status` 6/6、`probe-ctx-panel` 24/24；接口 `probe-debug` 25/25。
+- 截图核对：加载 7B（Qwen）时按钮显示 Qwen 标；加载 R1 时显示 DeepSeek 标，22px 下不糊；hero 里的 `∫ Agent 模式` 未动（`probe-hero-modes` 仍在断言）。
+- 两个小插曲（都不是产品回归）：① 验证中途旧 node 服务被上轮工具进程树回收，`probe-model-add` 等报 ECONNRESET → 重启发布包后复跑全绿；② 复跑期间内嵌窗口切了模型（日志 11:15:37 加载 DeepSeek-R1），`probe-hero-modes` 的「发送后进入对话」被并发生成打断红了一次，单独复跑 11/11。
+
+### 三、落地与口径
+
+- `dist\LocalAI\app\app.html` 已同步（SHA256 一致）；**`app.html` 每请求重读，刷新即生效，不用重启 node**。
+- 断言口径：全量从 **629 → 630**（`probe-ui-debug` +1），下次全量整跑时用 630 核对。
+
 
 
 

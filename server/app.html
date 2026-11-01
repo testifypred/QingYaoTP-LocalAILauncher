@@ -222,6 +222,13 @@ header::after{
 .modelBtn .int b{font-family:"Cambria Math","Times New Roman",serif;font-style:italic;font-size:16px;line-height:1;font-weight:400;transform:translate(-1px,-1px)}
 .modelBtn .int i{position:absolute;right:1.5px;top:0;font:700 9px/1 "Segoe UI",sans-serif;color:var(--cyan);font-style:normal}
 .modelBtn:hover .int{border-color:var(--cyan);box-shadow:0 0 10px var(--glow-c)}
+/* 加载了模型时：按钮图标换成该模型的品牌图标（不再套黑底 ∫）；
+   认不出品牌（自定义 gguf）才回退到本体 ∫ 黑底标记 */
+.modelBtn .int img{width:22px;height:22px;object-fit:contain;display:block;border-radius:4px}
+.modelBtn .int img[hidden]{display:none}
+.modelBtn .int.has-brand{background:none;border-color:transparent;overflow:visible}
+.modelBtn .int.has-brand b{display:none}
+.modelBtn:hover .int.has-brand{box-shadow:none}
 .modelBtn .caret{color:var(--dim);font-size:10px}
 .modelBtn #modelBtnName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .modelMenu{position:absolute;left:0;top:calc(100% + 7px);z-index:80;width:308px;padding:6px;border-radius:10px;border:1px solid var(--line-2);background:var(--panel-3);box-shadow:var(--shadow)}
@@ -862,7 +869,7 @@ header::before{
     <button id="sideToggle" class="ghost sideToggle" title="展开 / 收起对话列表">☰</button>
     <div class="modelPick">
       <button id="modelBtn" class="ghost modelBtn" title="选择模型：点开切换或卸载">
-        <span class="int" title="本地 AI" aria-hidden="true"><b>∫</b></span>
+        <span id="modelBtnIco" class="int" title="本地 AI" aria-hidden="true"><img id="modelBtnImg" alt="" hidden><b>∫</b></span>
         <span id="modelBtnName">选择模型</span>
         <span class="caret">▾</span>
       </button>
@@ -1979,14 +1986,33 @@ function renderModelTabs(models, loadedFile) {
   updateModelBtn(loadedFile);
 }
 
-/** 顶栏模型按钮 + 发送键旁的模型图标：加载谁显示谁 */
+/** 顶栏模型按钮 + 发送键旁的模型图标：加载谁就显示谁的品牌图标（认不出品牌回退本体 ∫） */
 function updateModelBtn(loadedFile) {
   const file = loadedFile || selectedModel || '';
   $('modelBtnName').textContent = file ? prettyName(file) : '选择模型';
+  const brand = brandOf(file);
+  const hasBrand = !!(file && BRAND_ICON[brand]);
+  // 顶栏模型按钮上的图标：品牌图标优先；没品牌（自定义 gguf）时保留 ∫ 黑底标记
+  const ico = $('modelBtnIco');
+  const brandImg = $('modelBtnImg');
+  if (ico && brandImg) {
+    if (hasBrand) {
+      brandImg.src = BRAND_ICON[brand];
+      brandImg.alt = prettyName(file);
+      brandImg.hidden = false;
+      ico.classList.add('has-brand');
+      ico.title = '';
+    } else {
+      brandImg.removeAttribute('src');
+      brandImg.alt = '';
+      brandImg.hidden = true;
+      ico.classList.remove('has-brand');
+      ico.title = '本地 AI';
+    }
+  }
   const img = $('sendIco');
   if (!img) return;
-  const brand = brandOf(file);
-  if (file && BRAND_ICON[brand]) {
+  if (hasBrand) {
     img.src = BRAND_ICON[brand];
     img.alt = prettyName(file);
     img.hidden = false;

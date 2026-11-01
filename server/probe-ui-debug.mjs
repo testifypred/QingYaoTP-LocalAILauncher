@@ -3,8 +3,8 @@
  *
  *   node probe-ui-debug.mjs [cdp] [base]
  *
- * 覆盖：顶栏 Debug 按钮、模型按钮上的新标记（∂ + ?）、设置 → 工具 的入口、
- *       点按钮会真的去调 /api/debug/open（用假 fetch 拦下来，避免真的弹窗）、
+ * 覆盖：顶栏 Debug 按钮、模型按钮显示已加载模型的品牌图标（认不出品牌回退 ∫）、
+ *       设置 → 工具 的入口、点按钮会真的去调 /api/debug/open（用假 fetch 拦下来，避免真的弹窗）、
  *       调试页面本身能渲染检查项/日志/复制。
  */
 import WebSocket from "ws";
@@ -39,11 +39,29 @@ ok("顶栏有 Debug 按钮", !!btn && /Debug/.test(btn.text), btn ? btn.text : "
 ok("按钮可点（有尺寸）", !!btn && btn.w > 10 && btn.h > 10, btn ? btn.w + "x" + btn.h : "");
 ok("按钮 tooltip 说明是独立程序", !!btn && /独立程序/.test(btn.title || ""), btn?.title || "");
 
-// ---- 新标记（本体图标） ----
-const mark = await ev("(() => { const b = document.querySelector('#modelBtn .int'); if (!b) return null; const cs = getComputedStyle(b); return { glyph: b.querySelector('b')?.textContent || '', q: b.querySelector('i')?.textContent || '', bg: cs.backgroundColor, border: cs.borderColor }; })()");
-ok("模型按钮上的标记是 ∫（不定积分，本体图标）", !!mark && mark.glyph === "∫", mark ? mark.glyph : "missing");
-ok("本体标记只保留 ∫（问号属于调试图标，不混进本体）", !!mark && mark.q === "", mark ? JSON.stringify(mark.q) : "");
-ok("标记底色是黑", !!mark && /rgb\(0, 0, 0\)|rgba\(0, 0, 0/.test(mark.bg), mark?.bg || "");
+// ---- 模型按钮图标（加载了模型就显示该模型的品牌图标；认不出品牌回退 ∫） ----
+// 期望哪个图标由服务端状态决定，别写死模型名（以后换模型探针不该红）
+let loadedFile = "";
+try { loadedFile = (await (await fetch(BASE + "/api/state")).json()).loaded || ""; } catch {}
+const brandOf = (f) => {
+  const n = String(f || "").toLowerCase();
+  if (n.includes("deepseek")) return "deepseek";
+  if (n.includes("phi") || n.includes("microsoft")) return "microsoft";
+  if (n.includes("qwen")) return "qwen";
+  if (n.includes("gpt") || n.includes("openai") || n.includes("oss")) return "openai";
+  return "";
+};
+const wantBrand = brandOf(loadedFile);
+const mark = await ev("(() => { const box = document.querySelector('#modelBtn .int'); const img = document.getElementById('modelBtnImg'); const b = box?.querySelector('b'); if (!box || !img) return null; const cs = getComputedStyle(box); const r = img.getBoundingClientRect(); return { glyph: b?.textContent || '', q: box.querySelector('i')?.textContent || '', hasBrand: box.classList.contains('has-brand'), imgShown: !img.hidden && !!img.getAttribute('src'), src: img.getAttribute('src') || '', alt: img.getAttribute('alt') || '', bg: cs.backgroundColor, iw: Math.round(r.width), ih: Math.round(r.height) }; })()");
+if (wantBrand) {
+  ok("模型按钮显示已加载模型的品牌图标", !!mark && mark.hasBrand === true && mark.imgShown === true && mark.src === "/vendor/models/" + wantBrand + ".png",
+    mark ? mark.src : "missing");
+  ok("品牌图标有实际尺寸", !!mark && mark.iw >= 16 && mark.ih >= 16, mark ? mark.iw + "x" + mark.ih : "");
+  ok("品牌图标不套黑底（回退标记此时隐藏）", !!mark && mark.hasBrand === true && /rgba?\(0, 0, 0, 0\)|transparent/.test(mark.bg), mark?.bg || "");
+} else {
+  ok("没加载模型/认不出品牌时回退 ∫ 标记（不显示品牌图）", !!mark && mark.hasBrand === false && mark.imgShown === false, mark ? JSON.stringify(mark.src) : "missing");
+}
+ok("回退标记仍是 ∫（不定积分，本体图标；问号属于调试图标）", !!mark && mark.glyph === "∫" && mark.q === "", mark ? mark.glyph + "/" + JSON.stringify(mark.q) : "missing");
 
 // ---- 设置入口 ----
 await ev("document.getElementById('settingsBtn').click(); 1");
