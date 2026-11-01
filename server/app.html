@@ -210,7 +210,13 @@ header::after{
 /* ---------------- 模型选择（左上角 ∫） ---------------- */
 .modelPick{position:relative;flex:none}
 .modelBtn{display:flex;align-items:center;gap:7px;padding:5px 11px;font-weight:600;max-width:280px}
-.modelBtn .int{color:var(--cyan);font-size:15px;line-height:1}
+.modelBtn .int{
+  position:relative;display:grid;place-items:center;width:22px;height:22px;border-radius:6px;
+  background:#000;border:1px solid rgba(34,211,238,.42);color:var(--text);flex:none;
+}
+.modelBtn .int b{font-family:"Cambria Math","Times New Roman",serif;font-style:italic;font-size:15px;line-height:1;font-weight:400;transform:translateY(-1px)}
+.modelBtn .int i{position:absolute;right:1px;top:-4px;font:700 10px/1 "Segoe UI",sans-serif;color:var(--cyan);font-style:normal}
+.modelBtn:hover .int{border-color:var(--cyan);box-shadow:0 0 10px var(--glow-c)}
 .modelBtn .caret{color:var(--dim);font-size:10px}
 .modelBtn #modelBtnName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .modelMenu{position:absolute;left:0;top:calc(100% + 7px);z-index:80;width:308px;padding:6px;border-radius:10px;border:1px solid var(--line-2);background:var(--panel-3);box-shadow:var(--shadow)}
@@ -851,7 +857,7 @@ header::before{
     <button id="sideToggle" class="ghost sideToggle" title="展开 / 收起对话列表">☰</button>
     <div class="modelPick">
       <button id="modelBtn" class="ghost modelBtn" title="选择模型：点开切换或卸载">
-        <span class="int">∫</span>
+        <span class="int" title="本地 AI" aria-hidden="true"><b>∂</b><i>?</i></span>
         <span id="modelBtnName">选择模型</span>
         <span class="caret">▾</span>
       </button>
@@ -880,6 +886,7 @@ header::before{
     <button id="wsBtn" class="ghost" title="工作区：浏览/编辑 workspace 里的文件">文件</button>
     <button id="codeBtn" class="ghost" title="独立代码运行器（不依赖对话）">代码</button>
     <button id="termBtn" class="ghost" title="打开命令行终端（本地 TUI：对话 + 跑命令）">终端</button>
+    <button id="debugBtn" class="ghost dbg" title="Debugging Tool：体检、看日志、清崩溃记录（独立程序开窗）">Debug</button>
     <button id="fxBtn" class="ghost" title="公式面板：可视化编辑，导出 LaTeX">公式</button>
     <button id="ctxBtn" class="ghost" title="显示/隐藏上下文余量浮窗" aria-pressed="false">余量</button>
     <button id="settingsBtn" class="ghost" title="设置">⚙</button>
@@ -1387,6 +1394,14 @@ header::before{
         </div>
         <div id="backupWarn" class="hintText" style="margin-top:4px;white-space:pre-line"></div>
         <em>会话和它的历史版本都在同一块盘上，整盘坏了会一起没。这里把会话与历史版本一起镜像到另一块盘 / U 盘 / 网络盘：只拷贝有变化的文件，会话很小，几乎不占地方；备份失败只写在状态里，不影响对话。</em>
+      </div>
+      <div class="field">
+        <span class="lbl">Debugging Tool</span>
+        <div class="exportRow">
+          <button id="setDebugOpen" class="ghost">打开调试窗口…</button>
+          <span class="hintText">独立进程：体检 / 日志 / 崩溃记录 / 一键修复</span>
+        </div>
+        <em>本地 AI 出问题时先看这里：它会把「哪一层坏了」和「怎么处理」直接列出来，比翻 app.log 快。程序目录里也可以直接双击 localai-debug.cmd 跑命令行版。</em>
       </div>
       <div class="field">
         <span class="lbl">服务</span>
@@ -4890,6 +4905,24 @@ $('aboutCopy').onclick = async () => {
     setTimeout(() => { btn.textContent = '复制版本信息'; }, 1800);
   }
 };
+
+/** Debugging Tool：由服务端拉起独立程序（localai-debug.mjs --ui），窗口自己弹出来 */
+async function openDebugTool() {
+  try {
+    const r = await fetch('/api/debug/open', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-local-token': localToken },
+      body: '{}',
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 200) showToast('调试窗口已打开（独立进程 pid ' + (j.pid || '?') + '）', 'ok', 3500);
+    else showToast('打不开调试工具：' + (j.error?.message || ('HTTP ' + r.status)), 'err', 6000);
+  } catch (e) {
+    showToast('打不开调试工具：' + e.message, 'err', 6000);
+  }
+}
+$('debugBtn').onclick = openDebugTool;
+$('setDebugOpen').onclick = openDebugTool;
 
 settingsBtn.onclick = () => {
   loadVersionInfo().catch(() => {});

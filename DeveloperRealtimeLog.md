@@ -1222,6 +1222,56 @@ export async function run(args, ctx) {
 
 `server\docs\probe-full-2026-10-31\RESULT.md`：**45 条探针 / 585 条断言 / 0 红**（585 = 上轮 562 + `probe-version` 14 + `probe-ui-version` 9），逐条标了「整跑通过」还是「崩溃后被波及、单独复跑」。
 
+## 二十五、2026-11-01：Debugging Tool（独立程序）+ 黑底 ∂AI? 图标
+
+这一轮是用户点名要的两件事：**修复工具单独成一个程序，软件里表现为「Debugging Tool」按钮，按了直接弹调试界面**；**新图标：黑底 + LaTeX 的 ∂ + AI + ?**。
+
+### 一、Debugging Tool 的三层
+
+| 层 | 是什么 | 文件 |
+|---|---|---|
+| 数据 | `buildDiag()` 产出 16 项检查，每项 `{level, title, detail, fix}` | `app.mjs` |
+| 页面 | 独立调试页（检查项 / 环境 / 模型 / 数据 / 日志 / 修复动作） | `debug.html`，走 `GET /debug` |
+| 程序 | 独立进程：`--ui` 开窗、`--json` 给脚本、`--logs` 打日志；**服务没跑时给本机诊断** | `localai-debug.mjs` + `.cmd` |
+
+入口：顶栏「Debug」按钮或设置 → 工具 →「打开调试窗口…」→ `POST /api/debug/open` → 服务端 `spawn` 独立程序 → Edge 应用模式开窗。
+
+检查项覆盖：服务/端口/并发、版本与构建、VC++ 运行库、内存与磁盘、后端（Vulkan/CPU）与崩溃次数、模型与 KV、会话与损坏文件、备份、RAG、插件、源码与发布包一致性。
+
+> 两个「私货」检查项最有用：「崩溃次数」解释「为什么突然变慢」（自动切 CPU 了），「发布包一致性」防「改完忘了同步 dist」。这两类以前只能靠人记。
+
+### 二、图标
+
+- `server\icon.svg` 定稿：黑底圆角、青色细边、白色斜体 `∂`、下方 `AI`、右上青色 `?`（512 视口，Cambria Math + Segoe UI）。
+- 渲染：Edge headless 截图（**必须加 `--virtual-time-budget`**，否则输出 0 字节）→ `make-ico.mjs` 把 6 个尺寸打包成 PNG-内嵌 ICO。
+- 启动器用 `/win32icon:localai.ico` 编译（`build-portable.ps1:156`），所以**换图标必须重编译 exe**：这次按那段参数直接重编了 `dist\LocalAI\启动本地AI.exe`，再用 `ExtractAssociatedIcon` 读回来确认是 `∂AI?`。
+- 界面里的「本体图标」：模型按钮原来显示 `∫`，改成同设计的迷你标记（黑底小块 + ∂ + 青色 ?）。**hero（开场白）里的 `∫` 特意没动**——`probe-hero-modes` 断言「Agent 前有 ∫」，改了会误伤。
+
+### 三、踩到的坑（都花了时间）
+
+1. **GDI+ 测量与绘制的 StringFormat 不一致**：图标第一版整体偏移、第二版干脆空白。量墨迹用默认格式、绘制用 `GenericTypographic`，内边距不同，位置就差了。最后**改用 SVG + Edge 渲染**，坐标完全可控。
+2. **PowerShell 的 `$env:ProgramFiles(x86)`** 又踩一次（必须写 `${env:ProgramFiles(x86)}`）；在 JS 模板字符串里写它还会被当插值，得拼字符串。
+3. **Edge `--screenshot` 不加 `--virtual-time-budget` 会静默输出 0 字节**。
+4. **日志编码**：`server\app.log` 是 UTF-16（PowerShell 重定向写的），第一版调试面板按 UTF-8 解，满屏 `0 6 : 2 8 :` 乱码。`tailText()` 现在嗅探 BOM + UTF-16 偶数对齐，命令行版同步修。
+5. **ESM 没有 `__dirname`**：CLI 用 `fileURLToPath(import.meta.url)`（与其它探针一致）。
+
+### 四、验证
+
+| 探针 | 结果 | 覆盖 |
+|---|---|---|
+| `probe-debug`（新） | **23/23** | /debug 可访问、16 项检查、summary 自洽、日志编码不是乱码、两个写接口必须令牌、清崩溃记录会自复位、`--json`/`--logs` 可用 |
+| `probe-ui-debug`（新） | **16/16** | 顶栏 Debug 按钮、模型按钮新标记（∂ + ? + 黑底）、设置入口、点按钮真的调 `/api/debug/open`（假 fetch 拦下，不真弹窗）、调试页渲染与复制、能回主界面 |
+
+- `dist\LocalAI\app` 同步 6 个文件，哈希一致；启动器按新图标重编译（38400 → 58368 字节）；
+- 旧的 45 条本轮没跑：新驱动 `server\docs\probe-full-2026-11-01\run-full.ps1` 已扩到 **47 条**，下一轮开工先整跑。
+
+### 五、遗留
+
+- `buildDiag()` 每次调用都扫会话目录 + 3 次哈希，页面 5 秒轮询够用；真要高频采集应拆「心跳 / 完整体检」两个接口；
+- 图标 16px 下 `?` 基本糊掉（32px 尚可）——小尺寸已是极简形式，再压只能去掉 `?`；
+- 调试程序目前是 `.cmd`（自带 runtime 时优先用它），**没做成独立 exe**：要 exe 得用 csc 包一层，和启动器一样重编译。
+
+
 ### 五、遗留（都不算新缺陷）
 
 - `probe-tools-agent` 仍会触发 Vulkan device lost（已知问题 2：生成中途断开/中止），这台机器的固有取舍；

@@ -28,6 +28,8 @@ const DEFAULT_SYSTEM =
   process.env.DEFAULT_SYSTEM ?? "你是一个乐于助人的中文助手。回答要准确、简洁，用中文回答。";
 
 const UI = path.join(HERE, "app.html");
+/** 调试面板：独立页面（Debugging Tool），由本服务托管，也可以被独立程序 localai-debug.mjs 拉起 */
+const DEBUG_UI = path.join(HERE, "debug.html");
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 /** 版本号：发版只改这一处；server\package.json 的 version 必须与它一致（probe-version 会查） */
@@ -82,6 +84,205 @@ function versionInfo() {
     dir: HERE,
     pid: process.pid,
     port: PORT,
+  };
+}
+
+
+// ---------------------------------------------------------------- 调试面板（Debugging Tool）
+// 目标：一台机器上的本地 AI 出问题时，先在这里看清「哪一层坏了」，
+// 而不是让用户去翻 app.log。检查项要能直接给出处置建议（fix 字段）。
+
+/** 日志候选路径：发布包在 <root>\logs\app.log，开发目录常见 server\app.log */
+function logCandidates() {
+  return [
+    path.join(HERE, "..", "logs", "app.log"),
+    path.join(HERE, "app.log"),
+    path.join(HERE, "logs", "app.log"),
+  ].map((p) => path.resolve(p));
+}
+
+/**
+ * 读文件尾部：只读最后 128KB，别把几百 MB 的日志整份读进内存。
+ * 编码要嗅探：启动器写的是 UTF-8，但 PowerShell 重定向（run-server.cmd）写的是 UTF-16LE，
+ * 一律按 UTF-8 解会得到一堆夹着空字符的乱码——日志面板就废了。
+ */
+async function tailText(file, lines = 200) {
+  let fh;
+  try {
+    fh = await open(file, "r");
+    const st = await fh.stat();
+    const CHUNK = 128 * 1024;
+    const head = Buffer.alloc(2);
+    if (Number(st.size) >= 2) await fh.read(head, 0, 2, 0);
+    const utf16 = (head[0] === 0xff && head[1] === 0xfe) || (head[0] === 0xfe && head[1] === 0xff) || (head[0] !== 0 && head[1] === 0);
+    let start = Math.max(0, Number(st.size) - CHUNK);
+    if (utf16) start -= start % 2; // 从偶数偏移读，避免把一个 UTF-16 字符切成两半
+    const len = Number(st.size) - start;
+    const buf = Buffer.alloc(Math.max(0, len));
+    if (len > 0) await fh.read(buf, 0, len, start);
+    let text;
+    if (utf16) {
+      const le = !(head[0] === 0xfe && head[1] === 0xff);
+      text = (le ? buf.toString("utf16le") : Buffer.from(buf).swap16().toString("utf16le")).replace(/^\uFEFF/, "");
+    } else {
+      text = buf.toString("utf8").replace(/^\uFEFF/, "");
+    }
+    const arr = text.split(/\r?\n/);
+    return { text: arr.slice(-lines).join("\n"), size: Number(st.size), truncated: start > 0, encoding: utf16 ? "utf-16" : "utf-8" };
+  } catch (e) {
+    return { text: "", size: 0, truncated: false, error: String(e?.message ?? e) };
+  } finally {
+    try { await fh?.close(); } catch {}
+  }
+}
+
+async function fileHash(p) {
+  try {
+    const buf = await readFile(p);
+    return createHash("sha256").update(buf).digest("hex");
+  } catch {
+    return "";
+  }
+}
+
+/** 诊断快照：一次扫完，返回「人话结论 + 机器可读字段」 */
+async function buildDiag() {
+  const checks = [];
+  const add = (id, level, title, detail, fix) =>
+    checks.push({ id, level, title, detail: detail == null ? "" : String(detail), fix: fix || "" });
+
+  const totalGB = Number((os.totalmem() / 2 ** 30).toFixed(1));
+  const freeGB = Number((os.freemem() / 2 ** 30).toFixed(1));
+
+  // ---- 服务 ----
+  const upMin = Number(((Date.now() - process.uptime() * 1000) / 60000).toFixed(0));
+  add("server", "ok", "服务在跑", `127.0.0.1:${PORT} · pid ${process.pid} · 运行 ${process.uptime() < 3600 ? Math.max(1, Math.round(process.uptime() / 60)) + " 分钟" : upMin + " 分钟"}`);
+  add("bind", "ok", "只绑回环地址", "127.0.0.1（外部机器连不进来）");
+  add("busy", activeChats > 0 ? "warn" : "ok", "并发对话", activeChats > 0 ? `${activeChats} 个进行中（此时切模型/卸载会被拒绝）` : "空闲（0 个进行中）");
+
+  // ---- 版本 ----
+  add("version", "ok", "版本", `v${APP_VERSION}${BUILD.commit ? " · " + BUILD.commit + (BUILD.dirty ? "（有未提交改动）" : "") : BUILD.builtAt ? " · 打包 " + BUILD.builtAt.slice(0, 16).replace("T", " ") : ""}`);
+
+  // ---- 运行库 / 系统 ----
+  add("msvcp", hasMsvcp() ? "ok" : "error", "VC++ 运行库",
+    hasMsvcp() ? "msvcp140.dll 已安装" : "System32 里找不到 msvcp140.dll",
+    hasMsvcp() ? "" : "装安装目录里的 vc_redist.x64.exe（或 aka.ms/vs/17/release/vc_redist.x64.exe），否则 llama 原生模块加载会失败");
+  add("node", "ok", "运行时", `node ${process.version} · ${os.platform()} ${os.arch()} · ${os.cpus().length} 核`);
+  add("mem", freeGB < 2 ? "error" : freeGB < 5 ? "warn" : "ok", "内存", `共 ${totalGB} GB · 可用 ${freeGB} GB`,
+    freeGB < 2 ? "可用内存太少，加载 7B 级模型会失败；先卸载模型（/api/unload）或关掉其它程序" : freeGB < 5 ? "可用内存偏紧，尽量别同时预加载第二个模型" : "");
+
+  // ---- 磁盘 ----
+  try {
+    const st = await statfs(MODEL_DIR);
+    const freeDestGB = Number(((st.bavail * st.bsize) / 2 ** 30).toFixed(1));
+    add("disk", freeDestGB < 2 ? "error" : freeDestGB < 5 ? "warn" : "ok", "磁盘余量", `${MODEL_DIR} · 剩 ${freeDestGB} GB`,
+      freeDestGB < 2 ? "剩余不足 2GB：下载模型会失败，会话快照也可能写不进去" : "");
+  } catch (e) {
+    add("disk", "warn", "磁盘余量", "读不到模型目录: " + String(e?.message ?? e));
+  }
+
+  // ---- 后端 / 崩溃 ----
+  const gpu = state.gpu || "?";
+  const crashInfo = await recentCrashes();
+  if (gpu === "vulkan") {
+    add("backend", "ok", "推理后端", "Vulkan（核显加速）");
+  } else {
+    add("backend", "warn", "推理后端", `CPU（慢，但稳定）${backendNote.text ? " · " + backendNote.text : ""}`,
+      crashInfo.length >= 2 ? "最近 10 分钟 Vulkan 崩过 ≥2 次，程序自己切了 CPU；确认稳定后可删掉 server\\vulkan-crash.log 再重启恢复 Vulkan" : "");
+  }
+  if (crashInfo.length) {
+    add("crash", "warn", "崩溃记录", `最近 ${crashInfo.length} 次（10 分钟内计数）`,
+      "生成中途断开（点停止/关窗口）会触发 Vulkan device lost；这也是「崩两次自动切 CPU」的依据");
+  } else {
+    add("crash", "ok", "崩溃记录", "最近 10 分钟没有崩溃");
+  }
+
+  // ---- 模型 ----
+  let models = [];
+  try { models = await scanModels(); } catch (e) { add("models", "error", "模型扫描", String(e?.message ?? e)); }
+  add("models", models.length ? "ok" : "warn", "模型库", `${models.length} 个 .gguf · ${MODEL_DIR}`,
+    models.length ? "" : "模型目录里没有 .gguf：用「模型 → 添加模型」嗅探，或下载一个入门模型");
+  if (state.file) {
+    const ok = existsSync(path.join(MODEL_DIR, state.file));
+    add("loaded", ok ? "ok" : "error", "已加载模型",
+      `${state.file} · 上下文 ${state.contextSize} · ${state.layers} 层`,
+      ok ? "" : "文件不见了：模型目录被移动/删除，请重新加载");
+    const cached = state.sequence?.nextTokenIndex ?? 0;
+    add("kv", "ok", "KV 缓存", `常驻序列 ${Number(cached) || 0} token · 复用 ${KV_REUSE ? "开" : "关"}`,
+      KV_REUSE ? "" : "KV 复用关着（kvReuse=0）：每轮都会整段重算，慢但不影响正确性");
+  } else {
+    add("loaded", "warn", "已加载模型", "未加载（连界面都不能问答）", "点左上角「∫ 模型」选一个加载，或看「模型」页");
+  }
+
+  // ---- 会话 ----
+  let files = [];
+  try { files = (await readdir(SESSION_DIR)).filter((x) => x.endsWith(".json")); } catch {}
+  let bad = 0, bytes = 0, maxBytes = 0;
+  for (const f of files) {
+    try {
+      const st = await stat(path.join(SESSION_DIR, f));
+      bytes += st.size;
+      if (st.size > maxBytes) maxBytes = st.size;
+      JSON.parse(await readFile(path.join(SESSION_DIR, f), "utf8"));
+    } catch { bad++; }
+  }
+  add("sessions", bad ? "error" : "ok", "会话",
+    `${files.length} 个 · ${(bytes / 1024).toFixed(0)} KB${bad ? ` · ${bad} 个损坏` : ""}`,
+    bad ? "有会话文件不是合法 JSON（多半是写盘时被打断）：坏的会被列表跳过，建议先备份再删" : "");
+
+  // ---- 备份 ----
+  try {
+    const bk = await backupConfig();
+    add("backup", bk.enabled && bk.dir ? "ok" : "warn", "会话备份",
+      bk.enabled && bk.dir ? `开 · ${bk.dir}` : "未开启（会话只在这台机器上）",
+      bk.enabled ? "" : "设置 → 工具 → 会话备份：指向另一块盘/U 盘，防整盘坏");
+  } catch {}
+
+  // ---- 文档检索 ----
+  try {
+    const rs = ragStatus();
+    add("rag", rs.files ? "ok" : "warn", "文档检索",
+      `${rs.files} 个文件 / ${rs.chunks} 段`,
+      rs.files ? "" : "workspace 里还没有可索引的文档（md/txt/docx/pdf）");
+  } catch {}
+
+  // ---- 插件 ----
+  try {
+    const items = pluginState.items || [];
+    const errs = items.filter((x) => !x.ok);
+    add("plugins", errs.length ? "error" : "ok", "插件",
+      `${activePlugins().length} 个可用 / ${items.length} 个文件${errs.length ? " · " + errs.length + " 个加载失败" : ""}`,
+      errs.length ? errs.map((x) => x.file + ": " + x.error).join(" | ") : "");
+  } catch {}
+
+  // ---- 源码与发布包一致性 ----
+  const distApp = path.join(MODEL_DIR, "dist", "LocalAI", "app");
+  if (existsSync(distApp)) {
+    const pairs = ["app.mjs", "app.html", "doc-extract.mjs"];
+    const drifted = [];
+    for (const name of pairs) {
+      const a = await fileHash(path.join(HERE, name));
+      const b = await fileHash(path.join(distApp, name));
+      if (a && b && a !== b) drifted.push(name);
+    }
+    add("dist", drifted.length ? "warn" : "ok", "发布包与源码",
+      drifted.length ? `${drifted.join("、")} 与 dist 不一致` : "三份文件哈希一致",
+      drifted.length ? "改完源码要拷进 dist\\LocalAI\\app\\，否则发布包跑的是旧代码" : "");
+  }
+
+  return {
+    now: new Date().toISOString(),
+    version: { version: APP_VERSION, commit: BUILD.commit, dirty: BUILD.dirty, builtAt: BUILD.builtAt },
+    server: { port: PORT, pid: process.pid, uptimeSec: Math.round(process.uptime()), activeChats, gpu, backendNote: backendNote.text },
+    model: { file: state.file || "", context: state.contextSize || 0, layers: state.layers || 0, cachedTokens: state.sequence?.nextTokenIndex ?? 0, kvReuse: KV_REUSE, count: models.length },
+    system: { totalGB, freeGB, cpus: os.cpus().length, platform: os.platform(), arch: os.arch(), node: process.version },
+    paths: { dir: HERE, modelDir: MODEL_DIR, sessions: SESSION_DIR, logs: logCandidates().find((p) => existsSync(p)) || logCandidates()[0], crashLog: CRASH_LOG },
+    checks,
+    summary: {
+      error: checks.filter((c) => c.level === "error").length,
+      warn: checks.filter((c) => c.level === "warn").length,
+      ok: checks.filter((c) => c.level === "ok").length,
+    },
   };
 }
 
@@ -4097,6 +4298,61 @@ async function handle(req, res) {
       recommend: { id, reason },
     });
   }
+  // ---------------------------------------------------------------- 调试面板（Debugging Tool）
+  if (req.method === "GET" && (url === "/debug" || url === "/debug.html")) {
+    try {
+      const html = await readFile(DEBUG_UI, "utf8");
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+      return res.end(html);
+    } catch (e) {
+      return sendJson(res, 500, { error: { message: "debug.html 读不到：" + String(e?.message ?? e) } });
+    }
+  }
+
+  if (req.method === "GET" && url === "/api/diag") {
+    return sendJson(res, 200, await buildDiag());
+  }
+
+  if (req.method === "GET" && url.startsWith("/api/diag/logs")) {
+    const q = new URL(req.url, "http://127.0.0.1");
+    const which = q.searchParams.get("which") === "crash" ? "crash" : "app";
+    const lines = Math.min(2000, Math.max(20, Number(q.searchParams.get("lines")) || 200));
+    const file = which === "crash" ? CRASH_LOG : (logCandidates().find((p) => existsSync(p)) || logCandidates()[0]);
+    const t = await tailText(file, lines);
+    return sendJson(res, 200, { which, file, ...t });
+  }
+
+  if (req.method === "POST" && url === "/api/diag/clear-crash") {
+    if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
+      return sendJson(res, 403, { error: { message: "缺少或错误的本地令牌，拒绝清理崩溃记录" } });
+    }
+    let removed = false;
+    try { await unlink(CRASH_LOG); removed = true; } catch {}
+    log("调试面板：清理崩溃记录 " + (removed ? "成功" : "（本来就没有）"));
+    return sendJson(res, 200, { ok: true, removed, exists: existsSync(CRASH_LOG) });
+  }
+
+  // 独立程序：localai-debug.mjs 自己起窗口，主程序只负责拉起它
+  if (req.method === "POST" && url === "/api/debug/open") {
+    if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
+      return sendJson(res, 403, { error: { message: "缺少或错误的本地令牌，拒绝打开调试工具" } });
+    }
+    const script = path.join(HERE, "localai-debug.mjs");
+    if (!existsSync(script)) {
+      return sendJson(res, 500, { error: { message: "找不到 localai-debug.mjs（发布包不完整？）" } });
+    }
+    try {
+      const child = spawn(process.execPath, [script, "--ui", "--base", `http://127.0.0.1:${PORT}`], {
+        cwd: HERE, detached: true, stdio: "ignore", windowsHide: false,
+      });
+      child.unref();
+      log("打开调试工具（独立进程 pid " + child.pid + "）");
+      return sendJson(res, 200, { ok: true, pid: child.pid });
+    } catch (e) {
+      return sendJson(res, 500, { error: { message: "启动调试工具失败：" + String(e?.message ?? e) } });
+    }
+  }
+
   if (req.method === "GET" && url === "/api/version") {
     return sendJson(res, 200, versionInfo());
   }

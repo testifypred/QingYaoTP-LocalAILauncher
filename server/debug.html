@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Debugging Tool · 本地 AI</title>
+<style>
+:root{
+  --bg:#07080b;--panel:#0f1218;--panel2:#141922;--line:#242b37;--line2:#323a49;
+  --text:#e8edf5;--dim:#8e9aad;--cyan:#22d3ee;--ok:#34d399;--warn:#fbbf24;--err:#f87171;
+  --mono:ui-monospace,Consolas,"Cascadia Mono",monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:13px/1.55 "Segoe UI",system-ui,sans-serif}
+header{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:linear-gradient(180deg,#0b0e14,#07080b);z-index:5}
+.mark{width:30px;height:30px;border-radius:8px;background:#000;border:1px solid rgba(34,211,238,.35);display:grid;place-items:center;font-family:"Cambria Math",serif;font-style:italic;font-size:19px;position:relative}
+.mark i{position:absolute;right:2px;top:-3px;font:700 11px "Segoe UI";color:var(--cyan);font-style:normal}
+h1{font-size:15px;margin:0;letter-spacing:.02em}
+h1 small{color:var(--dim);font-weight:400;font-size:11.5px;margin-left:8px}
+.spacer{flex:1}
+button{background:var(--panel2);color:var(--text);border:1px solid var(--line2);border-radius:7px;padding:6px 11px;font-size:12px;cursor:pointer}
+button:hover{border-color:var(--cyan);color:var(--cyan)}
+button.primary{background:var(--cyan);border-color:var(--cyan);color:#04141a;font-weight:700}
+button.danger:hover{border-color:var(--err);color:var(--err)}
+.wrap{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px;padding:14px 18px 28px}
+@media (max-width:1080px){.wrap{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-width:0}
+.card h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:0 0 10px;font-weight:700}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;font-size:11.5px;border:1px solid var(--line2)}
+.pill.ok{color:var(--ok);border-color:rgba(52,211,153,.45)}
+.pill.warn{color:var(--warn);border-color:rgba(251,191,36,.45)}
+.pill.err{color:var(--err);border-color:rgba(248,113,113,.5)}
+ul.checks{list-style:none;margin:0;padding:0}
+ul.checks li{display:flex;gap:9px;padding:7px 0;border-top:1px dashed var(--line)}
+ul.checks li:first-child{border-top:0}
+.dot{width:8px;height:8px;border-radius:50%;margin-top:6px;flex:none}
+.dot.ok{background:var(--ok);box-shadow:0 0 8px rgba(52,211,153,.6)}
+.dot.warn{background:var(--warn);box-shadow:0 0 8px rgba(251,191,36,.5)}
+.dot.err{background:var(--err);box-shadow:0 0 8px rgba(248,113,113,.6)}
+.ct{font-weight:600;font-size:12.5px}
+.cd{color:var(--dim);font-size:11.5px;word-break:break-word}
+.fix{color:var(--warn);font-size:11.5px;margin-top:3px}
+.kv{display:grid;grid-template-columns:96px 1fr;gap:4px 10px;font-size:12px}
+.kv b{color:var(--dim);font-weight:500}
+.kv span{font-family:var(--mono);word-break:break-all}
+pre{background:#05060a;border:1px solid var(--line);border-radius:8px;padding:10px;margin:0;max-height:300px;overflow:auto;font:11.5px/1.5 var(--mono);color:#cbd6e6;white-space:pre-wrap;word-break:break-all}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.seg{display:flex;gap:4px}
+.seg button.sel{background:rgba(34,211,238,.14);border-color:var(--cyan);color:var(--cyan)}
+.hint{color:var(--dim);font-size:11.5px}
+.err{border-color:rgba(248,113,113,.5)}
+</style>
+</head>
+<body>
+<header>
+  <div class="mark">∂<i>?</i></div>
+  <h1>Debugging Tool<small id="ver">—</small></h1>
+  <span class="spacer"></span>
+  <span id="pills" class="row"></span>
+  <button id="refresh">刷新</button>
+  <button id="copy">复制报告</button>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <h2>检查项 <span class="hint" id="checkedAt"></span></h2>
+    <ul class="checks" id="checks"></ul>
+  </div>
+
+  <div style="display:grid;gap:14px;align-content:start">
+    <div class="card">
+      <h2>运行环境</h2>
+      <div class="kv" id="env"></div>
+    </div>
+    <div class="card">
+      <h2>模型与推理</h2>
+      <div class="kv" id="model"></div>
+    </div>
+    <div class="card">
+      <h2>数据与插件</h2>
+      <div class="kv" id="data"></div>
+    </div>
+    <div class="card">
+      <h2>日志</h2>
+      <div class="row" style="margin-bottom:8px">
+        <div class="seg">
+          <button id="logApp" class="sel">app.log</button>
+          <button id="logCrash">崩溃记录</button>
+        </div>
+        <span class="spacer"></span>
+        <span class="hint" id="logInfo"></span>
+        <button id="logRefresh">重读</button>
+      </div>
+      <pre id="logBox">（读取中…）</pre>
+    </div>
+    <div class="card">
+      <h2>修复动作</h2>
+      <div class="row">
+        <button id="clearCrash" class="danger">清空崩溃记录（恢复 Vulkan）</button>
+        <button id="ragRebuild">重建文档索引</button>
+        <button id="unload">卸载模型（释放内存）</button>
+      </div>
+      <div class="hint" id="actionInfo" style="margin-top:8px">这里的动作都会立刻生效；卸载模型后要重新加载才能问答。</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let localToken = '';
+let diag = null;
+let logWhich = 'app';
+
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
+async function api(path, opt) {
+  const r = await fetch(path, opt);
+  const j = await r.json().catch(() => ({}));
+  return { status: r.status, j };
+}
+
+function kvRows(el, rows) {
+  el.innerHTML = rows.map(([k, v]) => '<b>' + esc(k) + '</b><span>' + esc(v) + '</span>').join('');
+}
+
+function fmtGB(n) { return (Number(n) || 0).toFixed(1) + ' GB'; }
+function fmtTime(ts) {
+  if (!ts) return '—';
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return '—';
+  const p = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+function fmtUptime(sec) {
+  const s = Number(sec) || 0;
+  if (s < 90) return s + ' 秒';
+  if (s < 5400) return Math.round(s / 60) + ' 分钟';
+  return (s / 3600).toFixed(1) + ' 小时';
+}
+
+function render() {
+  if (!diag) return;
+  const sum = diag.summary || {};
+  $('pills').innerHTML =
+    '<span class="pill err">错误 ' + (sum.error || 0) + '</span>' +
+    '<span class="pill warn">警告 ' + (sum.warn || 0) + '</span>' +
+    '<span class="pill ok">正常 ' + (sum.ok || 0) + '</span>';
+
+  $('ver').textContent = 'v' + diag.version.version + (diag.version.commit ? ' · ' + diag.version.commit : '');
+  $('checkedAt').textContent = '· ' + fmtTime(diag.now);
+
+  $('checks').innerHTML = (diag.checks || []).map((c) => {
+    const lv = c.level === 'error' ? 'err' : c.level;
+    return '<li><span class="dot ' + lv + '"></span><div style="min-width:0">' +
+      '<div class="ct">' + esc(c.title) + '</div>' +
+      '<div class="cd">' + esc(c.detail) + '</div>' +
+      (c.fix ? '<div class="fix">→ ' + esc(c.fix) + '</div>' : '') +
+      '</div></li>';
+  }).join('');
+
+  const s = diag.server || {}, sys = diag.system || {}, m = diag.model || {};
+  kvRows($('env'), [
+    ['系统', (sys.platform || '') + ' ' + (sys.arch || '') + ' · ' + sys.cpus + ' 核 · 内存 ' + fmtGB(sys.totalGB) + '（可用 ' + fmtGB(sys.freeGB) + '）'],
+    ['Node', sys.node],
+    ['版本', 'v' + diag.version.version + (diag.version.commit ? ' (' + diag.version.commit + (diag.version.dirty ? ' 未提交' : '') + ')' : diag.version.builtAt ? ' 打包 ' + diag.version.builtAt.slice(0, 16).replace('T', ' ') : '')],
+    ['服务', '127.0.0.1:' + s.port + ' · pid ' + s.pid + ' · 已运行 ' + fmtUptime(s.uptimeSec)],
+    ['并发', (s.activeChats || 0) + ' 个进行中'],
+    ['后端', s.gpu === 'vulkan' ? 'Vulkan（核显）' : 'CPU' + (s.backendNote ? ' · ' + s.backendNote : '')],
+    ['目录', (diag.paths || {}).dir || ''],
+    ['日志', (diag.paths || {}).logs || ''],
+  ]);
+
+  kvRows($('model'), [
+    ['已加载', m.file || '未加载'],
+    ['上下文', m.context ? m.context + ' tok' : '—'],
+    ['层数', m.layers || '—'],
+    ['KV 缓存', (m.kvReuse ? '复用开' : '复用关') + ' · 常驻 ' + (m.cachedTokens || 0) + ' token'],
+    ['模型库', (m.count || 0) + ' 个 .gguf'],
+  ]);
+
+  kvRows($('data'), [
+    ['会话目录', (diag.paths || {}).sessions || ''],
+    ['崩溃记录', (diag.paths || {}).crashLog || ''],
+  ]);
+}
+
+async function loadDiag() {
+  const r = await api('/api/diag');
+  if (r.status !== 200) {
+    $('checks').innerHTML = '<li><span class="dot err"></span><div><div class="ct">诊断接口不可用</div><div class="cd">HTTP ' + r.status + '</div></div></li>';
+    return;
+  }
+  diag = r.j;
+  localToken = (await api('/api/state')).j?.localToken || '';
+  render();
+}
+
+async function loadLog() {
+  $('logBox').textContent = '（读取中…）';
+  const r = await api('/api/diag/logs?which=' + logWhich + '&lines=300');
+  const j = r.j || {};
+  if (r.status !== 200) { $('logBox').textContent = '读取失败：HTTP ' + r.status; return; }
+  $('logInfo').textContent = (j.file || '') + (j.size ? ' · ' + (j.size / 1024).toFixed(0) + ' KB' : '') + (j.truncated ? ' · 只显示尾部' : '');
+  $('logBox').textContent = j.text || (j.error ? '（读不到：' + j.error + '）' : '（空）');
+  $('logBox').scrollTop = $('logBox').scrollHeight;
+}
+
+function reportText() {
+  if (!diag) return '';
+  const lines = [];
+  lines.push('本地 AI Debugging Tool · v' + diag.version.version + (diag.version.commit ? ' (' + diag.version.commit + ')' : ''));
+  lines.push('生成时间: ' + fmtTime(diag.now));
+  lines.push('服务: 127.0.0.1:' + diag.server.port + ' · pid ' + diag.server.pid + ' · 后端 ' + diag.server.gpu);
+  lines.push('系统: ' + diag.system.platform + ' ' + diag.system.arch + ' · ' + diag.system.cpus + ' 核 · 内存 ' + fmtGB(diag.system.totalGB) + '（可用 ' + fmtGB(diag.system.freeGB) + '） · node ' + diag.system.node);
+  lines.push('模型: ' + (diag.model.file || '未加载') + ' · 上下文 ' + diag.model.context + ' · ' + diag.model.layers + ' 层 · KV ' + diag.model.cachedTokens);
+  lines.push('--- 检查 ---');
+  for (const c of diag.checks) {
+    const tag = c.level === 'error' ? '[错误]' : c.level === 'warn' ? '[警告]' : '[正常]';
+    lines.push(tag + ' ' + c.title + ' — ' + c.detail + (c.fix ? ' → ' + c.fix : ''));
+  }
+  return lines.join('\n');
+}
+
+$('refresh').onclick = () => loadDiag().then(loadLog).catch(() => {});
+$('logRefresh').onclick = () => loadLog().catch(() => {});
+$('logApp').onclick = () => { logWhich = 'app'; $('logApp').classList.add('sel'); $('logCrash').classList.remove('sel'); loadLog(); };
+$('logCrash').onclick = () => { logWhich = 'crash'; $('logCrash').classList.add('sel'); $('logApp').classList.remove('sel'); loadLog(); };
+
+$('copy').onclick = async () => {
+  const t = reportText();
+  try { await navigator.clipboard.writeText(t); } catch {
+    const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+  }
+  $('copy').textContent = '已复制';
+  setTimeout(() => { $('copy').textContent = '复制报告'; }, 1200);
+};
+
+async function act(path, body, okText) {
+  const r = await api(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-local-token': localToken },
+    body: JSON.stringify(body || {}),
+  });
+  $('actionInfo').textContent = r.status === 200 ? okText : '失败：HTTP ' + r.status + ' ' + (r.j?.error?.message || '');
+  $('actionInfo').style.color = r.status === 200 ? 'var(--ok)' : 'var(--err)';
+  setTimeout(() => loadDiag().catch(() => {}), 600);
+}
+
+$('clearCrash').onclick = () => act('/api/diag/clear-crash', {}, '崩溃记录已清空：下次启动会重新尝试 Vulkan');
+$('ragRebuild').onclick = () => act('/api/rag/rebuild', {}, '文档索引已重建');
+$('unload').onclick = () => act('/api/unload', {}, '模型已卸载，内存已释放');
+
+loadDiag().then(loadLog).catch(() => {});
+setInterval(() => { if (document.visibilityState === 'visible') loadDiag().catch(() => {}); }, 5000);
+</script>
+</body>
+</html>

@@ -38,3 +38,15 @@ server/docs/probe-full-*/summary.txt
 
 # 解压第三方包时的临时目录
 tmp-*/
+
+# 图标渲染的中间产物（icon.svg 源文件与 localai.ico 成品要入库）
+server/icon-parts/
+server/icon-512.png
+server/icon-lab.png
+server/icon-lab.html
+server/icon-a.svg
+server/icon-b.svg
+server/icon-b2.svg
+server/icon-c.svg
+server/icon-c2.svg
+server/icon-preview*.png
