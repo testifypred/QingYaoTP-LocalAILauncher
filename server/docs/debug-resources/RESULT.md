@@ -3,6 +3,7 @@
 - 日期：2026-11-01
 - 任务：共享任务板 task-3（debug-ui）
 - 服务：发布包 `http://127.0.0.1:8099`（7B 模型、ctx 16384、vulkan、kvQuant=q8_0，未重启）
+- 后续追加（2026-11-01 晚）：`probe-debug` 又加 1 条「KV 量化实际生效类型（LlamaContext getter）」断言 → **35/35**（见 `DeveloperRealtimeLog.md` 第三十七节；当时发现小写 `q8_0` 被静默忽略，已修正为传数字 8）
 - 结论：**两条探针全绿** —— `probe-debug.mjs` **34/34**、`probe-ui-debug.mjs` **23/23**，退出码均为 0；页面实时资源卡实测有数、条形与 sparkline 正常。
 
 ## 1. 交付内容

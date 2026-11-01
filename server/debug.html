@@ -253,7 +253,7 @@ function renderRes(r) {
     ['进程', 'pid ' + (proc.pid || '—') + ' · RSS ' + fmtMB(proc.rssMB) + ' · heap ' + fmtMB(proc.heapUsedMB) + ' · 外部 ' + fmtMB(proc.externalMB)],
     ['磁盘', r.disk && r.disk.path ? '剩余 ' + fmtGB(r.disk.freeGB) + ' / ' + fmtGB(r.disk.totalGB) + ' · ' + r.disk.path : '—（取不到）'],
     ['模型', (mdl.file || '未加载') + (mdl.context ? ' · ' + mdl.context + ' tok' : '')],
-    ['后端', (mdl.gpu === 'vulkan' ? 'Vulkan（核显）' : (mdl.gpu || '—')) + ' · KV 量化 ' + (mdl.kvQuant || '—')],
+    ['后端', (mdl.gpu === 'vulkan' ? 'Vulkan（核显）' : (mdl.gpu || '—')) + ' · KV 量化 ' + ((mdl.kvQuantActual && mdl.kvQuantActual.key) || mdl.kvQuant || '—')],
     ['并发', (mdl.activeChats || 0) + ' 个进行中 · KV 缓存常驻 ' + (mdl.cachedTokens || 0) + ' token'],
     ['崩溃', (r.crash || 0) + ' 条（近 10 分钟）'],
   ]);
@@ -315,7 +315,7 @@ function render() {
     ['上下文', m.context ? m.context + ' tok' : '—'],
     ['层数', m.layers || '—'],
     ['KV 缓存', (m.kvReuse ? '复用开' : '复用关') + ' · 常驻 ' + (m.cachedTokens || 0) + ' token'],
-    ['KV 量化', (m.kvQuant || '—') + (m.kvQuantFallback ? '（回退：' + m.kvQuantFallback + '）' : '')],
+    ['KV 量化', ((m.kvQuantActual && m.kvQuantActual.key) || m.kvQuant || '—') + (m.kvQuantFallback ? '（回退：' + m.kvQuantFallback + '）' : '')],
     ['模型库', (m.count || 0) + ' 个 .gguf'],
   ]);
 

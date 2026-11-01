@@ -1714,6 +1714,49 @@ Qwen2.5-7B（28 层、4 个 KV 头、head_dim 128、f16 KV）≈ **56KB/token**�
 - 遗留：完整打包还没重跑——下次打包会把新 app.mjs/debug.html/localai-debug.mjs 带进发布包；**当前发布包里的 `localai-debug.mjs` 已手工同步**，所以 CLI 的 `--json resources` 现在就能用。
 - 量化是「省内存」不是「零代价」：q8_0 KV 有极小精度损失；如果哪天回答质量可疑，`KV_QUANT=f16` 重启可对照。
 
+## 三十七、2026-11-01（第五轮后续）：KV 量化其实没生效——小写 "q8_0" 被静默忽略
+
+用户追问「真的可以吗」。把「实际生效类型」读出来（`LlamaContext.kvCacheKeyType`）才发现：**上一节说的 q8_0 根本没生效，实际一直是 f16**——`/api/state` 里的 `kvQuant=q8_0` 只是我们请求的值，不是库的实际值。这一节把坑、修法、重测数据写清楚。
+
+### 一、根因：ggml 类型名区分大小写，解析不到就静默回落
+
+`node-llama-cpp` 的 `experimentalKvCacheKeyType` 只认**枚举名（`"Q8_0"`）或数字（8）**；传小写 `"q8_0"` 时 `resolveGgmlTypeOption()` 解析不到，**静默回落到模型默认 F16，不报错**。同一模型逐项实测：
+
+| 传参 | 实际 key |
+|---|---|
+| `8`（数字） | 8 = Q8_0 ✅ |
+| `"Q8_0"` | 8 = Q8_0 ✅ |
+| `"q8_0"`（小写） | 1 = F16 ❌（不报错） |
+
+### 二、修法（把「请求」和「实际」分开）
+
+- `app.mjs`：加 `GGML_KV_TYPES`（`q8_0 → 8`）**传数字**；创建后读 `context.kvCacheKeyType`，**按实际类型记录**（不一致就记 f16 + 回退原因，不谎报）；`/api/state` 增 `kvQuantActual{key,value,flashAttention}`；`/api/diag` 的「KV 缓存量化」改成「实际 X（请求 Y）」，不一致就 warn；调试页显示实际类型。
+- `probe-debug`：加断言「KV 量化实际生效类型与配置一致（LlamaContext getter）」→ 34 → **35/35**。这条断言就是为了防这次这种「谎报」。
+
+### 三、重测（真实 q8_0）
+
+| 上下文 | 加载 | 系统可用内存 | node 进程 WS |
+|---|---|---|---|
+| 16K | 12–17s | 7.4GB | 9.2GB |
+| 64K | 11.5s | 7.4GB | 9.0GB |
+| 128K | 10.2s | 4.8GB | 12.4GB |
+
+对比 f16 的 128K（可用只剩 0.2GB）：**q8_0 确实省了约 3–4GB**，128K 从「勉强」变「紧但可用」。上一节的 0.2GB 是 f16 数据，作废。
+
+### 四、顺带查清：20K token 单次预填充会崩 Vulkan——与量化无关
+
+本想用「长文档 + 暗号」验证长上下文，结果 64K 窗口下一次 20K token 预填充，**q8_0 和 f16 各崩一次**（`vk::Device::getFenceStatus: ErrorDeviceLost`）：
+
+- 这是**已知问题 2 的 Vulkan 局限**（这台 Intel Arc 核显上长 prefill 会 device lost），不是 KV 量化引入的；
+- 应用自愈正常：第一次崩 → 启动器拉起；10 分钟内第二次崩 → 自动切 CPU（实测 `gpu=cpu`，稳定但慢）；清掉 `vulkan-crash.log` 再启动可回 Vulkan；
+- 结论：长上下文**能加载、内存也够**，但**一次性塞 2 万 token 以上的预填充在 Vulkan 上不稳**。日常建议 16K–64K；真要超长输入，分批喂或临时用 CPU。
+
+### 五、当前状态
+
+- 发布包：16K · **q8_0（实际 key=8，已用 getter 验证）** · Vulkan · 运行中；崩溃记录已清空。
+- 探针：`probe-debug` **35/35**、`probe-ui-debug` 23/23、`probe-ctx-panel` 25/25、`probe-version` 14/14、`probe-chat-plain` 11/11、`probe-func` / `probe-kv-long` 全绿。
+- 断言口径：643 → **644**（`probe-debug` +1）。
+
 
 
 

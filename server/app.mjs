@@ -202,6 +202,7 @@ async function buildDiag() {
   try { models = await scanModels(); } catch (e) { add("models", "error", "模型扫描", String(e?.message ?? e)); }
   add("models", models.length ? "ok" : "warn", "模型库", `${models.length} 个 .gguf · ${MODEL_DIR}`,
     models.length ? "" : "模型目录里没有 .gguf：用「模型 → 添加模型」嗅探，或下载一个入门模型");
+  const kvActual = kvCacheInfo();
   if (state.file) {
     const ok = existsSync(path.join(MODEL_DIR, state.file));
     add("loaded", ok ? "ok" : "error", "已加载模型",
@@ -211,12 +212,13 @@ async function buildDiag() {
     add("kv", "ok", "KV 缓存", `常驻序列 ${Number(cached) || 0} token · 复用 ${KV_REUSE ? "开" : "关"}`,
       KV_REUSE ? "" : "KV 复用关着（kvReuse=0）：每轮都会整段重算，慢但不影响正确性");
     const kvQ = state.kvQuant;
+    const kvOk = kvQ === "q8_0" && kvActual.key === "q8_0";
     add("kvquant",
-      kvQ === "q8_0" ? "ok" : KV_QUANT_ON ? "warn" : "ok",
+      kvOk ? "ok" : KV_QUANT_ON && kvActual.key === "f16" ? "warn" : "ok",
       "KV 缓存量化",
-      kvQ === "q8_0" ? "q8_0（同样内存下上下文翻倍）" : kvQ === "f16" ? "f16（未量化）" : "未加载",
-      KV_QUANT_ON && kvQ === "f16"
-        ? "量化没生效：" + (state.kvQuantFallback || "后端不支持（需要 flash attention）") + "；可试 KV_QUANT=q4_0"
+      kvActual.key ? `实际 ${kvActual.key}（请求 ${kvQ || "—"}）${kvActual.flashAttention === true ? " · flash attention 开" : ""}` : "未加载",
+      !kvOk && KV_QUANT_ON
+        ? (state.kvQuantFallback ? "量化没生效：" + state.kvQuantFallback : "请求 q8_0 但实际是 " + (kvActual.key || "未知") + "（后端可能不支持 flash attention）") + "；可试 KV_QUANT=q4_0"
         : "");
   } else {
     add("loaded", "warn", "已加载模型", "未加载（连界面都不能问答）", "点左上角「∫ 模型」选一个加载，或看「模型」页");
@@ -282,7 +284,7 @@ async function buildDiag() {
     now: new Date().toISOString(),
     version: { version: APP_VERSION, commit: BUILD.commit, dirty: BUILD.dirty, builtAt: BUILD.builtAt },
     server: { port: PORT, pid: process.pid, uptimeSec: Math.round(process.uptime()), activeChats, gpu, backendNote: backendNote.text },
-    model: { file: state.file || "", context: state.contextSize || 0, layers: state.layers || 0, cachedTokens: state.sequence?.nextTokenIndex ?? 0, kvReuse: KV_REUSE, kvQuant: state.kvQuant, kvQuantFallback: state.kvQuantFallback, count: models.length },
+    model: { file: state.file || "", context: state.contextSize || 0, layers: state.layers || 0, cachedTokens: state.sequence?.nextTokenIndex ?? 0, kvReuse: KV_REUSE, kvQuant: state.kvQuant, kvQuantFallback: state.kvQuantFallback, kvQuantActual: kvActual, count: models.length },
     system: { totalGB, freeGB, cpus: os.cpus().length, platform: os.platform(), arch: os.arch(), node: process.version },
     paths: { dir: HERE, modelDir: MODEL_DIR, sessions: SESSION_DIR, logs: logCandidates().find((p) => existsSync(p)) || logCandidates()[0], crashLog: CRASH_LOG },
     checks,
@@ -356,6 +358,7 @@ async function buildResources() {
       layers: state.layers || 0,
       gpu: state.gpu || "",
       kvQuant: state.kvQuant || "",
+      kvQuantActual: kvCacheInfo(),
       kvReuse: KV_REUSE,
       cachedTokens: state.sequence?.nextTokenIndex ?? 0,
       activeChats,
@@ -727,12 +730,21 @@ const KV_REUSE = (process.env.KV_REUSE ?? "1") !== "0";
  *   - 需要 flash attention；后端不支持时会自动回退 f16（只记日志，不影响启动）
  * 关掉：KV_QUANT=f16（精度优先/排障）；设为 other 也可试 q4_0 等（llama.cpp 的 ggml type 名）。
  */
+/** ggml 类型表：node-llama-cpp 只认枚举名（Q8_0）或数字（8），**小写字符串 "q8_0" 会被静默忽略**（实测退回 f16） */
+const GGML_KV_TYPES = {
+  f32: 0, f16: 1, q4_0: 2, q4_1: 3, q5_0: 6, q5_1: 7, q8_0: 8, q8_1: 9,
+  q2_k: 10, q3_k: 11, q4_k: 12, q5_k: 13, q6_k: 14, q8_k: 15,
+};
+const GGML_KV_NAMES = Object.fromEntries(Object.entries(GGML_KV_TYPES).map(([name, num]) => [num, name]));
+const kvTypeName = (num) => (typeof num === "number" ? GGML_KV_NAMES[num] || String(num) : null);
+
 const KV_QUANT = String(process.env.KV_QUANT ?? "q8_0").toLowerCase().trim();
-const KV_QUANT_ON = KV_QUANT !== "" && KV_QUANT !== "0" && KV_QUANT !== "off" && KV_QUANT !== "f16";
+const KV_QUANT_NUM = GGML_KV_TYPES[KV_QUANT] ?? null;
+const KV_QUANT_ON = KV_QUANT !== "" && KV_QUANT !== "0" && KV_QUANT !== "off" && KV_QUANT !== "f16" && KV_QUANT_NUM != null;
 
 /**
- * 创建主上下文：KV 量化开就先按量化建，失败自动回退 f16。
- * 返回 { context, kvQuant }，kvQuant 是实际生效的类型（写进 /api/state 供界面/排障看）。
+ * 创建主上下文：KV 量化开就先按量化建（传数字，别传小写字符串），失败自动回退 f16。
+ * 返回 { context, kvQuant }：kvQuant 用 LlamaContext 的实际类型，不拿「请求值」谎报。
  */
 async function createMainContext(model, contextSize) {
   if (!KV_QUANT_ON) {
@@ -742,16 +754,33 @@ async function createMainContext(model, contextSize) {
   try {
     const context = await model.createContext({
       contextSize,
-      experimentalKvCacheKeyType: KV_QUANT,
-      experimentalKvCacheValueType: KV_QUANT,
+      experimentalKvCacheKeyType: KV_QUANT_NUM,
+      experimentalKvCacheValueType: KV_QUANT_NUM,
       flashAttention: "auto",
     });
-    return { context, kvQuant: KV_QUANT };
+    const actual = kvTypeName(context.kvCacheKeyType) || "f16";
+    if (actual !== KV_QUANT) {
+      // 库没按请求生效：按实际类型记录（宁可显示 f16，也不谎报 q8_0）
+      log(`KV 缓存量化请求 ${KV_QUANT}（${KV_QUANT_NUM}）但实际是 ${actual}，按实际类型记录`);
+      return { context, kvQuant: actual, kvQuantFallback: `库未按请求生效（请求 ${KV_QUANT} → 实际 ${actual}）` };
+    }
+    return { context, kvQuant: actual };
   } catch (e) {
     log(`KV 缓存量化（${KV_QUANT}）不可用，回退 f16：${String(e?.message ?? e).slice(0, 160)}`);
     const context = await model.createContext({ contextSize });
     return { context, kvQuant: "f16", kvQuantFallback: String(e?.message ?? e).slice(0, 160) };
   }
+}
+/** 实际生效的 KV 缓存类型：直接读 LlamaContext 的 getter，别只信我们请求的值 */
+function kvCacheInfo() {
+  const c = state.context;
+  const k = c?.kvCacheKeyType;
+  const v = c?.kvCacheValueType;
+  return {
+    key: typeof k === "number" ? GGML_KV_NAMES[k] || String(k) : null,
+    value: typeof v === "number" ? GGML_KV_NAMES[v] || String(v) : null,
+    flashAttention: c?.flashAttention ?? null,
+  };
 }
 
 /** 粗略判断模型家族，用于避免跨家族草稿模型（tokenizer 不同会直接产出乱码） */
@@ -4540,6 +4569,7 @@ async function handle(req, res) {
       kvReuse: KV_REUSE,
       kvQuant: state.kvQuant,
       kvQuantFallback: state.kvQuantFallback,
+      kvQuantActual: kvCacheInfo(),
       cachedTokens: state.sequence?.nextTokenIndex ?? 0,
       draftFile: state.draftFile,
       draftTokens: DRAFT_TOKENS,

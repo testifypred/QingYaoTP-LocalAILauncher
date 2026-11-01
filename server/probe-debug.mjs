@@ -100,6 +100,11 @@ ok("第二次采样 now 推进", r2.status === 200 && Date.parse(res2.now) > Dat
 const st2 = await j("GET", "/api/state");
 ok("模型 KV 量化与 /api/state 一致", typeof res1.model.kvQuant === "string" && res1.model.kvQuant.length > 0 && res1.model.kvQuant === st2.data?.kvQuant,
   res1.model.kvQuant + " vs " + (st2.data?.kvQuant ?? "?"));
+// 只看「我们请求了什么」不够：LlamaContext 的 getter 反映实际生效的类型（8=q8_0、1=f16）
+const kvActual2 = st2.data?.kvQuantActual || {};
+ok("KV 量化实际生效类型与配置一致（LlamaContext getter）",
+  typeof kvActual2.key === "string" && kvActual2.key === st2.data?.kvQuant && res1.model.kvQuantActual?.key === kvActual2.key,
+  "actual=" + (kvActual2.key || "null") + " · configured=" + (st2.data?.kvQuant ?? "?") + " · resources=" + (res1.model.kvQuantActual?.key || "null"));
 
 // ---- 令牌 ----
 ok("清崩溃记录必须带令牌", (await j("POST", "/api/diag/clear-crash", {})).status === 403);
