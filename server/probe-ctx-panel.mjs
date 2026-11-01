@@ -72,6 +72,9 @@ check("面板默认可见", s.hidden === false, "hidden=" + s.hidden);
 check("贴在顶栏下方", s.top >= s.headerBottom && s.top - s.headerBottom <= 16, "top=" + s.top + " headerBottom=" + s.headerBottom);
 check("靠右悬空", s.right === 18, "right=" + s.right);
 check("默认窗口 16K", s.used.includes("16,384"), s.used);
+// 上下文下拉：K 值档位（模型本身支持更长，能不能装下看内存）
+const ctxOpts = await evaluate("[...document.querySelectorAll('#ctxSel option')].map(o => o.value)");
+check("上下文下拉含 8K/16K/32K/64K/128K", ["8192", "16384", "32768", "65536", "131072"].every((v) => ctxOpts.includes(v)), JSON.stringify(ctxOpts));
 // 页面会恢复上次会话，可能有历史用量：这里校验格式与百分比自洽，而不是假定为 0
 const m0 = s.used.match(/已用 ([\d,]+) \/ 16,384/);
 const used0 = m0 ? Number(m0[1].replace(/,/g, "")) : -1;

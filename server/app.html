@@ -878,11 +878,12 @@ header::before{
         <div id="modelSel" class="modelList" role="listbox" aria-label="模型"></div>
         <div class="modelMenuFoot">
           <label class="ctxRow">上下文
-            <select id="ctxSel" title="上下文长度（下次加载生效）">
+            <select id="ctxSel" title="上下文长度（下次加载生效；KV 缓存随长度线性涨：32K≈1.9GB / 64K≈3.7GB / 128K≈7.3GB 内存）">
               <option value="8192">8K</option>
               <option value="16384" selected>16K</option>
               <option value="32768">32K</option>
               <option value="65536">64K</option>
+              <option value="131072">128K</option>
             </select>
           </label>
           <button id="unloadBtn" class="ghost">卸载</button>
