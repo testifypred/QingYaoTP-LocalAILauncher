@@ -41,8 +41,8 @@ ok("按钮 tooltip 说明是独立程序", !!btn && /独立程序/.test(btn.titl
 
 // ---- 新标记（本体图标） ----
 const mark = await ev("(() => { const b = document.querySelector('#modelBtn .int'); if (!b) return null; const cs = getComputedStyle(b); return { glyph: b.querySelector('b')?.textContent || '', q: b.querySelector('i')?.textContent || '', bg: cs.backgroundColor, border: cs.borderColor }; })()");
-ok("模型按钮上的标记是 ∂", !!mark && mark.glyph === "∂", mark ? mark.glyph : "missing");
-ok("标记带青色问号", !!mark && mark.q === "?", mark ? mark.q : "");
+ok("模型按钮上的标记是 ∫（不定积分，本体图标）", !!mark && mark.glyph === "∫", mark ? mark.glyph : "missing");
+ok("本体标记只保留 ∫（问号属于调试图标，不混进本体）", !!mark && mark.q === "", mark ? JSON.stringify(mark.q) : "");
 ok("标记底色是黑", !!mark && /rgb\(0, 0, 0\)|rgba\(0, 0, 0/.test(mark.bg), mark?.bg || "");
 
 // ---- 设置入口 ----

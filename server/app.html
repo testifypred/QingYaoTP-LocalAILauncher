@@ -215,7 +215,9 @@ header::after{
 .modelBtn{display:flex;align-items:center;gap:7px;padding:5px 11px;font-weight:600;max-width:280px}
 .modelBtn .int{
   position:relative;display:grid;place-items:center;width:24px;height:24px;border-radius:7px;
-  background:#000;border:1px solid rgba(34,211,238,.42);color:var(--text);flex:none;overflow:hidden;
+  background:#000;border:1px solid rgba(34,211,238,.42);flex:none;overflow:hidden;
+  /* 固定亮色：这里是黑底，不能跟 --text 走（浅色主题下 --text 是深色，会看不见） */
+  color:#f6f8fa;
 }
 .modelBtn .int b{font-family:"Cambria Math","Times New Roman",serif;font-style:italic;font-size:16px;line-height:1;font-weight:400;transform:translate(-1px,-1px)}
 .modelBtn .int i{position:absolute;right:1.5px;top:0;font:700 9px/1 "Segoe UI",sans-serif;color:var(--cyan);font-style:normal}
@@ -860,7 +862,7 @@ header::before{
     <button id="sideToggle" class="ghost sideToggle" title="展开 / 收起对话列表">☰</button>
     <div class="modelPick">
       <button id="modelBtn" class="ghost modelBtn" title="选择模型：点开切换或卸载">
-        <span class="int" title="本地 AI" aria-hidden="true"><b>∂</b><i>?</i></span>
+        <span class="int" title="本地 AI" aria-hidden="true"><b>∫</b></span>
         <span id="modelBtnName">选择模型</span>
         <span class="caret">▾</span>
       </button>

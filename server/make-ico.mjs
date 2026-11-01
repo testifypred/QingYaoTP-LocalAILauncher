@@ -10,7 +10,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 
 const DIR = process.argv[2] || "D:/LocalModels/server/icon-parts";
 const OUT = process.argv[3] || "D:/LocalModels/server/localai.ico";
-const SIZES = [256, 128, 64, 48, 32, 16];
+const SIZES = [256, 128, 64, 48, 32, 24, 16];
 
 const pngs = [];
 for (const size of SIZES) {
