@@ -1,5 +1,5 @@
 @echo off
-rem Local AI Debugging Tool (uses the bundled runtime if present)
+rem QingYaoTP AILauncher debugging tool (uses the bundled runtime if present)
 setlocal
 cd /d "%~dp0"
 if exist "..\runtime\node.exe" (

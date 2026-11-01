@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>Debugging Tool · 本地 AI</title>
+<title>Debugging Tool · QingYaoTP AILauncher</title>
 <link rel="icon" type="image/x-icon" href="/debug-icon.ico">
 <link rel="icon" type="image/png" sizes="64x64" href="/debug-icon.png">
 <style>
@@ -349,7 +349,7 @@ async function loadLog() {
 function reportText() {
   if (!diag) return '';
   const lines = [];
-  lines.push('本地 AI Debugging Tool · v' + diag.version.version + (diag.version.commit ? ' (' + diag.version.commit + ')' : ''));
+  lines.push('QingYaoTP AILauncher · Debugging Tool · v' + diag.version.version + (diag.version.commit ? ' (' + diag.version.commit + ')' : ''));
   lines.push('生成时间: ' + fmtTime(diag.now));
   lines.push('服务: 127.0.0.1:' + diag.server.port + ' · pid ' + diag.server.pid + ' · 后端 ' + diag.server.gpu);
   lines.push('系统: ' + diag.system.platform + ' ' + diag.system.arch + ' · ' + diag.system.cpus + ' 核 · 内存 ' + fmtGB(diag.system.totalGB) + '（可用 ' + fmtGB(diag.system.freeGB) + '） · node ' + diag.system.node);

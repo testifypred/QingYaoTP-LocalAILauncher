@@ -1,4 +1,4 @@
-// 本地 AI —— 便携版启动器
+// QingYaoTP AILauncher（本地 AI）—— 便携版启动器
 //
 // 职责：
 //   1. 用随包的 node.exe 启动 app.mjs（工作目录 app\），日志落到 logs\app.log
@@ -34,9 +34,12 @@ using Microsoft.Win32;
 
 static class Launcher
 {
-    const string AppName = "本地 AI";
-    const string MutexName = "LocalAI.Portable.Launcher";
-    const string PipeName = "LocalAI.Portable.OpenUi";
+    // 主品牌 QingYaoTP AILauncher（QingYaoTP = QingYaoTestifypred），副标题「本地 AI」保留
+    internal const string BrandName = "QingYaoTP AILauncher";
+    internal const string SubName = "本地 AI";
+    internal const string AppName = BrandName + "（" + SubName + "）";
+    const string MutexName = "QingYaoTP.AILauncher.Portable.Launcher";
+    const string PipeName = "QingYaoTP.AILauncher.Portable.OpenUi";
 
     static string Root;      // exe 所在目录
     static string AppDir;    // Root\app
@@ -736,14 +739,14 @@ static class Launcher
         Tray = new NotifyIcon();
         try { Tray.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
         catch { Tray.Icon = SystemIcons.Application; }
-        Tray.Text = AppName + "（端口 " + Port + "）";
+        Tray.Text = AppName + " · 端口 " + Port;
 
         var menu = new ContextMenuStrip();
         menu.Items.Add("打开界面", null, delegate { OpenUi(); });
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("停止服务并退出", null, delegate
         {
-            Tray.Text = AppName + "（正在停止…）";
+            Tray.Text = AppName + " · 正在停止…";
             StopService();
             Application.Exit();
         });
@@ -829,7 +832,7 @@ class SplashForm : Form
     {
         if (scale < 1f) scale = 1f;
         AutoScaleMode = AutoScaleMode.None;
-        Text = "本地 AI";
+        Text = Launcher.AppName;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterScreen;
         MaximizeBox = false;

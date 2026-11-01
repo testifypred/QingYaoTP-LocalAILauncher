@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 本地 AI · Debugging Tool（独立程序）
+ * QingYaoTP AILauncher · Debugging Tool（独立程序）
  *
  *   node localai-debug.mjs                文本报告（服务没在跑也能给出本机诊断）
  *   node localai-debug.mjs --json         机器可读（给探针/脚本用）
@@ -106,17 +106,17 @@ async function report() {
   const d = await getJson("/api/diag", 8000);
   if (v.status !== 200 || d.status !== 200) {
     line("");
-    line("本地 AI · Debugging Tool —— 服务没在跑（" + BASE + "）");
+    line("QingYaoTP AILauncher · Debugging Tool —— 服务没在跑（" + BASE + "）");
     line("先看本机这层：");
     line("");
     printChecks(localChecks());
     line("");
-    line("要恢复服务：双击 dist\\LocalAI\\启动本地AI.exe，或在本目录跑 node app.mjs");
+    line("要恢复服务：双击 dist\\QingYaoTP AILauncher\\QingYaoTP AILauncher.exe，或在本目录跑 node app.mjs");
     return 2;
   }
   const j = d.j;
   line("");
-  line("本地 AI · Debugging Tool —— v" + j.version.version + (j.version.commit ? " (" + j.version.commit + (j.version.dirty ? " 未提交" : "") + ")" : ""));
+  line("QingYaoTP AILauncher · Debugging Tool —— v" + j.version.version + (j.version.commit ? " (" + j.version.commit + (j.version.dirty ? " 未提交" : "") + ")" : ""));
   line("服务 " + BASE + " · pid " + j.server.pid + " · 运行 " + Math.round(j.server.uptimeSec / 60) + " 分钟 · 后端 " + j.server.gpu);
   line("系统 " + j.system.platform + " " + j.system.arch + " · " + j.system.cpus + " 核 · 内存 " + j.system.totalGB + " GB（可用 " + j.system.freeGB + "）");
   line("模型 " + (j.model.file || "未加载") + " · 上下文 " + j.model.context + " · " + j.model.layers + " 层 · KV " + j.model.cachedTokens + " token");

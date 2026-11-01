@@ -1,5 +1,5 @@
 /**
- * 本地 AI 桌面应用 —— 模型管理器 + OpenAI 兼容服务 + 内置界面
+ * QingYaoTP AILauncher（本地 AI）桌面应用 —— 模型管理器 + OpenAI 兼容服务 + 内置界面
  *
  * 设计要点：
  *  - 单进程管理 D:\LocalModels 下的所有 .gguf，一次只加载一个模型（显存/内存友好）
@@ -17,6 +17,7 @@ import { extractTextBuffer } from "./doc-extract.mjs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import { getLlama, resolveChatWrapper, LlamaChatSession, TokenMeter, defineChatSessionFunction, DraftSequenceTokenPredictor } from "node-llama-cpp";
+import { recommendConfig, CATALOG_MODELS } from "./config-recommend.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MODEL_DIR = process.env.MODEL_DIR ?? "D:\\LocalModels";
@@ -33,7 +34,10 @@ const DEBUG_UI = path.join(HERE, "debug.html");
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 /** 版本号：发版只改这一处；server\package.json 的 version 必须与它一致（probe-version 会查） */
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.1.0";
+/** 产品正式名（2026-11-01 起）：QingYaoTP AILauncher；QingYaoTP = QingYaoTestifypred */
+const APP_NAME = "QingYaoTP AILauncher";
+const APP_SUB = "本地 AI";
 /** 进程启动时刻：配合版本号回答「你现在跑的到底是哪一版、几点起来的」 */
 const STARTED_AT = new Date().toISOString();
 
@@ -89,7 +93,7 @@ function versionInfo() {
 
 
 // ---------------------------------------------------------------- 调试面板（Debugging Tool）
-// 目标：一台机器上的本地 AI 出问题时，先在这里看清「哪一层坏了」，
+// 目标：一台机器上的 QingYaoTP AILauncher（本地 AI）出问题时，先在这里看清「哪一层坏了」，
 // 而不是让用户去翻 app.log。检查项要能直接给出处置建议（fix 字段）。
 
 /** 日志候选路径：发布包在 <root>\logs\app.log，开发目录常见 server\app.log */
@@ -266,7 +270,7 @@ async function buildDiag() {
   } catch {}
 
   // ---- 源码与发布包一致性 ----
-  const distApp = path.join(MODEL_DIR, "dist", "LocalAI", "app");
+  const distApp = path.join(MODEL_DIR, "dist", "QingYaoTP AILauncher", "app");
   if (existsSync(distApp)) {
     const pairs = ["app.mjs", "app.html", "doc-extract.mjs"];
     const drifted = [];
@@ -277,7 +281,7 @@ async function buildDiag() {
     }
     add("dist", drifted.length ? "warn" : "ok", "发布包与源码",
       drifted.length ? `${drifted.join("、")} 与 dist 不一致` : "三份文件哈希一致",
-      drifted.length ? "改完源码要拷进 dist\\LocalAI\\app\\，否则发布包跑的是旧代码" : "");
+      drifted.length ? "改完源码要拷进 dist\\QingYaoTP AILauncher\\app\\，否则发布包跑的是旧代码" : "");
   }
 
   return {
@@ -364,6 +368,163 @@ async function buildResources() {
       activeChats,
     },
     crash: (await recentCrashes()).length,
+  };
+}
+
+// ---------------------------------------------------------------- 首次启动：自动检查用户配置
+let gpuCache = null;
+/** GPU 列表（名称 + 显存）：Windows 用 CIM 查；只查一次，失败返回空数组 */
+function detectGpus() {
+  if (gpuCache) return gpuCache;
+  gpuCache = [];
+  try {
+    const ps = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-Command",
+      "Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM | ConvertTo-Json -Compress"],
+      { encoding: "utf8", timeout: 6000, windowsHide: true });
+    const raw = String(ps.stdout || "").trim();
+    if (raw) {
+      const arr = JSON.parse(raw);
+      for (const g of Array.isArray(arr) ? arr : [arr]) {
+        const name = String(g?.Name || "").trim();
+        if (!name) continue;
+        const bytes = Number(g?.AdapterRAM) || 0;
+        gpuCache.push({ name, vramGB: bytes > 0 ? +(bytes / 1024 ** 3).toFixed(1) : null });
+      }
+    }
+  } catch {}
+  return gpuCache;
+}
+
+/** 写 config.ini：只更新已知 key，保留注释；没有该文件（开发目录）就不写 */
+async function updateConfigFile(file, patch) {
+  if (!existsSync(file)) return { wrote: false, reason: "没有 config.ini（开发目录），跳过" };
+  const text = await readFile(file, "utf8");
+  const lines = text.split(/\r?\n/);
+  const want = new Map(Object.entries(patch));
+  const out = lines.map((line) => {
+    const m = line.match(/^\s*([A-Za-z0-9_]+)\s*=/);
+    if (m && want.has(m[1])) {
+      const val = String(want.get(m[1]));
+      want.delete(m[1]);
+      return m[1] + "=" + val;
+    }
+    return line;
+  });
+  for (const [k, v] of want) out.push(k + "=" + v);
+  while (out.length && out[out.length - 1].trim() === "") out.pop();
+  await writeFile(file, out.join("\r\n") + "\r\n", "utf8");
+  return { wrote: true, path: file };
+}
+
+async function buildSysinfo() {
+  const totalGB = os.totalmem() / 1024 ** 3;
+  const freeGB = os.freemem() / 1024 ** 3;
+  const cpus = os.cpus();
+  const models = await scanModels().catch(() => []);
+  const gpus = detectGpus();
+  const gpuVramGB = gpus.reduce((m, g) => Math.max(m, Number(g.vramGB) || 0), 0) || null;
+  let disk = null;
+  try {
+    const st = await statfs(MODEL_DIR);
+    disk = {
+      path: MODEL_DIR,
+      freeGB: +((st.bavail * st.bsize) / 2 ** 30).toFixed(1),
+      totalGB: +((st.blocks * st.bsize) / 2 ** 30).toFixed(1),
+    };
+  } catch {}
+  const rec = recommendConfig({
+    ramTotalGB: +totalGB.toFixed(1),
+    ramFreeGB: +freeGB.toFixed(1),
+    vramGB: gpuVramGB || 0,
+    hasVulkan: state.gpu === "vulkan",
+    cpuCores: cpus.length,
+    models,
+  });
+  const vc = hasMsvcp();
+  const checks = [
+    { id: "cpu", level: "ok", title: "CPU", detail: `${(cpus[0]?.model ?? "unknown").trim()} · ${cpus.length} 核` },
+    { id: "ram", level: totalGB < 8 ? "error" : totalGB < 12 ? "warn" : "ok", title: "内存", detail: `共 ${totalGB.toFixed(1)}GB · 可用 ${freeGB.toFixed(1)}GB`, fix: totalGB < 8 ? "低于 8GB 只能跑 0.5B 级小模型" : "" },
+    { id: "gpu", level: gpus.length ? "ok" : "warn", title: "显卡", detail: gpus.length ? gpus.map((g) => g.name + (g.vramGB ? "（" + g.vramGB + "GB）" : "（共享内存）")).join(" / ") : "没读到显卡信息", fix: "" },
+    { id: "vulkan", level: state.gpu === "vulkan" ? "ok" : "warn", title: "推理后端", detail: state.gpu === "vulkan" ? "Vulkan 可用（GPU 加速）" : `CPU（${backendNote.text || "Vulkan 不可用"}）`, fix: "" },
+    { id: "vc", level: vc ? "ok" : "error", title: "VC++ 运行库", detail: vc ? "msvcp140.dll 已安装" : "缺少 msvcp140.dll", fix: vc ? "" : "装安装目录里的 vc_redist.x64.exe（或 aka.ms/vs/17/release/vc_redist.x64.exe）" },
+    { id: "disk", level: !disk ? "warn" : disk.freeGB < 2 ? "error" : disk.freeGB < 5 ? "warn" : "ok", title: "磁盘", detail: disk ? `${disk.path} · 剩 ${disk.freeGB}GB` : "读不到模型目录", fix: disk && disk.freeGB < 2 ? "剩余不足 2GB：模型下载会失败" : "" },
+    { id: "models", level: models.length ? "ok" : "warn", title: "已有模型", detail: `${models.length} 个 .gguf`, fix: models.length ? "" : "本机还没有模型，推荐先下载 " + rec.model.label },
+  ];
+  const onboarding = await readOnboarding().catch(() => ({ done: false }));
+  return {
+    app: { name: APP_NAME, sub: APP_SUB, version: APP_VERSION },
+    cpu: (cpus[0]?.model ?? "unknown").trim(),
+    cores: cpus.length,
+    ramTotalGB: +totalGB.toFixed(1),
+    ramFreeGB: +freeGB.toFixed(1),
+    gpus,
+    gpuVramGB,
+    hasVulkan: state.gpu === "vulkan",
+    backend: state.gpu ?? "未初始化",
+    backendNote: backendNote.text,
+    vcRuntime: vc,
+    disk,
+    modelDir: MODEL_DIR,
+    modelCount: models.length,
+    models: models.map((m) => m.file),
+    checks,
+    recommend: { ...rec, id: rec.model.id, reason: rec.reason },
+    catalog: CATALOG_MODELS,
+    firstRunDone: onboarding.done === true,
+  };
+}
+
+async function applyFirstRunConfig(body = {}) {
+  const info = await buildSysinfo();
+  const rec = info.recommend;
+  if (body && body.dryRun === true) {
+    // 探针/演练用：只回建议，不写 config.ini、不加载模型
+    const present = rec.model.existing || existsSync(path.join(MODEL_DIR, rec.model.file));
+    return { ok: true, dryRun: true, recommended: rec, present, loaded: false, applied: null, needRestart: false, note: "dry-run：只给建议，未写 config.ini、未加载模型" };
+  }
+  const configPath = path.join(HERE, "..", "config.ini");
+  const patch = {
+    modelDir: MODEL_DIR,
+    autoLoad: rec.model.file,
+    contextSize: String(rec.contextSize),
+    kvReuse: "1",
+    kvQuant: rec.kvQuant,
+    gpu: "auto",
+  };
+  let wrote = false;
+  let writeNote = "";
+  try {
+    const r = await updateConfigFile(configPath, patch);
+    wrote = r.wrote === true;
+    writeNote = r.wrote ? "已写入 config.ini（下次启动生效）" : "开发目录没有 config.ini，跳过写配置";
+  } catch (e) {
+    writeNote = "写 config.ini 失败：" + String(e?.message ?? e).slice(0, 160);
+  }
+  try {
+    await mkdir(path.dirname(ONBOARD_FILE), { recursive: true });
+    await writeFile(ONBOARD_FILE, JSON.stringify({ done: true, appliedAt: Date.now() }, null, 2), "utf8");
+  } catch {}
+  // 模型已经在本地就立即按推荐上下文加载，省得用户再点一次
+  let loaded = false;
+  let loadError = "";
+  const present = rec.model.existing || existsSync(path.join(MODEL_DIR, rec.model.file));
+  if (present && !state.loading && activeChats === 0) {
+    try {
+      await loadModel(rec.model.file, rec.contextSize);
+      loaded = true;
+    } catch (e) {
+      loadError = String(e?.message ?? e).slice(0, 200);
+    }
+  }
+  return {
+    ok: true,
+    applied: { ...patch, configPath, wrote },
+    recommended: rec,
+    present,
+    loaded,
+    loadError,
+    needRestart: true,
+    note: writeNote + (present ? (loaded ? "；模型已按建议加载" : "；模型已存在，加载失败：" + loadError) : "；模型还没下载，请先下载 " + rec.model.label),
   };
 }
 
@@ -4421,32 +4582,20 @@ async function handle(req, res) {
     return sendJson(res, 200, { status: "ok", model: state.file, context: state.contextSize, gpu: state.gpu });
   }
 
-  // 硬件体检：给首次引导用——不让用户自己猜"该下哪个模型"
+  // 首次启动「自动检查用户配置」：硬件体检 + 推荐模型/上下文/后端
   if (req.method === "GET" && url === "/api/sysinfo") {
-    const totalGB = os.totalmem() / 1024 ** 3;
-    const freeGB = os.freemem() / 1024 ** 3;
-    const cpus = os.cpus();
-    const models = await scanModels().catch(() => []);
-    let id = "qwen25-05b-q4km", reason = "内存充足，先跑 0.5B 体验速度，之后可换更大的";
-    if (freeGB < 3) {
-      id = "qwen25-05b-q2k";
-      reason = "可用内存偏少，建议最小档；也可以先关掉一些程序";
-    } else if (freeGB < 6) {
-      id = "qwen25-05b-q4km";
-      reason = "内存刚好够跑 0.5B，先体验再考虑更大的";
+    return sendJson(res, 200, await buildSysinfo());
+  }
+
+  // 一键按建议配置：写 config.ini +（模型已在本地就）立即按推荐上下文加载
+  if (req.method === "POST" && url === "/api/firstrun/apply") {
+    let body = {};
+    try { body = await readBody(req); } catch {}
+    try {
+      return sendJson(res, 200, await applyFirstRunConfig(body));
+    } catch (e) {
+      return sendJson(res, 500, { ok: false, error: { message: String(e?.message ?? e) } });
     }
-    return sendJson(res, 200, {
-      ramTotalGB: Number(totalGB.toFixed(1)),
-      ramFreeGB: Number(freeGB.toFixed(1)),
-      cores: cpus.length,
-      cpu: (cpus[0]?.model ?? "unknown").trim(),
-      backend: state.gpu ?? "未初始化",
-      backendNote: backendNote.text,
-      hasVulkan: state.gpu === "vulkan",
-      vcRuntime: hasMsvcp(),
-      modelCount: models.length,
-      recommend: { id, reason },
-    });
   }
   // ---------------------------------------------------------------- 调试面板（Debugging Tool）
   if (req.method === "GET" && (url === "/debug" || url === "/debug.html")) {
@@ -5525,6 +5674,8 @@ if (useCpu) {
  * 界面上必须写明"别运行来路不明的代码"。
  */
 const RUN_TIMEOUT_MS = 10000;
+/** 编译阶段单独放宽（冷机 MSVC/g++ 编译常 9–15s，和「运行 10s」混在一个超时里会误杀；见日志第三十四/五轮） */
+const COMPILE_TIMEOUT_MS = 30000;
 const RUN_OUT_LIMIT = 64 * 1024;
 const RUN_CODE_LIMIT = 200 * 1024;
 let runBusy = false;
@@ -5589,7 +5740,7 @@ function runLangInfo() {
   return runLangsCache;
 }
 
-function runSpawn(cmd, args, cwd) {
+function runSpawn(cmd, args, cwd, timeoutMs = RUN_TIMEOUT_MS) {
   return new Promise((resolve) => {
     const env = Object.assign({}, process.env, { PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" });
     const child = spawn(cmd, args, { cwd, env, windowsHide: true });
@@ -5615,7 +5766,7 @@ function runSpawn(cmd, args, cwd) {
       try {
         spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true });
       } catch {}
-    }, RUN_TIMEOUT_MS);
+    }, timeoutMs);
     const finish = (value) => {
       if (settled) return;
       settled = true;
@@ -5684,9 +5835,9 @@ async function runCode(lang, code) {
       await writeFile(path.join(dir, src), code, "utf8");
       let build;
       if (t.gpp) {
-        build = await runSpawn(t.gpp, ["-O2", "-std=" + (lang === "c" ? "c11" : "c++17"), src, "-o", "main.exe"], dir);
+        build = await runSpawn(t.gpp, ["-O2", "-std=" + (lang === "c" ? "c11" : "c++17"), src, "-o", "main.exe"], dir, COMPILE_TIMEOUT_MS);
       } else if (t.clangpp) {
-        build = await runSpawn(t.clangpp, ["-O2", src, "-o", "main.exe"], dir);
+        build = await runSpawn(t.clangpp, ["-O2", src, "-o", "main.exe"], dir, COMPILE_TIMEOUT_MS);
       } else {
         const bat = path.join(dir, "build.bat");
         const lines = [
@@ -5694,10 +5845,11 @@ async function runCode(lang, code) {
           'call "' + t.vc + '" -arch=x64 -host_arch=x64 >nul 2>&1',
           "cl /nologo /EHsc /O2 /utf-8 " + src + " /Fe:main.exe >build.log 2>&1",
           "if errorlevel 1 (type build.log & exit /b 1)",
-          "main.exe",
         ];
         await writeFile(bat, lines.join("\r\n"), "utf8");
-        return finishRun(lang, await runSpawn("cmd.exe", ["/d", "/c", bat], dir), t0);
+        build = await runSpawn("cmd.exe", ["/d", "/c", bat], dir, COMPILE_TIMEOUT_MS);
+        if (build.code !== 0) return finishRun(lang, build, t0);
+        return finishRun(lang, await runSpawn(path.join(dir, "main.exe"), [], dir), t0, build);
       }
       if (build.code !== 0) return finishRun(lang, build, t0);
       return finishRun(lang, await runSpawn(path.join(dir, "main.exe"), [], dir), t0, build);
@@ -5725,7 +5877,7 @@ server.listen(PORT, "127.0.0.1", () => {
     : BUILD.builtAt
       ? ` (打包 ${BUILD.builtAt.slice(0, 16).replace("T", " ")})`
       : "";
-  log(`本地 AI v${APP_VERSION}${tag} 已启动`);
+  log(`${APP_NAME} v${APP_VERSION}${tag} 已启动（${APP_SUB}）`);
   log(`界面 http://127.0.0.1:${PORT}/   API http://127.0.0.1:${PORT}/v1`);
   writeFile(PID_FILE, String(process.pid)).catch(() => {});
   // 启动时清一次过期快照；之后每次写盘顺带跑，成本只有几次 readdir

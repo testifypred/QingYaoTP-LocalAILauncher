@@ -1,11 +1,11 @@
-﻿# 本地 AI —— 便携版打包脚本
+﻿# QingYaoTP AILauncher（本地 AI）—— 便携版打包脚本
 #
 # 用法（在 server 目录下）：
 #   powershell -ExecutionPolicy Bypass -File .\build-portable.ps1
-#   powershell -ExecutionPolicy Bypass -File .\build-portable.ps1 -OutDir 'E:\LocalAI'
+#   powershell -ExecutionPolicy Bypass -File .\build-portable.ps1 -OutDir 'E:\build\dist\QingYaoTP AILauncher'
 #
 # 产物：
-#   <OutDir>\启动本地AI.exe     带图标的启动器（托盘 + 优雅停机）
+#   <OutDir>\QingYaoTP AILauncher.exe   带图标的启动器（托盘 + 优雅停机）
 #   <OutDir>\app\               服务端、界面、KaTeX、node-llama-cpp
 #   <OutDir>\runtime\node.exe   随包 Node，目标机器不需要装 Node
 #   <OutDir>\config.ini         端口 / 模型目录 / 自动加载
@@ -15,10 +15,10 @@
 # 便携目录因此从 ~700MB 降到 ~200MB；模型本身永远外置。
 
 param(
-    [string]$OutDir = 'D:\LocalModels\dist\LocalAI',
+    [string]$OutDir = 'D:\LocalModels\dist\QingYaoTP AILauncher',
     [string]$Icon = 'D:\LocalModels\server\localai.ico',
     [string]$ModelDir = 'D:\LocalModels',
-    [string]$AutoLoad = 'qwen2.5-7b-instruct-1m-q4_k_m.gguf',
+    [string]$AutoLoad = '',   # 留空 = 首启「自动检查用户配置」按本机硬件推荐
     [int]$ContextSize = 16384,
     [int]$Port = 8099
 )
@@ -36,6 +36,8 @@ foreach ($need in @(
     (Join-Path $Server 'app.html'),
     # app.mjs 里 import 了它（docx/pdf 抽文本）；漏了整包起不来
     (Join-Path $Server 'doc-extract.mjs'),
+    # app.mjs 里 import 了它（首启配置推荐）；漏了整包起不来
+    (Join-Path $Server 'config-recommend.mjs'),
     (Join-Path $Server 'localai.mjs'),
     (Join-Path $Server 'localai.cmd'),
     (Join-Path $Server 'localai-tui.mjs'),
@@ -59,9 +61,9 @@ foreach ($need in @(
     'D:\Node.js\node.exe'
 )) { if (-not (Test-Path $need)) { Die "缺少依赖：$need" } }
 
-# 安全闸：只允许清空以 dist\LocalAI 结尾的目录，绝不误删别处
+# 安全闸：只允许清空以 dist\QingYaoTP AILauncher 结尾的目录，绝不误删别处
 $resolved = [System.IO.Path]::GetFullPath($OutDir).TrimEnd('\')
-if ($resolved -notmatch '\\dist\\LocalAI$') { Die "输出目录必须是 ...\dist\LocalAI，收到：$resolved" }
+if ($resolved -notmatch '\\dist\\QingYaoTP AILauncher$') { Die "输出目录必须是 ...\dist\QingYaoTP AILauncher，收到：$resolved" }
 if (Test-Path $resolved) {
     Step "清空旧产物 $resolved"
     # 内嵌窗口的 localStorage 里存着对话记录，重新打包时保留，别把历史一起删了
@@ -82,8 +84,8 @@ if (Test-Path $resolved) {
             Write-Host '  （已把 data\ 放回原处）' -ForegroundColor Yellow
         }
         Die ("清空旧产物失败，通常是应用还在运行。" +
-            "先停服务：Start-Process .\启动本地AI.exe -ArgumentList '--stop' -Wait；" +
-            "若之后 启动本地AI.exe 进程仍在（它占着 logs\app.log），再结束该进程。" +
+            "先停服务：Start-Process '.\QingYaoTP AILauncher.exe' -ArgumentList '--stop' -Wait；" +
+            "若之后 QingYaoTP AILauncher.exe 进程仍在（它占着 logs\app.log），再结束该进程。" +
             "原始错误：$($_.Exception.Message)")
     }
 }
@@ -97,6 +99,8 @@ Step '复制服务端与界面'
 Copy-Item (Join-Path $Server 'app.mjs') $AppDir -Force
 Copy-Item (Join-Path $Server 'app.html') $AppDir -Force
 Copy-Item (Join-Path $Server 'doc-extract.mjs') $AppDir -Force
+# 首启配置推荐（app.mjs import）；和 doc-extract.mjs 一样必须进包
+Copy-Item (Join-Path $Server 'config-recommend.mjs') $AppDir -Force
 # 命令行客户端：跟着 app 一起进包，npm 那套东西它一样不依赖
 Copy-Item (Join-Path $Server 'localai.mjs') $AppDir -Force
 Copy-Item (Join-Path $Server 'localai.cmd') $AppDir -Force
@@ -168,7 +172,7 @@ Step '复制 Node 运行时'
 Copy-Item 'D:\Node.js\node.exe' (Join-Path $RuntimeDir 'node.exe') -Force
 
 Step '编译启动器（带图标 + WebView2 内嵌窗口）'
-$exe = Join-Path $resolved '启动本地AI.exe'
+$exe = Join-Path $resolved 'QingYaoTP AILauncher.exe'
 $wv2 = Join-Path $Server 'launcher\webview2'
 & $Csc /nologo /codepage:65001 /target:winexe /platform:anycpu /optimize+ /utf8output `
     "/win32icon:$Icon" `
@@ -189,13 +193,15 @@ Copy-Item (Join-Path $wv2 '*.dll') $resolved -Force
 
 Step '写配置与说明'
 $cfg = @"
-# 本地 AI 便携版配置（改完重启 启动本地AI.exe 生效）
+# QingYaoTP AILauncher（本地 AI）便携版配置（改完重启 QingYaoTP AILauncher.exe 生效）
 # port        服务端口
 # modelDir    gguf 所在目录；留空则用本目录下的 models\
 # autoLoad    启动后自动加载的模型文件名（留空 = 只起服务，在界面里手选）
 # contextSize 上下文长度，越大越吃内存
 # kvReuse     1 = 多轮对话复用 KV 缓存（推荐）；0 = 每轮全量重算（仅用于对照）
 # gpu         后端：auto（先试 Vulkan 再退 CPU）/ vulkan / cpu
+# 说明        首次启动会自动检查本机（CPU/内存/显卡/运行库/磁盘），给出模型与上下文建议，
+#             点「按建议配置并应用」即可写回本文件（下一次启动生效）。
 port=$Port
 modelDir=$ModelDir
 autoLoad=$AutoLoad
@@ -208,10 +214,10 @@ Set-Content -Path (Join-Path $resolved 'config.ini') -Value $cfg -Encoding UTF8
 Copy-Item $Icon (Join-Path $resolved 'localai.ico') -Force
 
 $readme = @"
-本地 AI（便携版）
+QingYaoTP AILauncher（本地 AI）便携版
 =================
 
-双击「启动本地AI.exe」即可：启动模型服务 → 等待端口就绪 → 打开内嵌窗口（WebView2）。
+双击「QingYaoTP AILauncher.exe」即可：启动模型服务 → 等待端口就绪 → 打开内嵌窗口（WebView2）。
 内嵌窗口是真正的独立窗口：有图标、有标题、没有地址栏，关掉它服务仍在后台跑。
 程序会常驻托盘（右下角图标），右键菜单：
   · 打开界面
@@ -219,7 +225,7 @@ $readme = @"
   · 退出启动器（保留服务）
 
 一、目录结构
-  启动本地AI.exe            启动器（带图标）
+  QingYaoTP AILauncher.exe  启动器（带图标）
   Microsoft.Web.WebView2.*  内嵌网页用的接口库（约 0.9 MB）
   WebView2Loader.dll        它的原生加载器
   config.ini                端口、模型目录、自动加载模型
@@ -237,7 +243,7 @@ $readme = @"
   文字依然锐利（早期版本没声明，窗口会被系统整体拉伸而发虚）。
   万一目标机器没有 WebView2：会自动静默改用 Edge/Chrome 的应用窗口，再不行用默认浏览器，
   不会弹错误框；具体走了哪条路记在 logs\launcher.log 里。
-  想强制用浏览器窗口：启动本地AI.exe --no-webview
+  想强制用浏览器窗口：QingYaoTP AILauncher.exe --no-webview
 
 三、模型
   模型体积大，不随包分发。默认指向 D:\LocalModels；换机器时改 config.ini 的 modelDir，
@@ -248,6 +254,8 @@ $readme = @"
   虚拟机里没有 Vulkan 计算设备，会自动用 CPU——这是虚拟化的限制，不是软件问题；
   想跳过尝试过程，直接把 gpu 写成 cpu。界面状态栏会标出当前跑的是 CPU 还是 Vulkan。
   第一次没有模型也没关系：首启会引导你扫描本机，或者从 ModelScope 直接下一个（约 470MB）。
+  首启的「自动检查用户配置」会按本机内存/显卡给出模型、上下文与 KV 量化的建议，
+  点「按建议配置并应用」就会写回 config.ini（老笔记本/8GB 内存会推荐 0.5B + 4K 上下文）。
 
 四、接口
   界面      http://127.0.0.1:8099/
@@ -255,10 +263,10 @@ $readme = @"
   健康检查  http://127.0.0.1:8099/health
 
 五、命令行
-  启动本地AI.exe --status         服务在跑则退出码 0
-  启动本地AI.exe --stop           优雅停止服务
-  启动本地AI.exe --start-hidden   只起服务 + 托盘，不开界面
-  启动本地AI.exe --no-webview     不用内嵌窗口，用浏览器 --app 窗口
+  QingYaoTP AILauncher.exe --status         服务在跑则退出码 0
+  QingYaoTP AILauncher.exe --stop           优雅停止服务
+  QingYaoTP AILauncher.exe --start-hidden   只起服务 + 托盘，不开界面
+  QingYaoTP AILauncher.exe --no-webview     不用内嵌窗口，用浏览器 --app 窗口
 
 六、语音朗读（TTS）
   界面上每条模型回复后面的 🔊 按钮会朗读那条回答；底部可切音色、调语速（0.7×~1.5×）。

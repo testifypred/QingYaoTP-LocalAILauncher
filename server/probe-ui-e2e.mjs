@@ -8,7 +8,7 @@
 import { writeFile } from "node:fs/promises";
 
 const CDP = "http://127.0.0.1:9222";
-const outPrefix = process.argv[2] ?? "D:/LocalModels/dist/LocalAI/ui";
+const outPrefix = process.argv[2] ?? "D:/LocalModels/dist/QingYaoTP AILauncher/ui";
 
 const list = await (await fetch(`${CDP}/json`)).json();
 const page = list.find((t) => t.type === "page" && t.url.includes("127.0.0.1"));

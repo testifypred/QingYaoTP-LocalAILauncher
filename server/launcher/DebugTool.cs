@@ -1,4 +1,4 @@
-// Debugging Tool —— 独立的调试窗口（WebView2）
+// QingYaoTP AILauncher · Debugging Tool —— 独立的调试窗口（WebView2）
 //
 // 为什么不用浏览器 --app 模式：那种窗口的图标来自网页 favicon，任务栏里会被缩成糊的。
 // 独立 exe 用 /win32icon:debug.ico 编译，Windows 直接按尺寸取 ico，标题栏/任务栏都清晰。
@@ -16,7 +16,7 @@ using Microsoft.Web.WebView2.WinForms;
 
 static class Program
 {
-    const string AppName = "Debugging Tool · 本地 AI";
+    const string AppName = "Debugging Tool · QingYaoTP AILauncher";
     static string BaseUrl = "http://127.0.0.1:8099";
 
     // 显式声明 PerMonitorV2：清单里虽然写了，但 .NET Framework 4.x 的 WinForms
@@ -41,8 +41,8 @@ static class Program
         if (!PortOpen(new Uri(BaseUrl).Host, new Uri(BaseUrl).Port))
         {
             MessageBox.Show(
-                "本地 AI 服务没在运行（" + BaseUrl + "）。\n\n" +
-                "请先启动 启动本地AI.exe，再点「Debug」。\n" +
+                "QingYaoTP AILauncher（本地 AI）服务没在运行（" + BaseUrl + "）。\n\n" +
+                "请先启动 QingYaoTP AILauncher.exe，再点「Debug」。\n" +
                 "（服务真起不来时，用程序目录里的 localai-debug.cmd 看本机诊断。）",
                 AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;

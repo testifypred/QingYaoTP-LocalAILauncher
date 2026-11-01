@@ -66,6 +66,7 @@ $probes=@(
   @{n='probe-rag'; a=@($base); t=200},
   @{n='probe-plugins'; a=@($base); t=120},
   @{n='probe-version'; a=@($base); t=90},
+  @{n='probe-firstrun'; a=@($base); t=150},
   @{n='probe-debug'; a=@($base); t=150},
   @{n='probe-func'; a=@('8099'); t=240},
   @{n='probe-ui-new'; a=@($cdp,$shots); t=150},

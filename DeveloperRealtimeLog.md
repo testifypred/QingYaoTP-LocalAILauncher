@@ -1757,6 +1757,52 @@ Qwen2.5-7B（28 层、4 个 KV 头、head_dim 128、f16 KV）≈ **56KB/token**�
 - 探针：`probe-debug` **35/35**、`probe-ui-debug` 23/23、`probe-ctx-panel` 25/25、`probe-version` 14/14、`probe-chat-plain` 11/11、`probe-func` / `probe-kv-long` 全绿。
 - 断言口径：643 → **644**（`probe-debug` +1）。
 
+## 三十八、2026-11-01（第六轮）：正式封装 QingYaoTP AILauncher v1.1.0
+
+产品正式定名 **QingYaoTP AILauncher**（QingYaoTP = QingYaoTestifypred），主品牌 + 「本地 AI」副标题；目标机是用户的 8GB 老笔记本（i5-10210U + RX640 2GB），所以首启必须能自动给出「跑得动」的配置。
+
+### 一、改名（可见面全换，契约面不动）
+
+- 发布目录 `dist\QingYaoTP AILauncher`、主程序 `QingYaoTP AILauncher.exe`；调试窗口 `DebugTool.exe` 标题 `Debugging Tool · QingYaoTP AILauncher`；托盘/窗口/提示/CLI/TUI/使用说明同步。
+- 界面：`<title>`、开场白品牌行（主名 + 「本地 AI」副标题）、设置→关于新增产品行、复制版本信息、退出确认、导出文件头、调试页报告头。
+- 版本 v1.0.0 → **1.1.0**（app.mjs / package.json / localai.mjs / localai-tui.mjs / manifest 5 处对齐）。
+- 契约面保持不动：`localai*.mjs/cmd` 文件名、`localai.ico`、CLI 命令名 `localai`、`LOCALAI_*` 环境变量、localStorage 键 `localai.*`。单实例 Mutex/Pipe 改名 `QingYaoTP.AILauncher.Portable.*`（新旧 exe 不互认，测试时别同时开）。
+- 桌面快捷方式：新建 `QingYaoTP AILauncher.lnk`（IconLocation 指 `localai.ico,0`），删除旧 `本地 AI.lnk`。
+
+### 二、首启「自动检查用户配置」
+
+- **GET `/api/sysinfo`**：CPU/核数/内存、GPU（CIM 查名称+显存，只查一次）、Vulkan 可用性、VC++ 运行库、磁盘、已有模型 → 7 条 `checks[]` + `recommend{tier, model, contextSize, kvQuant, gpu, reason, notes}` + `firstRunDone`。
+- **POST `/api/firstrun/apply`**：按建议写 `config.ini`（仅发布包有该文件时；开发目录跳过）+ 标记 onboarding done + 推荐模型已在本地则立即按推荐上下文加载。支持 `{dryRun:true}`（探针用：只回建议，不写盘、不加载）。
+- 推荐逻辑抽成纯函数 **`server\config-recommend.mjs`**（probe-firstrun 直接 import 单测）：
+  - <10GB（或 <16GB 且可用<6GB）→ tiny：0.5B + 4K；
+  - <16GB → small：0.5B + 8K；<24GB → medium：0.5B（可用≥8 用 Q8）+ 8K；
+  - ≥24GB → large：**优先本机已有的非思考/工具友好的大模型**（qwen2.5-7B > qwen3-4B > phi > 其它 7B/4B，**DeepSeek-R1 这类思考模型默认不推荐**），16K；
+  - KV 量化默认 q8_0；Vulkan 不可用则 gpu=cpu。
+- 首启页 ⓪ 段改成「自动检查用户配置」卡片：检查项（点+文字）/ 建议配置 / 「按建议配置并应用」按钮；应用后把上下文下拉设成建议值并（模型已在本地）立即加载；模型缺失时提示先下载（下载区就在下面）。
+- 发布包 `config.ini` 模板 `autoLoad=` **留空**（首启不硬加载 7B，交给自动检查推荐；8GB 机器不会一上来 OOM）。
+
+### 三、顺手修掉的两个 bug
+
+1. **C++ 运行超时拆分**：编译 30s / 运行 10s（`runSpawn(..., timeoutMs)`；MSVC 分支拆成「编译 .bat」+「运行 main.exe」两次），消除冷机编译卡 10s 的随机红（probe-code-run 复发风险）。
+2. **`probe-plugins` 包感知**：插件目录/plugins.json 改为从 `/api/diag.paths` 推（源码 `server\plugins`、发布包 `HERE\..\plugins`），不再硬编码 `D:\LocalModels\plugins`。
+
+### 四、打包与全量回归
+
+- `build-portable.ps1`：输出目录/安全闸/exe 名/使用说明/config 模板全换；打包清单补 **`config-recommend.mjs`**（漏了整包起不来）。
+- 产物：**258.2MB / 3443 文件**；`QingYaoTP AILauncher.exe` 57,344B、`DebugTool.exe` 42,496B；`config-recommend.mjs` 在包内；源码/包哈希 `app.mjs`、`app.html`、`doc-extract.mjs`、`config-recommend.mjs`、`debug.html`、`localai-debug.mjs` 全 MATCH。
+- 起包验证：`/api/version` dir=`dist\QingYaoTP AILauncher\app`、v1.1.0；`/debug` 200、`/debug-icon.png`/`ico` 200、无令牌 `POST /api/debug/open` 403；`/api/sysinfo` 推荐 qwen2.5-7B（tier=large/16K/q8_0）；dryRun apply 不写盘不加载。
+- **全量回归（包 A + 重建后的包 B）**：48 条探针 / **664 条断言**。首跑 **40 绿 / 8 红**（1543.3s，0 崩溃/0 重启）；8 红同参数复跑 **8/8 全绿** → **48/48 绿、0 真红**；包 B 重建后复验 6 条 **96/96**。
+- 8 红归因（全部非功能回归，详见 `docs\probe-full-2026-11-01\RESULT-v1.1.0.md`）：
+  - 7 条 = **probe-firstrun 旧版 apply 的副作用**：旧推荐逻辑 `findBig()` 取了目录里第一个 7B/8B（选中 DeepSeek-R1），把驱动预加载的 qwen2.5-7B 换掉，17:08–17:25 的探针全在思考模型上跑（工具调用=0、单块流、40s 等不到标题）→ 已修推荐择优 + dryRun；
+  - 1 条 = `probe-plugins` 硬编码 dev 插件目录（发布包目录不同）→ 已改成包感知。
+- 收尾：config.ini 还原为 `autoLoad=` 空（SHA256 与备份一致）、workspace 会话 1 个/快照 309 个完好、发布包保持运行（qwen2.5-7B · ctx 16384 · vulkan · q8_0）。
+
+### 五、遗留
+
+- 旧 `dist\LocalAI` 保留作回滚（确认新包稳定后可删）；
+- 老笔记本 8GB 实机还没跑过（用户机器）；首启会推荐 0.5B + 4K，需要实测下载/加载闭环；
+- 单实例标识改名：新旧 exe 同时开会各起一套（端口冲突会触发自动换端口并写 config.ini），迁移时别同时开。
+
 
 
 

@@ -72,6 +72,11 @@ if (wantBrand) {
 }
 ok("回退标记仍是 ∫（不定积分，本体图标；问号属于调试图标）", !!mark && mark.glyph === "∫" && mark.q === "", mark ? mark.glyph + "/" + JSON.stringify(mark.q) : "missing");
 
+// ---- 首次启动「自动检查用户配置」（modal 里 ⓪ 段） ----
+const firstRun = await ev("(async () => { if (typeof firstRunOpen !== 'function') return null; await firstRunOpen(); await new Promise(function (r) { setTimeout(r, 700); }); const box = document.getElementById('frSysBox'); const rows = document.querySelectorAll('#frSysBox .frChk').length; const btn = document.getElementById('frApply'); const body = (box && box.textContent) || ''; document.getElementById('firstModal').hidden = true; return { rows: rows, btn: !!btn, okv: body.indexOf('建议配置') >= 0, head: body.slice(0, 90) }; })()");
+ok("首启页有「自动检查用户配置」（硬件检查项 + 建议配置）", !!firstRun && firstRun.rows >= 5 && firstRun.okv === true, firstRun ? firstRun.rows + " 项 · " + firstRun.head : "missing");
+ok("首启页有「按建议配置」按钮", !!firstRun && firstRun.btn === true, firstRun ? String(firstRun.btn) : "missing");
+
 // ---- 设置入口 ----
 await ev("document.getElementById('settingsBtn').click(); 1");
 await sleep(350);

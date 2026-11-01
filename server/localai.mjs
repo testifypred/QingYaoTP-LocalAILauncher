@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * localai —— 本地 AI 的命令行客户端（零依赖，只跟你本机 8099 上的服务说话）
+ * localai —— QingYaoTP AILauncher（本地 AI）的命令行客户端（零依赖，只跟你本机 8099 上的服务说话）
  *
  *   localai "你好"                    一问一答，流式打印
  *   localai ask --tools "现在几点"     开工具（时间/计算/读文件/联网/跑代码）
@@ -16,7 +16,7 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
 const DEFAULT_URL = "http://127.0.0.1:8099";
 
 // ---------- 参数解析 ----------
@@ -88,7 +88,7 @@ async function api(path, { method = "GET", body, headers } = {}) {
     });
   } catch (e) {
     if (String(e?.cause?.code || e?.code || "").includes("ECONNREFUSED")) {
-      fatal(`连不上 ${BASE}——先把应用开起来（dist\\LocalAI\\启动本地AI.exe），或用 --url 指定端口`, 3);
+      fatal(`连不上 ${BASE}——先把应用开起来（dist\\QingYaoTP AILauncher\\QingYaoTP AILauncher.exe），或用 --url 指定端口`, 3);
     }
     fatal("请求失败：" + (e?.message ?? e));
   }
@@ -371,7 +371,7 @@ async function cmdSessions() {
 }
 
 function help() {
-  process.stdout.write(`localai ${VERSION} —— 本地 AI 命令行
+  process.stdout.write(`localai ${VERSION} —— QingYaoTP AILauncher（本地 AI）命令行
 
 用法：
   localai "你的问题"                  一问一答，流式输出

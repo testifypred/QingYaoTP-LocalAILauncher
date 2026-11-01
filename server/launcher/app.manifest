@@ -5,7 +5,7 @@
   声明之后由程序自己按真实像素渲染，窗口物理大小不变但文字锐利。
 -->
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <assemblyIdentity version="1.0.0.0" name="LocalAI.Launcher" />
+  <assemblyIdentity version="1.1.0.0" name="QingYaoTP.AILauncher" />
 
   <application xmlns="urn:schemas-microsoft-com:asm.v3">
     <windowsSettings>

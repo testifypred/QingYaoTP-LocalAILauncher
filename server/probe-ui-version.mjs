@@ -61,7 +61,7 @@ const copied = await ev("(async () => {" +
   "return { btn: document.getElementById('aboutCopy').textContent, clip: clip };" +
 "})()");
 ok("复制按钮给出反馈", /已复制|复制失败/.test(String(copied.btn)), copied.btn);
-ok("剪贴板里是版本信息", /本地 AI v\d+\.\d+\.\d+/.test(String(copied.clip || "")), String(copied.clip).slice(0, 90));
+ok("剪贴板里是版本信息", /QingYaoTP AILauncher v\d+\.\d+\.\d+/.test(String(copied.clip || "")), String(copied.clip).slice(0, 90));
 
 await ev("[...document.querySelectorAll('.settingsTabs .stab')].find(b => b.dataset.tab === 'gen').click(); 1");
 await sleep(250);

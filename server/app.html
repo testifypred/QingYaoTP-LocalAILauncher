@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>本地 AI</title>
+<title>QingYaoTP AILauncher · 本地 AI</title>
 <script>
   // 主题要在首次绘制之前定下来，否则会先闪一下暗色再变亮
   try {
@@ -253,6 +253,8 @@ header::after{
 /* ---------------- 开场白 ---------------- */
 .hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:40px 20px;user-select:none}
 .heroGreet{font-size:34px;font-weight:700;letter-spacing:.02em;margin:0;background:linear-gradient(120deg,var(--cyan),var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+.heroBrand{font-size:11.5px;font-weight:700;letter-spacing:.18em;color:var(--dim);margin-bottom:12px}
+.heroBrandSub{font-size:10.5px;font-weight:500;letter-spacing:.06em;margin-left:8px;opacity:.85;text-transform:none}
 .heroSub{margin:0;font-size:15px;color:var(--dim)}
 
 /* ---------------- 开场白：模式 + 输入框 ---------------- */
@@ -758,6 +760,20 @@ body.hasBg::before{content:'';position:fixed;inset:0;background:var(--scrim,radi
 /* 首次使用引导 */
 .firstBody{overflow:auto;padding:14px 18px;display:flex;flex-direction:column;gap:16px;min-height:0;flex:1}
 .frSection{display:flex;flex-direction:column;gap:9px}
+.frChk{display:flex;gap:8px;padding:4px 0;font-size:12px}
+.frChkText{min-width:0}
+.frChkText b{font-weight:600;margin-right:6px}
+.frChkText span{color:var(--text-2)}
+.frChkText em{display:block;font-style:normal;color:var(--warn);font-size:11.5px}
+.frDot{width:7px;height:7px;border-radius:50%;margin-top:6px;flex:none;background:var(--ok)}
+.frDot.warn{background:var(--warn)}
+.frDot.err{background:var(--err)}
+.frSysHead{font-weight:600;margin-bottom:6px;display:flex;justify-content:space-between;gap:8px}
+.frRec{margin:8px 0 6px;padding:8px 10px;border:1px solid var(--line-2);border-radius:8px;display:flex;flex-direction:column;gap:3px;font-size:12px}
+.frRec b{color:var(--accent)}
+.frRec span{color:var(--text-2)}
+.frRec em{font-style:normal;color:var(--dim);font-size:11.5px}
+.frApplyRow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .frTitle{font-size:12.5px;font-weight:600}
 .frBox{display:flex;flex-direction:column;gap:7px;padding:11px 12px;border:1px solid var(--line-2);border-radius:10px;background:var(--panel-3)}
 .frRow{display:flex;align-items:center;gap:9px;padding:5px 6px;border-radius:7px;cursor:pointer;font-size:12.5px}
@@ -869,7 +885,7 @@ header::before{
     <button id="sideToggle" class="ghost sideToggle" title="展开 / 收起对话列表">☰</button>
     <div class="modelPick">
       <button id="modelBtn" class="ghost modelBtn" title="选择模型：点开切换或卸载">
-        <span id="modelBtnIco" class="int" title="本地 AI" aria-hidden="true"><img id="modelBtnImg" alt="" hidden><b>∫</b></span>
+        <span id="modelBtnIco" class="int" title="QingYaoTP AILauncher（本地 AI）" aria-hidden="true"><img id="modelBtnImg" alt="" hidden><b>∫</b></span>
         <span id="modelBtnName">选择模型</span>
         <span class="caret">▾</span>
       </button>
@@ -937,6 +953,7 @@ header::before{
 
 <main id="msgs">
   <div class="hero" id="hero">
+    <div class="heroBrand">QingYaoTP AILauncher<span class="heroBrandSub">本地 AI</span></div>
     <h1 class="heroGreet" id="heroGreet">早上好</h1>
     <p class="heroSub">今天做点什么？</p>
   </div>
@@ -1114,7 +1131,7 @@ header::before{
     </div>
     <div class="firstBody">
       <div class="frSection">
-        <div class="frTitle">⓪ 你的机器</div>
+        <div class="frTitle">⓪ 自动检查用户配置</div>
         <div id="frSysBox" class="frBox"><div class="hintText">检测中…</div></div>
       </div>
       <div class="frSection">
@@ -1414,17 +1431,21 @@ header::before{
           <button id="setDebugOpen" class="ghost">打开调试窗口…</button>
           <span class="hintText">独立进程：体检 / 日志 / 崩溃记录 / 一键修复</span>
         </div>
-        <em>本地 AI 出问题时先看这里：它会把「哪一层坏了」和「怎么处理」直接列出来，比翻 app.log 快。程序目录里也可以直接双击 localai-debug.cmd 跑命令行版。</em>
+        <em>QingYaoTP AILauncher 出问题时先看这里：它会把「哪一层坏了」和「怎么处理」直接列出来，比翻 app.log 快。程序目录里也可以直接双击 localai-debug.cmd 跑命令行版。</em>
       </div>
       <div class="field">
         <span class="lbl">服务</span>
         <div class="exportRow">
-          <button id="setQuitOpen" class="ghost danger">退出本地 AI 服务</button>
+          <button id="setQuitOpen" class="ghost danger">退出 QingYaoTP AILauncher 服务</button>
           <span class="hintText">会先确认；退出后可用桌面图标重新启动</span>
         </div>
       </div>
     </div>
     <div class="settingsBody" id="paneAbout" data-pane="about" hidden>
+      <div class="field">
+        <span class="lbl">产品</span>
+        <em>QingYaoTP AILauncher（本地 AI）· QingYaoTP = QingYaoTestifypred</em>
+      </div>
       <div class="field">
         <span class="lbl">版本</span>
         <div class="exportRow">
@@ -1444,7 +1465,7 @@ header::before{
       </div>
       <div class="field">
         <span class="lbl">更新</span>
-        <em>这是离线部署，程序不联网检查更新。换新版本就把 dist\LocalAI 整个拷过去覆盖（或在源码目录重新打包），重启后回这里看版本号变没变。</em>
+        <em>这是离线部署，程序不联网检查更新。换新版本就把 dist\QingYaoTP AILauncher 整个拷过去覆盖（或在源码目录重新打包），重启后回这里看版本号变没变。</em>
       </div>
     </div>
     <div class="modalFoot">
@@ -2008,7 +2029,7 @@ function updateModelBtn(loadedFile) {
       brandImg.alt = '';
       brandImg.hidden = true;
       ico.classList.remove('has-brand');
-      ico.title = '本地 AI';
+      ico.title = 'QingYaoTP AILauncher（本地 AI）';
     }
   }
   const img = $('sendIco');
@@ -2308,7 +2329,7 @@ async function unloadModel() {
 unloadBtn.onclick = () => { closeModelMenu(); unloadModel(); };
 
 async function quitService() {
-  if (!confirm('确定要退出本地 AI 服务吗？')) return;
+  if (!confirm('确定要退出 QingYaoTP AILauncher 服务吗？')) return;
   try {
     const r = await fetch('/api/shutdown', {
       method: 'POST',
@@ -3326,6 +3347,7 @@ function showHero() {
   document.body.classList.add('startScreen');
   msgsEl.innerHTML =
     '<div class="hero" id="hero">' +
+      '<div class="heroBrand">QingYaoTP AILauncher<span class="heroBrandSub">本地 AI</span></div>' +
       '<h1 class="heroGreet" id="heroGreet"></h1>' +
       '<p class="heroSub">今天做点什么？</p>' +
       '<div class="heroModes">' +
@@ -3851,23 +3873,53 @@ async function openSnapshots(id) {
 // ---------------- 首次使用引导 ----------------
 const RECOMMENDED_SYSTEM = '你是一个跑在用户本机的私人中文助手。回答直接、具体，先给结论再给理由；不确定就说不确定，不要编造事实。需要精确的时间、日期、计算或文件内容时，用工具查，不要凭记忆。';
 let frCatalog = null, frTimer = null, frScanBusy = false;
+let frSys = null;
 let frChannel = 'modelscope', frPick = 'qwen25-05b-q4km';
 
 function frEl(id) { return document.getElementById(id); }
+
+function frCheckRow(c) {
+  const lv = c.level === 'error' ? 'err' : c.level === 'warn' ? 'warn' : 'ok';
+  return '<div class="frChk ' + lv + '"><span class="frDot ' + lv + '"></span><div class="frChkText"><b>' + c.title + '</b><span>' + c.detail + '</span>' + (c.fix ? '<em>→ ' + c.fix + '</em>' : '') + '</div></div>';
+}
+
+async function frApply() {
+  const btn = frEl('frApply'), note = frEl('frApplyNote');
+  if (btn) { btn.disabled = true; btn.textContent = '应用配置中…'; }
+  if (note) note.textContent = '正在把建议写入配置…';
+  try {
+    const r = await apiJson('/api/firstrun/apply', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) });
+    const cs = r.recommended && r.recommended.contextSize;
+    if (cs) { const sel = document.getElementById('ctxSel'); if (sel) sel.value = String(cs); }
+    if (note) note.textContent = r.note || '已按建议配置';
+    if (btn) { btn.disabled = false; btn.textContent = '重新应用'; }
+    if (r.loaded) { showToast('已按建议配置并加载模型', 'ok', 5000); refresh().catch(function () {}); }
+  } catch (e) {
+    if (note) note.textContent = '应用失败：' + e.message;
+    if (btn) { btn.disabled = false; btn.textContent = '按建议配置并应用'; }
+  }
+}
 
 async function frLoadSys() {
   const box = frEl('frSysBox');
   try {
     const s = await apiJson('/api/sysinfo');
-    const be = s.hasVulkan ? 'Vulkan（GPU）' : 'CPU';
-    const rec = (s.recommend && s.recommend.id) || 'qwen25-05b-q4km';
-    if (frCatalog && frCatalog.models.some(function (m) { return m.id === rec; })) { frPick = rec; renderFrDownload(); }
-    const pickLabel = frCatalog ? ((frCatalog.models.find(function (m) { return m.id === rec; }) || {}).label || rec) : rec;
-    const warn = s.vcRuntime ? '' : '<div class="hintText" style="color:#c0392b">缺少 VC++ 运行库（msvcp140.dll），模型加载会失败。先装 <a href="https://aka.ms/vs/17/release/vc_redist.x64.exe" target="_blank">vc_redist.x64.exe</a></div>';
+    frSys = s;
+    const rec = s.recommend || {};
+    const model = rec.model || {};
+    if (model.catalog && model.id && frCatalog && frCatalog.models.some(function (m) { return m.id === model.id; })) { frPick = model.id; renderFrDownload(); }
+    const modelTxt = model.existing ? ('用本机已有的 ' + model.file) : ((model.label || model.id || '0.5B') + (model.sizeGB ? '（约 ' + model.sizeGB + 'GB）' : ''));
+    const rows = (s.checks || []).map(frCheckRow).join('');
+    const catWarn = s.vcRuntime ? '' : '<div class="hintText" style="color:#c0392b">缺少 VC++ 运行库（msvcp140.dll），模型加载会失败。先装 <a href="https://aka.ms/vs/17/release/vc_redist.x64.exe" target="_blank">vc_redist.x64.exe</a></div>';
     box.innerHTML =
-      '<div>' + s.ramTotalGB + 'GB 内存 · 可用 ' + s.ramFreeGB + 'GB · ' + s.cores + ' 核 · 后端 ' + be + '</div>' +
-      '<div class="hintText">推荐：' + pickLabel + ' —— ' + ((s.recommend && s.recommend.reason) || '') + '</div>' +
-      warn;
+      '<div class="frSysHead">' + (s.app ? s.app.name + ' · ' + s.app.version : '') + '<span class="hintText">' + (s.disk ? '磁盘剩 ' + s.disk.freeGB + 'GB' : '') + '</span></div>' +
+      '<div class="frChecks">' + rows + '</div>' +
+      '<div class="frRec"><b>建议配置</b><span>模型：' + modelTxt + '</span><span>上下文：' + (rec.contextSize || 4096) + ' tok · KV 量化：' + (rec.kvQuant || 'q8_0') + ' · 后端：' + (rec.gpu || 'auto') + '</span>' +
+      '<em>' + (rec.reason || '') + '</em>' + ((rec.notes || []).map(function (n) { return '<em>· ' + n + '</em>'; }).join('')) + '</div>' +
+      catWarn +
+      '<div class="frApplyRow"><button id="frApply" class="primary" type="button">按建议配置并应用</button><span class="hintText" id="frApplyNote">写 config.ini（下次启动生效）；模型已在本地会立即按建议上下文加载</span></div>';
+    const btn = frEl('frApply');
+    if (btn) btn.onclick = frApply;
   } catch (e) {
     box.innerHTML = '<div class="hintText">检测失败：' + e.message + '</div>';
   }
@@ -4927,7 +4979,7 @@ $('aboutCopy').onclick = async () => {
   const btn = $('aboutCopy');
   try {
     const v = await loadVersionInfo();
-    const head = '本地 AI v' + v.version + (v.commit ? ' (' + v.commit + (v.dirty ? ' 未提交' : '') + ')' : v.builtAt ? ' (打包 ' + fmtStamp(v.builtAt) + ')' : '');
+    const head = 'QingYaoTP AILauncher v' + v.version + (v.commit ? ' (' + v.commit + (v.dirty ? ' 未提交' : '') + ')' : v.builtAt ? ' (打包 ' + fmtStamp(v.builtAt) + ')' : '');
     await copyPlainText([head, 'Node ' + v.node, '启动 ' + fmtStamp(v.startedAt), v.dir].join(' · '));
     const old = btn.textContent;
     btn.textContent = '已复制';
@@ -5745,7 +5797,7 @@ exportBtn.onclick = async () => {
 };
 
 function buildMarkdown(title, messages) {
-  const out = ['# 本地 AI 对话导出', '', `导出时间：${new Date().toLocaleString('zh-CN')}`, ''];
+  const out = ['# QingYaoTP AILauncher 对话导出', '', `导出时间：${new Date().toLocaleString('zh-CN')}`, ''];
   const name = title === undefined ? sessionTitle : title;
   if (name) out.push(`> 对话：${name}`, '');
   const list = Array.isArray(messages) ? messages : transcript;

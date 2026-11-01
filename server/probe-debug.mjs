@@ -14,7 +14,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 const BASE = process.argv[2] || "http://127.0.0.1:8099";
 const HERE = "D:\\LocalModels\\server";
 // 崩溃记录的真实路径从 /api/diag 的 paths.crashLog 取：
-// 跑源码时是 server\vulkan-crash.log，跑发布包时是 dist\LocalAI\app\vulkan-crash.log
+// 跑源码时是 server\vulkan-crash.log，跑发布包时是 dist\QingYaoTP AILauncher\app\vulkan-crash.log
 let CRASH = HERE + "\\vulkan-crash.log";
 
 let pass = 0, fail = 0;

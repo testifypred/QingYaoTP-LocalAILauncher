@@ -11,10 +11,18 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const BASE = process.argv[2] || "http://127.0.0.1:8099";
-const PLUGIN_DIR = process.argv[3] || "D:\\LocalModels\\plugins";
-const CONFIG = "D:\\LocalModels\\workspace\\plugins.json";
 const FILE = "probe_tmp_plugin.mjs";
 const TOOL = "probe_tmp_tool";
+
+// 插件目录/禁用名单要按「跑的是源码还是发布包」推：
+//   - 源码：HERE=server → server\plugins
+//   - 发布包：HERE=dist\...\app → dist\...\plugins（= HERE\..\plugins）
+// /api/diag.paths.dir 给的就是 HERE，paths.sessions 给 workspace\sessions。
+const diag = await (await fetch(BASE + "/api/diag")).json();
+const HERE_DIR = String(diag?.paths?.dir || "");
+const isPackaged = path.basename(HERE_DIR) === "app";
+const PLUGIN_DIR = process.argv[3] || (isPackaged ? path.resolve(HERE_DIR, "..", "plugins") : path.resolve(HERE_DIR, "plugins"));
+const CONFIG = path.join(path.dirname(String(diag?.paths?.sessions || path.join(HERE_DIR, "workspace", "sessions"))), "plugins.json");
 
 let pass = 0, fail = 0;
 const ok = (n, c, d = "") => { if (c) { pass++; console.log("  ok   " + n + (d ? "  [" + d + "]" : "")); } else { fail++; console.log("  FAIL " + n + "  " + d); } };

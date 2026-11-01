@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * localai-tui —— 本地 AI 的全屏终端界面（零依赖，纯 ANSI）
+ * localai-tui —— QingYaoTP AILauncher（本地 AI）的全屏终端界面（零依赖，纯 ANSI）
  *
  *   localai tui                    正常进入
  *   localai tui --model Phi-4-mini-instruct-Q4_K_M.gguf
@@ -14,7 +14,7 @@
  */
 import process from "node:process";
 
-const VER = "1.0.0";
+const VER = "1.1.0";
 const DEFAULT_URL = "http://127.0.0.1:8099";
 
 const argv = process.argv.slice(2);
@@ -115,7 +115,7 @@ async function api(path, { method = "GET", body, headers } = {}) {
   } catch (e) {
     const c = String(e?.cause?.code || e?.code || "");
     throw new Error(c.includes("ECONNREFUSED")
-      ? "连不上 " + BASE + "：先把 启动本地AI.exe 开起来"
+      ? "连不上 " + BASE + "：先把 QingYaoTP AILauncher.exe 开起来"
       : "请求失败：" + (e?.message ?? e));
   }
   const t = await r.text();
@@ -212,7 +212,7 @@ function frame(cols, rows, opts = {}) {
   const inputBar = 2, statusBar = 1, sep = 1;
   const bodyH = Math.max(3, rows - inputBar - statusBar - 2);
 
-  const head = " localai " + VER + C.gray + "  " + (S.model || "（未指定）") + "  ctx " + (S.ctx || "?") +
+  const head = " QingYaoTP AILauncher " + VER + C.gray + "  " + (S.model || "（未指定）") + "  ctx " + (S.ctx || "?") +
     (S.tools ? "  " + C.green + "工具开" : "  " + C.gray + "工具关") +
     (S.web ? C.green + " 联网开" : "") + C.reset;
   out.push(padWidth(head, inner));
