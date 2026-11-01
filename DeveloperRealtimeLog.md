@@ -1339,6 +1339,37 @@ export async function run(args, ctx) {
 - 从 exe 里 `ExtractAssociatedIcon` 读回 32px：是 `∫ + AI`；
 - 发布包已同步（app.mjs / debug.html / debug-icon-64.png），启动器已重编译（57344 字节），应用已重启。
 
+## 二十八、2026-11-01：桌面快捷方式图标 + 保留原始图标
+
+用户提出两点：桌面快捷方式还显示旧的 `∂AI?`；另外**原始的白底 `∫+AI` 图标必须在文件夹里留一份**。
+
+### 一、桌面快捷方式
+
+`C:\Users\lenovo\Desktop\本地 AI.lnk` 的 `IconLocation` 原来指 `启动本地AI.exe,0`——图标是嵌在 exe 里的，Windows 会按路径缓存，所以即使 exe 重编译过，桌面照样显示旧图标。
+
+改法：把 `IconLocation` 指到 `dist\LocalAI\localai.ico,0`（一个独立文件），再跑 `ie4uinit.exe -show` 刷缓存。以后换图标不用动快捷方式。
+
+> 如果桌面还是旧的，需要重启一次 Explorer（会闪一下任务栏）——这是 Windows 图标缓存的老毛病。
+
+### 二、把原始图标请回来
+
+原始稿（白底 + 深蓝 ∫ + AI，2026-10-18 版）在 `b6a9175` 里还留着，已恢复到 `server\icons\`：
+
+| 文件 | 内容 |
+|---|---|
+| `original-white.ico` / `.png` | 原始：白底 + 深蓝 ∫ + AI（**别删**） |
+| `current-black.ico` | 当前本体：黑底 + 白 ∫ + AI |
+| `debug-partial.png` | 调试工具：∂ + AI + ?（256） |
+
+另加 `server\icons\README.md` 写清约定（两套身份、`localai.ico` 是编译用的那份、从 git 取二进制要用 cmd 重定向）。
+
+### 三、又踩一个坑：PowerShell 的重定向会破坏二进制
+
+用 `git show b6a9175:server/localai.ico > old.ico` 取回来的是 **UTF-16 文本**（2 字节/字符 + BOM），ico 直接坏掉（`Icon.ToBitmap()` 报范围超出数组结尾）。必须走 `cmd /c` 的重定向才拿到原始字节。
+
+验证：取回后头部是 `00 00 01 00`，大小 12543 字节，与原始一致；再从里面导出 256px PNG 存成 `original-white.png`。
+
+
 
 
 
