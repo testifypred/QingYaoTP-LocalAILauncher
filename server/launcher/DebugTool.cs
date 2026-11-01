@@ -19,9 +19,18 @@ static class Program
     const string AppName = "Debugging Tool · 本地 AI";
     static string BaseUrl = "http://127.0.0.1:8099";
 
+    // 显式声明 PerMonitorV2：清单里虽然写了，但 .NET Framework 4.x 的 WinForms
+    // 不一定会把进程切到 per-monitor 上下文，表现为 DeviceDpi 恒为 96、WebView2 按 100% 渲染后被系统拉伸（发虚）。
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern uint GetDpiForWindow(IntPtr hwnd);
+
     [STAThread]
     static void Main(string[] args)
     {
+        try { SetProcessDpiAwarenessContext(new IntPtr(-4)); } catch { } // -4 = PER_MONITOR_AWARE_V2
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
@@ -39,19 +48,28 @@ static class Program
             return;
         }
 
-        float scale = 1f;
-        using (var g = Graphics.FromHwnd(IntPtr.Zero)) { scale = g.DpiX / 96f; }
-
         var form = new Form();
         form.AutoScaleMode = AutoScaleMode.None;
         form.Text = AppName;
         form.StartPosition = FormStartPosition.CenterScreen;
-        var wa = Screen.PrimaryScreen.WorkingArea;
-        form.ClientSize = new Size(
-            Math.Min((int)(1180 * scale), wa.Width - (int)(60 * scale)),
-            Math.Min((int)(860 * scale), wa.Height - (int)(90 * scale)));
-        form.MinimumSize = new Size((int)(860 * scale), (int)(600 * scale));
         try { form.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+
+        // 尺寸必须在窗口句柄建好之后算：Graphics.FromHwnd(IntPtr.Zero) 在 DPI 感知进程里
+        // 返回的是系统 DC 的 96 DPI，照它算会把窗口做小（175% 屏上尤其明显）。
+        // form.DeviceDpi 才是本显示器的真实 DPI。
+        form.Load += delegate
+        {
+            uint dpi = GetDpiForWindow(form.Handle);
+            float scale = dpi > 0 ? dpi / 96f : form.DeviceDpi / 96f;
+            if (scale <= 0.5f) scale = 1f;
+            var wa = Screen.FromControl(form).WorkingArea;
+            form.ClientSize = new Size(
+                Math.Min((int)(1180 * scale), wa.Width - (int)(60 * scale)),
+                Math.Min((int)(860 * scale), wa.Height - (int)(90 * scale)));
+            form.MinimumSize = new Size((int)(860 * scale), (int)(600 * scale));
+            form.Left = wa.Left + (wa.Width - form.Width) / 2;
+            form.Top = wa.Top + (wa.Height - form.Height) / 2;
+        };
 
         var wv = new WebView2();
         wv.Dock = DockStyle.Fill;

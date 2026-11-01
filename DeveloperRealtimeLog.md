@@ -1447,6 +1447,38 @@ Windows 任务栏要 16/24/32px，只能缩——所以永远发虚。
 `build-portable.ps1` 增加一步「编译调试工具」，依赖检查补 `launcher\DebugTool.cs` 与 `debug.ico`；
 `debug.ico` 也拷进 `app\`（`/debug-icon.ico` 直接读它）。
 
+## 三十一、2026-11-01：调试窗口「里面是糊的」——DPI 两处错
+
+给调试工具做了 `DebugTool.exe` 之后，用户反馈**窗口内容发虚**。查下来是两个独立的 DPI 错误叠在一起。
+
+### 一、进程没有真正 per-monitor 感知
+
+`app.manifest` 里明明写了 `PerMonitorV2`，但 .NET Framework 的 WinForms 只认它自己的 DPI 设置：
+实测进程里 `form.DeviceDpi` 恒为 96，而 `GetDpiForWindow(hwnd)` 是 **168**（175% 屏）。
+结果是窗口按 100% 渲染、被系统整体拉伸 → 糊。
+
+修：`Main` 一进来就 `SetProcessDpiAwarenessContext(new IntPtr(-4))`（PER_MONITOR_AWARE_V2）。
+
+### 二、尺寸拿错了 DPI
+
+第一版用 `Graphics.FromHwnd(IntPtr.Zero).DpiX` 算缩放——它给的是系统 DC 的 96，于是 1180×860 被当成物理像素，
+在 175% 屏上窗口只有别人一半大（实测 688×528）。
+
+修：尺寸挪到 `form.Load`（句柄已建）里算，用 `GetDpiForWindow(form.Handle) / 96` 作为缩放；
+顺带发现 `Form.CenterToScreen()` 是 protected，编译报 CS0122，改成手算 `(工作区 - 窗口) / 2`。
+
+### 三、验证
+
+- `GetDpiForWindow = 168`，窗口物理尺寸 **2089×1569**（≈1180×860 × 1.75 + 边框）；
+- 1:1 截图裁字：边缘锐利，不是拉伸出来的；
+- 从 exe 读回的 32px 图标 = `∂` + 青色 `?``（图标那条之前已修好）。
+
+### 四、顺带的坑：用 PowerShell 截图验证也会踩同一个 DPI
+
+DPI 不感知的 PowerShell 里调用 `GetWindowRect` 得到的是**虚拟化后**的尺寸（2065×1505 变成 1180×860），
+于是 `PrintWindow` 只截到左上角一块。抓图脚本开头也要 `SetProcessDpiAwarenessContext(-4)`。
+
+
 
 
 

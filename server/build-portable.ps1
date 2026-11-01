@@ -181,7 +181,7 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path $exe)) { Die '启动器编译失败'
 
 Step '编译调试工具（独立窗口 + 自己的 ico）'
 $dbgExe = Join-Path $resolved 'DebugTool.exe'
-& $Csc /nologo /codepage:65001 /target:winexe /platform:anycpu /optimize+ /utf8output "/win32icon:$(Join-Path $Server 'debug.ico')" /r:System.dll /r:System.Core.dll /r:System.Windows.Forms.dll /r:System.Drawing.dll "/r:$wv2\Microsoft.Web.WebView2.Core.dll" "/r:$wv2\Microsoft.Web.WebView2.WinForms.dll" "/out:$dbgExe" (Join-Path $Server 'launcher\DebugTool.cs')
+& $Csc /nologo /codepage:65001 /target:winexe /platform:anycpu /optimize+ /utf8output "/win32icon:$(Join-Path $Server 'debug.ico')" "/win32manifest:$(Join-Path $Server 'launcher\app.manifest')" /r:System.dll /r:System.Core.dll /r:System.Windows.Forms.dll /r:System.Drawing.dll "/r:$wv2\Microsoft.Web.WebView2.Core.dll" "/r:$wv2\Microsoft.Web.WebView2.WinForms.dll" "/out:$dbgExe" (Join-Path $Server 'launcher\DebugTool.cs')
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path $dbgExe)) { Die '调试工具编译失败' }
 
 # WebView2 的两个托管 DLL + 原生加载器，必须和 exe 同目录
