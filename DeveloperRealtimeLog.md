@@ -1803,6 +1803,35 @@ Qwen2.5-7B（28 层、4 个 KV 头、head_dim 128、f16 KV）≈ **56KB/token**�
 - 老笔记本 8GB 实机还没跑过（用户机器）；首启会推荐 0.5B + 4K，需要实测下载/加载闭环；
 - 单实例标识改名：新旧 exe 同时开会各起一套（端口冲突会触发自动换端口并写 config.ini），迁移时别同时开。
 
+## 三十九、2026-11-02：老笔记本实战踩坑 + 交接整理
+
+v1.1.0 打包完成后，用户在 8GB 老笔记本（i5-10210U / RX640 2GB）上实测，踩出三个包装层的问题——都不是功能回归，但都会让「拷过去就能用」失败。这一节记录清楚，交接时别重复踩。
+
+### 一、老笔记本实战
+
+| 现象 | 根因 | 处置 |
+|---|---|---|
+| 双击 exe →「服务进程已退出（退出码 1）」 | `logs\app.log` 里 `ERR_MODULE_NOT_FOUND: Cannot find package 'node-llama-cpp'` —— 散文件夹拷贝把 `app\node_modules`（41 包 / 3431 文件 / 140MB）丢了 | 打**单文件 zip** `dist\QingYaoTP-AILauncher-v1.1.0.zip`（122MB，3947 条目）；本机模拟「只解压 zip」验证 `import('node-llama-cpp')` = OK |
+| 模型目录无效 / 下载没地方落 | `build-portable.ps1` 把 `modelDir` 写死成开发机路径 `D:\LocalModels` | 打包默认 `modelDir=` 留空（便携 = `<安装目录>\models`）；启动器解析后自动 `CreateDirectory`；首启 apply 不再写回绝对路径 |
+| 0.5B 能跑但回答「猎奇」 | 0.5B 就这水平（能出字，复杂问题胡言乱语） | 8GB + 2GB 显存的甜点是 **1.5B Q4_K_M（~1GB）**；0.5B 只作首启体验 |
+
+其他实测观察（未改代码，留给下一轮）：
+
+- **Vulkan 跑在核显上**：llama.cpp 默认选了枚举里的第一块（Intel UHD 620），RX 640 只在画面合成时动一下。包里的 `ggml-vulkan.dll` 含 `GGML_VK_VISIBLE_DEVICES` 字符串 → 可用环境变量强制选卡（先 `findstr /i "ggml_vulkan" logs\app.log` 看设备编号，再 `set GGML_VK_VISIBLE_DEVICES=1` 启动验证）。
+- **AMD 驱动偏旧**：dxdiag 显示 30.0.13023（2021/12，≈Adrenalin 21.12.x）；RX 640（Polaris，已 legacy）最后一版官方驱动是 **30.0.15021.11005 ≈ Adrenalin 22.6.1（2022/06）**，可升这一档（建议 DDU 清旧驱动）；再新的 Vulkan 只有第三方魔改驱动，不推荐。
+- **交付/传输方式**：以后一律给 zip（或先 `dir app\node_modules | find "node-llama-cpp"` 自检），别再传散文件夹。
+
+### 二、交接整理
+
+- 交付物（都在 `D:\LocalModels\dist\`）：
+  - `QingYaoTP AILauncher\` —— 构建产物/运行目录（config.ini 的 modelDir 留空）；
+  - `QingYaoTP AILauncher-v1.1.0\` —— 干净拷贝（无 data/logs 运行期缓存）；
+  - `QingYaoTP-AILauncher-v1.1.0.zip` —— 122MB 单文件，**对外交付用这个**；
+  - `LocalAI\` —— v1.0.0 旧包，仅回滚用。
+- 仓库：v1.1.0 已在 `2f14ece` 提交；之后修的「modelDir 便携默认 + 启动器建目录 + apply 不写死路径」3 个文件在本节后补提交。
+- ⚠️ **最终包（modelDir 修复版）只做了手动验证**（起包、`/api/version` dir 正确、`/api/sysinfo` modelDir=`<安装目录>\models`、dryRun apply、`/debug` 200），**没有重跑 48 条全量**；上一轮 48/664 全绿跑的是 modelDir 修复前的包。下次开工建议先补一次全量（或至少 `probe-debug` + `probe-firstrun` + `probe-plugins`）。
+- 本机交接状态：应用未运行，8099 空闲；`workspace\sessions` 1 个真实会话完好。
+
 
 
 

@@ -277,6 +277,7 @@ static class Launcher
         AutoLoad = defaults["autoLoad"];
         ModelDir = defaults["modelDir"];
         if (ModelDir.Length == 0) ModelDir = Path.Combine(Root, "models");
+        try { if (!Directory.Exists(ModelDir)) Directory.CreateDirectory(ModelDir); } catch { }
         Gpu = defaults["gpu"].ToLowerInvariant();
         if (Gpu != "vulkan" && Gpu != "cpu") Gpu = "auto";
     }

@@ -17,7 +17,7 @@
 param(
     [string]$OutDir = 'D:\LocalModels\dist\QingYaoTP AILauncher',
     [string]$Icon = 'D:\LocalModels\server\localai.ico',
-    [string]$ModelDir = 'D:\LocalModels',
+    [string]$ModelDir = '',   # 留空 = 用 <安装目录>\models（便携；不要写死本机 D:\LocalModels）
     [string]$AutoLoad = '',   # 留空 = 首启「自动检查用户配置」按本机硬件推荐
     [int]$ContextSize = 16384,
     [int]$Port = 8099

@@ -484,7 +484,6 @@ async function applyFirstRunConfig(body = {}) {
   }
   const configPath = path.join(HERE, "..", "config.ini");
   const patch = {
-    modelDir: MODEL_DIR,
     autoLoad: rec.model.file,
     contextSize: String(rec.contextSize),
     kvReuse: "1",
