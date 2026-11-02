@@ -20,9 +20,16 @@ await send("Page.reload", { ignoreCache: true });
 await sleep(3000);
 await ev("(() => { const m = document.getElementById('msgs'); const d = document.createElement('div'); d.className = 'row assistant'; d.id = 'coverRow'; const b = document.createElement('div'); b.className = 'bubble'; b.textContent = '覆盖测试：这条消息以前会盖住菜单'; d.appendChild(b); m.appendChild(d); return 1; })()");
 await ev("document.getElementById('modelBtn').click(); 1");
-await sleep(400);
+// 菜单是异步展开的：机器忙时固定 400ms 不够，5 行的矩形还是 0 高，
+// elementFromPoint 会落在 header 上 → 全 'other'（2026-11-02 第三轮实测偶发红）。
+// 改成按「每行已布局且命中菜单」轮询，不再赌 sleep。
 check("顶栏 z-index 已抬高", (await ev("getComputedStyle(document.querySelector('header')).zIndex")) === "40");
-const hits = await ev("[...document.querySelectorAll('#modelSel .modelRow')].map(r => { const b = r.getBoundingClientRect(); const el = document.elementFromPoint(b.left + 30, b.top + b.height / 2); return el ? (el.closest('.modelMenu') ? 'menu' : 'other') : 'none'; })");
+let hits = [];
+for (let i = 0; i < 40; i++) {
+  await sleep(150);
+  hits = await ev("[...document.querySelectorAll('#modelSel .modelRow')].map(r => { const b = r.getBoundingClientRect(); if (!b.height) return 'none'; const el = document.elementFromPoint(b.left + 30, b.top + b.height / 2); return el ? (el.closest('.modelMenu') ? 'menu' : 'other') : 'none'; })");
+  if (hits.length === modelCount && hits.every((h) => h === "menu")) break;
+}
 check("每一行模型都能被点到", hits.length === modelCount && hits.every((h) => h === "menu"), JSON.stringify(hits) + " / 应有 " + modelCount);
 const shot = await send("Page.captureScreenshot", { format: "png" });
 fs.writeFileSync("D:/LocalModels/server/docs/ui-new/model-menu.png", Buffer.from(shot.result.data, "base64"));

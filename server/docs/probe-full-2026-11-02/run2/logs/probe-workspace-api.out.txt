@@ -1,0 +1,11 @@
+ok   列出工作区根目录  [entries=5]
+ok   新建文件  [{"path":"smoke/hello.txt","size":16}]
+ok   读取内容  [你好 workspace]
+ok   重命名
+ok   改名后可读
+ok   越界读取被拒  [路径越界]
+ok   越界写入被拒  [路径越界]
+ok   删除文件
+ok   删除空目录
+
+RESULT 9/9

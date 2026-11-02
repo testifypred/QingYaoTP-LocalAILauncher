@@ -1,0 +1,43 @@
+
+== 目标 http://127.0.0.1:8099
+   主模型 qwen3-5-4B-Q4_K_M.gguf
+   预加载 Phi-4-mini-instruct-Q4_K_M.gguf ==
+
+== A. 能力核算 ==
+  ✅ capacity 200
+  ✅ 报出内存总量与可用量 — 31.4GB / 可用 11.9GB
+  ✅ 给出目标模型占用估算 — 3.47 GB
+  ✅ 给出结论与建议 — ok：余量充足，可以同时驻留。
+  ✅ 余量 = 可用 − 占用 — 11.9 - 3.47 = 8.38
+
+== B. 加载主模型 ==
+  ✅ 主模型就绪 — 8.6s
+
+== C. 预加载（主模型不动）==
+  ✅ preload 200
+  ✅ 预加载成功 — {"file":"Phi-4-mini-instruct-Q4_K_M.gguf","ok":true,"resident":true,"seconds":9.6,"contextSize":4096,"sizeGB":2.32}
+  ✅ 标记为常驻
+  ✅ 返回常驻清单 — {"files":[{"file":"Phi-4-mini-instruct-Q4_K_M.gguf","sizeGB":2.32,"loadedAt":1793634454224,"busy":false}],"totalGB":2.32,"contextSize":4096}
+  ✅ 主模型没被顶掉 — qwen3-5-4B-Q4_K_M.gguf
+  ✅ state 里能看到常驻模型
+  ✅ 重复预加载直接复用 — {"file":"Phi-4-mini-instruct-Q4_K_M.gguf","ok":true,"resident":true,"reused":true,"seconds":0}
+
+== D. 第二意见走常驻（关键）==
+  ✅ 接口 200
+  ✅ 没有出现 loading（不用换模型） — thinking,answer,done
+  ✅ 事件顺序为 thinking→answer→done — thinking,answer,done
+  ✅ answer 标了 preloaded
+  ✅ 拿到了内容 — 作为「第二意见」，我会补充一些细微差别。首先，内存（随机存取存储器，RAM）是电
+  ✅ done 说明没换过模型 — swapped=false
+  ✅ 全程耗时远小于装卸（<25s） — 14.3s
+  ✅ 主模型仍在原地 — qwen3-5-4B-Q4_K_M.gguf
+  ✅ 常驻模型仍在（没被释放）
+
+== E. 释放与收尾 ==
+  ✅ clear 200
+  ✅ 常驻清单已空 — {"files":[],"totalGB":0,"contextSize":4096}
+  ✅ 卸载也释放常驻 — freedExtras=0
+  ✅ 主模型已卸载 — null
+
+== 结果: 26 通过 / 0 失败 ==
+

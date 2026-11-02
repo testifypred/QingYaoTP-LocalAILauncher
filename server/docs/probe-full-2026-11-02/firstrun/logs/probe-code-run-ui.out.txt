@@ -1,0 +1,11 @@
+ok   代码块渲染出运行外壳
+ok   有运行按钮
+ok   有复制按钮
+ok   按钮默认可见
+ok   语言标签正确  [python]
+ok   点运行后出结果  [✓ exit 0 · 99 mshello from block ]
+ok   结果带退出码与耗时  [✓ exit 0 · 99 mshello from block ]
+ok   关掉设置后按钮隐藏
+ok   重新打开后按钮恢复
+
+RESULT 9/9

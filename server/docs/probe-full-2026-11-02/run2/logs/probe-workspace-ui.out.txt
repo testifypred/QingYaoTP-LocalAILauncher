@@ -1,0 +1,9 @@
+ok   工作区打开
+ok   编辑器带行号
+ok   文件列表有内容
+ok   新建文件并打开  [probe/demo.py]
+ok   保存写回服务端  [print("hello workspace")]
+ok   重命名生效  [probe/demo2.py]
+ok   删除文件  [status=400]
+
+RESULT 7/7

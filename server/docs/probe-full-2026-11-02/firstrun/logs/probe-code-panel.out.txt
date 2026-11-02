@@ -1,0 +1,12 @@
+ok   顶栏有「代码」入口
+LANGS [{"v":"javascript","t":"JavaScript","d":false},{"v":"python","t":"Python","d":false},{"v":"java","t":"Java（未安装）","d":true},{"v":"cpp","t":"C++","d":false},{"v":"c","t":"C","d":false},{"v":"go","t":"Go（未安装）","d":true},{"v":"rust","t":"Rust（未安装）","d":true}]
+ok   面板打开
+ok   语言列表已加载  [count=7]
+ok   未安装语言被标灰  [["java","go","rust"]]
+ok   默认选一个可用语言  [javascript]
+ok   运行出结果  [✓ exit 0 · 96 mspanel 42 ]
+ok   刷新后草稿还在  [{"lang":"python","code":"print(\"panel \" + str(40+2))"}]
+ok   清空按钮生效
+ok   Esc 关闭面板
+
+RESULT 9/9

@@ -1,0 +1,10 @@
+file:///D:/LocalModels/server/probe-small-features.mjs:9
+const ev = async (e) => { const r = await send("Runtime.evaluate", { expression: e, returnByValue: true, awaitPromise: true }); if (r.result?.exceptionDetails) throw new Error(r.result.exceptionDetails.text); return r.result?.result?.value; };
+                                                                                                                                                                      ^
+
+Error: Uncaught
+    at ev (file:///D:/LocalModels/server/probe-small-features.mjs:9:167)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async file:///D:/LocalModels/server/probe-small-features.mjs:27:1
+
+Node.js v24.17.0

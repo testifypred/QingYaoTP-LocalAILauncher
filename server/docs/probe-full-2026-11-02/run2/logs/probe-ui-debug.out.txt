@@ -1,0 +1,27 @@
+  ok   顶栏有 Debug 按钮  [Debug]
+  ok   按钮可点（有尺寸）  [77.0625x38.296875]
+  ok   按钮 tooltip 说明是独立程序  [Debugging Tool：体检、看日志、清崩溃记录（独立程序开窗）]
+  ok   模型按钮显示已加载模型的品牌图标  [/vendor/models/qwen.png]
+  ok   品牌图标有实际尺寸  [22x22]
+  ok   品牌图标不套黑底（回退标记此时隐藏）  [rgba(0, 0, 0, 0)]
+  ok   回退标记仍是 ∫（不定积分，本体图标；问号属于调试图标）  [∫/""]
+  ok   首启页有「自动检查用户配置」（硬件检查项 + 建议配置）  [7 项 · QingYaoTP AILauncher · 1.1.0磁盘剩 302.5GBCPUIntel(R) Core(TM) Ultra 7 155H · 22 核内存共 31.4GB ]
+  ok   首启页有「按建议配置」按钮  [true]
+  ok   设置 → 工具有调试入口  [打开调试窗口…]
+  ok   点按钮会调 /api/debug/open  [calls=1]
+  ok   成功后给出提示  [调试窗口已打开（独立进程 pid 4321）]
+  ok   调试页标题正确  [Debugging Tool · QingYaoTP AILauncher]
+  ok   渲染了检查项（>=12）  [li=17]
+  ok   渲染了三档统计  [pills=3]
+  ok   运行环境与模型区有内容  [8 / 6]
+  ok   日志面板有内容  [chars=11083]
+  ok   复制报告有反馈  [已复制]
+  ok   调试页有实时资源卡与 sparkline  [593x56 · painted 4769]
+  ok   2.6s 后 CPU/内存有数值且条形有宽度  [6% / 30.3 GB / 31.4 GB · 96% · bars 36/569px · · 2026-11-02 23:55:06 · 每 2 秒刷新]
+  ok   调试页无未捕获 JS 异常
+  ok   能回到主界面
+  ok   窄窗（850px）按钮不竖排  [[]]
+  ok   窄窗不横向溢出  [850 vs 850]
+  ok   窄窗顶栏允许换行（高度 > 60）  [headerH=107]
+
+RESULT 25/25

@@ -1,0 +1,10 @@
+ok   块级公式有复制按钮
+ok   按钮复制块级 LaTeX  [E=mc^2]
+ok   点行内公式复制  [a^2+b^2]
+ok   Ctrl+F 打开搜索条
+ok   找到匹配并显示计数  [1/1]
+ok   高亮已注册
+ok   Enter 跳到下一个  [1/1]
+ok   Esc 关闭并清除高亮
+
+RESULT 8/8

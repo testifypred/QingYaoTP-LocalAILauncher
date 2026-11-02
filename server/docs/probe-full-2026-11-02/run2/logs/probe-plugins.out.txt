@@ -1,0 +1,17 @@
+
+== 目标 http://127.0.0.1:8099 / 插件目录 D:\LocalModels\dist\QingYaoTP AILauncher\plugins ==
+
+  ok   重载后发现临时插件  [count=4]
+  ok   插件出现在工具清单
+  ok   禁用接口成功
+  ok   列表里标记为已禁用  [{"file":"probe_tmp_plugin.mjs","name":"probe_tmp_plugin","ok":true,"disabled":true,"description":"",]
+  ok   禁用后不再注册成工具  [["get_current_time","calculate","list_local_models","read_workspace_file","list_workspace_files","write_workspace_file",]
+  ok   禁用状态落了盘  [{"disabled":["probe_tmp_plugin.mjs"]}]
+  ok   重新启用
+  ok   启用后不再标禁用
+  ok   非法文件名被拒  [status=400]
+  ok   删掉文件后从列表消失
+  ok   工具清单也干净了
+
+== 结果: 11 通过 / 0 失败 ==
+

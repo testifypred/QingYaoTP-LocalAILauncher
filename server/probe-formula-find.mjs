@@ -31,8 +31,14 @@ check("点行内公式复制", /a\^2|a\^\{2\}/.test(tex2), tex2);
 
 // 会话内搜索
 await ev("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true })); 1");
-await sleep(300);
-check("Ctrl+F 打开搜索条", (await ev("!document.getElementById('findBar').hidden")) === true);
+// 搜索条是下一帧才去掉 hidden：机器忙时固定 300ms 会抢在打开之前读（2026-11-02 第三轮实测偶发红）。
+let findOpen = false;
+for (let i = 0; i < 40; i++) {
+  await sleep(120);
+  findOpen = (await ev("!document.getElementById('findBar').hidden")) === true;
+  if (findOpen) break;
+}
+check("Ctrl+F 打开搜索条", findOpen);
 // 搜上面两行注入的正文里的词：原来搜 'turtle'，靠的是开发期某个会话里正好有这词，
 // 会话一换就永远搜不到（探针过期）
 await ev("(() => { const inp = document.getElementById('findInput'); inp.value = '质能方程'; inp.dispatchEvent(new Event('input', { bubbles: true })); return 1; })()");

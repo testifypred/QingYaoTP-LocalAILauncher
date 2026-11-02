@@ -1,0 +1,9 @@
+ok   化学式渲染成公式（含裸写）  [{"katex":3,"err":0}]
+ok   公式面板与 MathLive 就绪
+ok   编辑器同步到 LaTeX 文本框  [\frac{a}{b}+\sqrt{x}]
+ok   LaTeX 文本框回写编辑器  [E=mc^2]
+ok   复制 LaTeX  [E=mc^2]
+ok   插入到输入框  [$E=mc^2$]
+ok   插入后面板关闭
+
+RESULT 7/7

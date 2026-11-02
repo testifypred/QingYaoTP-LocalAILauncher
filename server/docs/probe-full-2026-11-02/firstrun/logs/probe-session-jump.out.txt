@@ -1,0 +1,8 @@
+顺序前 6: mvzfd03l,mvzfd03a
+ok   切换对话后列表顺序不变  [len 2/2]
+ok   切换不抬 updatedAt  [1793633979575 -> 1793633979575]
+ok   A 已选中
+ok   真发消息后置顶  [mvzfd03a,mvzfd03l]
+left 0
+
+RESULT 4/4

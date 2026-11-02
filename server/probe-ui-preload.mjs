@@ -212,12 +212,17 @@ console.log("\n== F. 选中 @ 模型即预加载 ==");
   ok("服务端确认真常驻", (srv.extras?.files || []).some((f) => f.file.includes("Phi-4")), JSON.stringify(srv.extras));
   await shot("15-preload-resident");
 
-  // 取消该标签应释放
+  // 取消该标签应释放。卸载模型是异步的（页面要等 /api/preload/clear 回来才弹提示），
+  // 固定 sleep 会抢在提示之前读——改成按「服务端已空 + 提示已出现」轮询（2026-11-02 实测偶发红）。
   await ev(`document.querySelector('#askChips .chip button').click()`);
-  await sleep(1500);
-  const after = await (await fetch(`${APP}/api/preload`)).json();
-  ok("取消 @ 后释放常驻", (after.extras?.files || []).length === 0, JSON.stringify(after.extras));
-  const cancelToasts = await ev(`[...document.querySelectorAll('#toasts .toast')].map(t => t.textContent)`);
+  let after = { extras: { files: [] } };
+  let cancelToasts = [];
+  for (let i = 0; i < 40; i++) {
+    await sleep(300);
+    after = await (await fetch(`${APP}/api/preload`)).json();
+    cancelToasts = await ev(`[...document.querySelectorAll('#toasts .toast')].map(t => t.textContent)`);
+    if ((after.extras?.files || []).length === 0 && cancelToasts.some((x) => /已取消，释放/.test(x))) break;
+  }
   ok(
     "提示了「已取消 + 释放 X GB」",
     cancelToasts.some((x) => /预加载【.*】已取消，释放 \d+\.\d{2} GB 内存/.test(x)),

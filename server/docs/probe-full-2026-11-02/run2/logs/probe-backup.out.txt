@@ -1,0 +1,46 @@
+
+== 目标 http://127.0.0.1:8099 / 备份到 D:\LocalModels\server\docs\probe-full-2026-10-27\backup-target ==
+
+  ok   GET /api/backup 可用  [sessions=1]
+  ok   返回会话目录  [D:\LocalModels\dist\QingYaoTP AILauncher\models\workspace\sessions]
+  ok   拒绝相对路径  [请填绝对路径，例如 E:\LocalAI-Backup 或 \\NAS\share\LocalAI]
+  ok   拒绝会话目录本身  [备份目录不能放在会话目录里]
+  ok   拒绝会话目录的上级  [备份目录不能是会话目录的上级，请另建一个子目录]
+  ok   开着自动备份但没目录要拒绝  [先填一个备份目录，再打开自动备份]
+  ok   保存合法目录  [D:\LocalModels\server\docs\probe-full-2026-10-27\backup-target]
+  ok   保留天数被夹到 365  [365]
+  ok   间隔被夹到 5 分钟  [5]
+  ok   目录被建出来了  [D:\LocalModels\server\docs\probe-full-2026-10-27\backup-target]
+  ok   先造一个会话  [mvzfqxt2-9f82dbf5]
+  ok   立即备份成功  [[]]
+  ok   备份里至少有这个会话  [sessions=2]
+  ok   本轮确实复制了文件  [copied=4]
+  ok   镜像文件落盘  [D:\LocalModels\server\docs\probe-full-2026-10-27\backup-target\sessions\mvzfqxt2-9f82dbf5.json]
+  ok   镜像内容就是这个会话  [270B]
+  ok   当日快照落盘
+  ok   清单文件落盘
+  ok   内容没变时不再重复复制  [copied=0]
+  ok   改一下会话
+  ok   改完会同步  [copied=1]
+  ok   镜像拿到新内容
+  ok   过期当日目录被清掉
+  ok   历史版本快照也镜像了  [2026-11-02/mvzfqxt2-9f82dbf5.23-50-29-932.json]
+  ok   状态里报了快照份数  [snapshots=4]
+  ok   写盘 15 秒后自动备份（不用手点）  [mvzfqxzf-7287c604 seen=true]
+  ok   状态里能看到上次结果  [at=2026/11/2 23:50:44]
+  ok   同盘会有标记（这是 D 盘）  [true]
+  ok   磁盘列表至少有一块  [["C:\\ 180.6GB","D:\\ 302.5GB"]]
+  ok   备份列表能列出这个会话  [{"id":"mvzfqxt2-9f82dbf5","title":"备份探针","messages":3,"turns":2,"backupAt":1793634629937,"bytes":351,"inWorkspace":true,"workspaceMessages":]
+  ok   列表标了本机也有、条数对得上  [3 条]
+  ok   没令牌不给恢复  [status=403]
+  ok   从备份恢复成功  [{"ok":true,"id":"mvzfqxt2-9f82dbf5","messages":3,"title":"备份探针"}]
+  ok   恢复后回到备份那一版（3 条）  [msgs=3]
+  ok   LOCAL-ONLY 被覆盖掉
+  ok   恢复前先留了历史版本  [2 -> 3]
+  ok   备份里没有的 id 返回 404  [status=404]
+  ok   能关掉并清空目录
+
+复位：备份已关闭，测试会话与临时目录已清理（1 个会话保留）
+
+== 结果: 38 通过 / 0 失败 ==
+

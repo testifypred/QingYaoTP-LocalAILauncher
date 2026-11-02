@@ -1,0 +1,22 @@
+
+== 目标 http://127.0.0.1:8099 ==
+
+  ok   索引状态可读  [{"files":0,"chunks":0,"builtAt":0,"dir":"D:\\LocalModels\\dist\\QingYaoTP AILauncher\\models\\worksp]
+  ok   重建索引成功  [{"ok":true,"files":0,"chunks":0,"builtAt":1793633837768,"dir":"D:\\LocalModels\\dist\\QingYaoTP AILa]
+  FAIL 新文件进了索引  files=0
+  FAIL 中文 bigram 能召回  []
+  FAIL 命中片段带出处  
+  FAIL 英文按词召回  []
+  FAIL 改完能搜到新内容  []
+  ok   旧内容不再从该文件召回  [[]]
+  FAIL docx 抽文本后能召回  []
+  FAIL pdf 抽文本后能召回  []
+  FAIL pdf 里的中文也抽得出来  []
+  ok   删掉的文件不再被召回  [[]]
+  ok   工具清单里有 search_documents  [get_current_time,calculate,list_local_models,read_workspace_file,list_workspace_files,write_workspace_file,run_code,search_documents,web_search,fetch_url,disk_space,hello_plugin,workspace_note]
+  ok   工具参数是 query/k  [["query","k"]]
+  ok   空查询被拒
+  ok   复位后索引回到原样  [files=0 / 原 0]
+
+== 结果: 8 通过 / 8 失败 ==
+

@@ -1,0 +1,7 @@
+{"rows":0,"times":[],"titles":[]}
+ok   每条消息都有时间  [times=0 rows=0]
+ok   时间格式正确  [[]]
+ok   悬停有完整时间
+ok   新消息立即带时间  [23:39]
+
+RESULT 4/4

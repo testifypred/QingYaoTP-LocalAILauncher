@@ -1,0 +1,39 @@
+
+== 目标 http://127.0.0.1:8099 ==
+
+  ✅ 首页 200
+  ✅ 侧栏容器存在
+  ✅ @ 按钮存在
+  ✅ 朗读选项卡存在
+  ✅ 底部旧朗读条已移除
+  ✅ 设置里有音色下拉
+  ✅ 设置里有语速滑块
+  ✅ GET /api/sessions 200
+  ✅ 返回 sessions 数组
+  ✅ 返回存储目录 — D:\LocalModels\dist\QingYaoTP AILauncher\models\workspace\sessions
+  ✅ POST 新建 200
+  ✅ 拿到 id — mvzf921m-fe504cf0
+  ✅ 新会话标题为空（等首句推导）
+  ✅ 新会话展示标题为「新对话」 — 新对话
+  ✅ PUT 保存 200
+  ✅ title 字段仍为空（未被钉死）
+  ✅ 列表里能看到这个会话
+  ✅ 列表标题已推导 — 帮我比较一下 Vulkan 和 CPU 推理的差别
+  ✅ 列表轮数为 1 — 1
+  ✅ 列表记录了模型 — qwen2.5-7b-instruct-1m-q4_k_m.gguf
+  ✅ GET 单会话 200
+  ✅ 读回 2 条消息 — 2
+  ✅ 第二意见前缀字段可空
+  ✅ 重命名 200
+  ✅ 重命名后 title 生效 — 推理后端对比
+  ✅ 重命名不丢消息
+  ✅ 非法 id 被拒 — status=400
+  ✅ 过短 id 被拒 — status=400
+  ✅ DELETE 200
+  ✅ 删除后读不到 — status=404
+  ✅ 列表里已消失
+  ✅ 未知模型被拒 — status=400 模型不存在：%nonexistent%.gguf
+  ✅ 缺 models 时也报错（400/409） — status=400
+
+== 结果: 33 通过 / 0 失败 ==
+

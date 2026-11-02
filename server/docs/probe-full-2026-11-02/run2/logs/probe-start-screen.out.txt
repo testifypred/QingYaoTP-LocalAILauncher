@@ -1,0 +1,15 @@
+STATE {"hero":true,"greet":"晚上好","sid":null,"msgs":0,"tabs":false,"btn":"Qwen2.5-7B-1M","sendIco":true,"recent":true,"recentTitle":"探针预置会话"}
+ok   启动进入开场白
+ok   默认新对话（无 sessionId、无消息）  [sid=null]
+ok   问候语按时间  [晚上好]
+ok   顶栏无模型列表
+ok   模型按钮显示已加载模型  [Qwen2.5-7B-1M / 已加载 qwen2.5-7b-instruct-1m-q4_k_m.gguf]
+ok   发送键旁有模型图标
+ok   右下角提示上次对话  [探针预置会话]
+ok   深度思考/联网在输入框下
+ok   模型菜单能打开
+ok   列出全部模型  [5 / 5]
+ok   标记当前运行模型  [qwen2.5-7b-instruct-1m-q4_k_m.gguf / qwen2.5-7b-instruct-1m-q4_k_m.gguf]
+ok   点空白关闭菜单
+
+RESULT 12/12

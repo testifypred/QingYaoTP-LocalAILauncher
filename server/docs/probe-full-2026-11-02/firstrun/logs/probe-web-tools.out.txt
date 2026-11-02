@@ -1,0 +1,37 @@
+
+== 目标 http://127.0.0.1:8099 ==
+
+== 0. 加载模型 ==
+  ✅ 模型就绪 — 9.9s
+
+== 1. web_search（中文查询）==
+  ✅ HTTP 200 — 200
+  ✅ 调用了 web_search — web_search
+  ✅ 返回了结果列表 — 8 条 / 引擎 baidu
+  ✅ 引擎是 baidu 或 bing — baidu
+  ✅ 结果含标题 — 本地 私有化 部署DeepSeek 模型完整指南-百度开发者中心
+  ✅ 至少部分结果带地址 — 7 条有地址
+     引擎=baidu 首条=本地 私有化 部署DeepSeek 模型完整指南-百度开发者中心
+
+== 2. fetch_url（读真实网页）==
+  ✅ 调用了 fetch_url — fetch_url
+  ✅ 拿到了正文 — 171 字符 / HTTP 200
+  ✅ 有标题 — Example Domain
+  ✅ 正文里有 Example Domain — Example Domain This domain is for use in documenta
+
+== 3. SSRF 防护（关键）==
+  ✅ 确实尝试了这次调用 — fetch_url
+  ✅ 本机地址被拒绝 — 拒绝访问本机/内网地址
+  ✅ 没有泄露本机内容 — 未返回 localToken
+
+== 4. 关闭 web 时工具不应出现 ==
+  ✅ 联网工具没有被注册（调了也只会报错） — web_search:已拒绝
+  ✅ 拒绝时告知了可用工具 — get_current_time、calculate、list_local_models、read_workspace_file、list_workspace_files、write_workspace_file、run_code、search_documents、disk_space、hello_plugin、workspace_note
+  ✅ 整体没有报错 — 200
+
+== 5. 流式下的联网事件 ==
+  ✅ 流式收到联网工具事件 — web_search
+  ✅ 正文非空 — 第一条结果的标题是：“Qwen2.5 更新百万超长 上下文 ,推理速度4.3倍加速,网友:RAG..
+
+== 结果: 19 通过 / 0 失败 ==
+

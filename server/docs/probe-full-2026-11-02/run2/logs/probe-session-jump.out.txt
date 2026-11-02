@@ -1,0 +1,8 @@
+顺序前 6: mvzfujip,mvzfujie,mvzfqci4
+ok   切换对话后列表顺序不变  [len 3/3]
+ok   切换不抬 updatedAt  [1793634797896 -> 1793634797896]
+ok   A 已选中
+ok   真发消息后置顶  [mvzfujie,mvzfujip]
+left 1
+
+RESULT 4/4

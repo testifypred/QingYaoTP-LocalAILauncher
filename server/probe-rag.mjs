@@ -5,13 +5,17 @@
  *
  * 覆盖：建索引、中文 bigram 召回、英文召回、改文件后重建能搜到新内容/旧内容消失、
  *       删文件后不再召回、tool 已注册、状态数字对得上。
- * 自复位：测试文档放 workspace\rag-probe\，跑完删掉并重建索引。
+ * 自复位：测试文档放 <工作区>\rag-probe\，跑完删掉并重建索引。
+ * 工作区根不写死：从 /api/rag/status 的 dir 反推（源码目录与发布包目录不同）。
  */
 import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const BASE = process.argv[2] || "http://127.0.0.1:8099";
-const DIR = "D:\\LocalModels\\workspace\\rag-probe";
+// 工作区根从服务端自报的检索目录反推（/api/rag/status.dir = <WORKSPACE>\rag）：
+// 发布包的 WORKSPACE = <安装目录>\models\workspace，不等于开发目录；写死开发路径会让
+// 「新文件进了索引」永远 files=0（2026-11-02 在发布包上实测 8 条红，全是这个原因）。
+let DIR = "";
 let pass = 0, fail = 0;
 const ok = (n, c, d = "") => { if (c) { pass++; console.log("  ok   " + n + (d ? "  [" + d + "]" : "")); } else { fail++; console.log("  FAIL " + n + "  " + d); } };
 const j = async (method, p) => {
@@ -27,6 +31,9 @@ console.log("\n== 目标 " + BASE + " ==\n");
 
 const baseStatus = (await j("GET", "/api/rag/status")).data;
 ok("索引状态可读", typeof baseStatus?.files === "number", JSON.stringify(baseStatus).slice(0, 100));
+
+const ragDir = String(baseStatus?.dir || "");
+DIR = ragDir ? path.join(path.dirname(ragDir), "rag-probe") : "D:\\LocalModels\\workspace\\rag-probe";
 
 await mkdir(DIR, { recursive: true });
 await writeFile(path.join(DIR, "alpha.md"), "# 量子笔记\n\n纠缠态可以用来做量子通信。\n\n第二段讲退相干与测量。\n", "utf8");

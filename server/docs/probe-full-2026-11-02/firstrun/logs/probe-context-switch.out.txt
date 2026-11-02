@@ -1,0 +1,5 @@
+ok   先打开一条有消息的会话  [{"rows":2,"len":2}]
+ok   换模型后消息还在  [{"rows":2,"len":2,"hero":false}]
+ok   换模型后不是空开场白
+
+RESULT 3/3

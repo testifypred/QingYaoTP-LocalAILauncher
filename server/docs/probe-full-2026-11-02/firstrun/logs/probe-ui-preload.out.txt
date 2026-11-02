@@ -1,0 +1,53 @@
+
+== A. 默认状态 ==
+  ✅ 开关存在
+  ✅ 默认不勾选
+  ✅ 文案是「多回答预加载」 — 多回答预加载
+  ✅ 没有常驻模型时不显示状态
+  ✅ 弹窗默认关闭
+
+== B. 开启时弹窗并出示能力账单 ==
+  ✅ 弹出能力检查
+  ✅ 确认前开关保持未勾选
+  ✅ 显示内存总量/可用量 — 内存 31.4GB · 当前可用 11.8GB
+  ✅ 逐模型列出占用 — 4 行
+  ✅ 结论文字非空 — 4 个模型都有充足余量，可以放心开启。
+  ✅ 结论带语义色 — capAdvice ok
+  ✅ 「不再提醒」默认未勾
+  ✅ 有余量时允许开启
+    截图: D:\LocalModels\server\docs\probe-full-2026-11-02\shots\ui-13-preload-warn.png
+
+== C. 勾选「不再提醒」后开启 ==
+  ✅ 确认后关闭弹窗
+  ✅ 开关真正勾上
+  ✅ 落盘 preloadMulti
+  ✅ 落盘 preloadMuted
+
+== D. 再次开启不再打扰 ==
+  ✅ 已勾不再提醒时直接开启
+  ✅ 不弹窗
+
+== E. 设置里恢复提醒 ==
+  ✅ 设置里有提醒开关
+  ✅ 当前为关闭提醒（与已确认一致）
+  ✅ 有清空预加载按钮
+  ✅ 显示常驻状态 — 开关已开，但还没有常驻模型
+  ✅ 勾上后 preloadMuted 变 false
+    截图: D:\LocalModels\server\docs\probe-full-2026-11-02\shots\ui-14-preload-settings.png
+  ✅ 恢复提醒后重新弹窗
+  ✅ 取消后开关保持关闭
+
+== F. 选中 @ 模型即预加载 ==
+  ✅ 预加载开关已开启
+  ✅ 开启时给出左下角提示 — 已开启多回答预加载，选中 @ 模型后会自动装入内存
+  ✅ 选中了 Phi-4 — Phi-4-mini2.32G
+  ✅ 选中后自动预加载 — 已常驻 Phi-4-mini
+  ✅ 提示了「已完成 + 占用 X GB」 — 已开启多回答预加载，选中 @ 模型后会自动装入内存 | 预加载【Phi-4-mini】已完成，占用 2.32 GB 内存
+  ✅ 服务端确认真常驻 — {"files":[{"file":"Phi-4-mini-instruct-Q4_K_M.gguf","sizeGB":2.32,"loadedAt":1793634428499,"busy":false}],"totalGB":2.32,"contextSize":4096}
+    截图: D:\LocalModels\server\docs\probe-full-2026-11-02\shots\ui-15-preload-resident.png
+  ✅ 取消 @ 后释放常驻 — {"files":[],"totalGB":0,"contextSize":4096}
+  ✅ 提示了「已取消 + 释放 X GB」 — 预加载【Phi-4-mini】已完成，占用 2.32 GB 内存 | 预加载【Phi-4-mini】已取消，释放 2.32 GB 内存
+  ✅ 提示会自动消失
+
+== 结果: 35 通过 / 0 失败 ==
+

@@ -1,0 +1,23 @@
+
+== 目标 http://127.0.0.1:8099 ==
+
+  ok   8GB+2GB 显存 → tiny 档 + 4K 上下文  [tiny/4096]
+  ok   8GB 推荐 0.5B 模型（来自下载目录）  [qwen2.5-0.5b-instruct-q4_k_m.gguf]
+  ok   低内存也默认 KV 量化 q8_0  [q8_0]
+  ok   Vulkan 可用时 gpu=auto  [auto]
+  ok   显存小会给出提示  [显存 2.0GB 偏小：小模型可直接放显存，7B 会自动回落到 CPU/混合 | KV 缓存量化 q8_0 已默认开启，低内存机器尤其重要]
+  ok   32GB + 已有 7B → large 档、用已有模型  [large/qwen2.5-7b-instruct-1m-q4_k_m.gguf]
+  ok   32GB → 16K 上下文  [16384]
+  ok   Vulkan 不可用 → gpu=cpu  [cpu]
+  ok   /api/sysinfo 可用  [HTTP 200]
+  ok   带产品名与版本  [QingYaoTP AILauncher v1.1.0]
+  ok   带硬件字段
+  ok   带检查项（≥6，字段完整）  [7 项]
+  ok   推荐字段完整  [{"ctx":16384,"kv":"q8_0"}]
+  ok   推荐模型有 id 或已存在  [qwen2.5-7b-instruct-1m-q4_k_m.gguf]
+  ok   带 firstRunDone 标记  [true]
+  ok   /api/firstrun/apply 可用（dry-run）  [HTTP 200]
+  ok   dry-run 只给建议、不写配置不加载  [applied=null]
+  ok   重复 apply 不报错（幂等）  [HTTP 200]
+
+RESULT 18/18
