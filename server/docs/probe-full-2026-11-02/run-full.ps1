@@ -1,4 +1,4 @@
-﻿
+
 $base='http://127.0.0.1:8099'
 $cdp='http://127.0.0.1:9333'
 $out = if ($env:FULL_PROBE_OUT) { $env:FULL_PROBE_OUT } else { $PSScriptRoot }
@@ -97,6 +97,16 @@ function Seed-Workspace {
   try {
     $st = Invoke-RestMethod ($base + '/api/rag/status') -TimeoutSec 15
     if (($st.files -as [int]) -lt 1) { $null = Invoke-RestMethod -Method Post ($base + '/api/rag/rebuild') -TimeoutSec 300 }
+  } catch { }
+  # 首启引导：全新安装会弹「准备模型 / 自动检查」面板，它盖在顶栏上（z-index 高于 header），
+  # 「模型菜单每行可点」「Ctrl+F 打开搜索条」这类断言会因此假红（2026-11-02 第三轮的真因）。
+  # 真实用户点过「完成」就不再弹，所以这里替它点掉。
+  try {
+    $ob = Invoke-RestMethod ($base + '/api/onboarding') -TimeoutSec 10
+    if ($ob.done -ne $true) {
+      $null = Invoke-RestMethod -Method Post -Uri ($base + '/api/onboarding') -ContentType 'application/json' -Body '{"done":true}' -TimeoutSec 15
+      '  [driver] 已标记首启引导完成（否则引导面板会盖住顶栏）' | Tee-Object -Append -FilePath $summary
+    }
   } catch { }
   ('  [driver] 环境预置完成：' + $ws) | Tee-Object -Append -FilePath $summary
 }

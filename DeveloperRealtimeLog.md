@@ -1832,6 +1832,49 @@ v1.1.0 打包完成后，用户在 8GB 老笔记本（i5-10210U / RX640 2GB）�
 - ⚠️ **最终包（modelDir 修复版）只做了手动验证**（起包、`/api/version` dir 正确、`/api/sysinfo` modelDir=`<安装目录>\models`、dryRun apply、`/debug` 200），**没有重跑 48 条全量**；上一轮 48/664 全绿跑的是 modelDir 修复前的包。下次开工建议先补一次全量（或至少 `probe-debug` + `probe-firstrun` + `probe-plugins`）。
 - 本机交接状态：应用未运行，8099 空闲；`workspace\sessions` 1 个真实会话完好。
 
+---
+
+## 四十、2026-11-02 深夜 → 11-03：最终包全量回归（全新安装形态）+ P4 修复
+
+交接文档「下一步 1」＝**最终包（modelDir 便携修复版）只手动验证过、没跑全量**。这一节把它补上，并且
+第一次**在「全新安装」形态上跑**：每轮先把发布包工作区清空（`<包>\models\workspace`），环境交给驱动预置。
+结论：**48 条 / 668 断言全绿**（45 条一次整跑 + 3 条复跑），0 崩溃 / 0 重启，**没有 v1.1.0 功能回归**。
+详见 `server\docs\probe-full-2026-11-02\RESULT.md`。
+
+### 一、三轮：41 → 46 → 45，红项全是「环境假设」
+
+| 轮 | 结果 | 红项 | 真因 |
+|---|---|---|---|
+| 1 | 41/48 | rag、ui-new、start-screen、start-flow、small-features、ui-rag、tools-agent | **全新空工作区**：0 会话 / 无 note.txt / 无检索语料——一批探针默认「工作区里已经有内容」 |
+| 2 | 46/48 | rag（15/16）、ui-preload（34/35） | ① 我预置的 `rag-seed.md` 撞了 probe-rag 的检索词，抢了「命中片段带出处」第一名；② 卸载异步，固定 sleep 1.5s 抢在「已取消」提示之前 |
+| 3 | 45/48 | menu-stacking、formula-find、preload | **首启引导面板盖住顶栏**（清空工作区后 `onboarding.json` 没了 → `done=false` → 面板 z-index 高于 header）：模型菜单点不到、Ctrl+F 被挡；preload 是有状态残留 |
+| 复跑 | **3/3 绿** | — | 驱动补「标记首启引导完成」；三条探针改成轮询等状态 |
+
+> 追加一笔：`probe-ui-preload` 第三轮报 34/34，是因为我改探针时**误删了一条断言**（`取消 @ 后释放常驻`）；
+> 补回后复跑 **35/35**，断言口径因此从 664 变 **668**（含 P4 新增的 4 条）。
+
+### 二、改了什么（驱动/探针/推荐逻辑）
+
+1. `run-full.ps1`（11-02 目录）：`$out` 改成脚本自身目录；新增 **`Seed-Workspace`**——从 `/api/diag.paths.sessions` 反推工作区，缺就补「1 个会话（含 assistant 消息）+ note.txt + rag-seed.md + 重建索引」，并 **POST /api/onboarding {done:true}** 把首启面板点掉。
+2. `probe-rag.mjs`：工作区根从 `/api/rag/status.dir` 反推（发布包 = `<安装>\models\workspace`，不是开发目录）。
+3. `probe-ui-preload.mjs` / `probe-menu-stacking.mjs` / `probe-formula-find.mjs`：去掉固定 sleep，改成「等服务端状态/等元素可命中」的轮询。
+
+### 三、产品侧 P4（已修）：首启建议自相矛盾
+
+- 现象：内存 31.4GB、模型目录为空时，`/api/sysinfo` 的 `reason` 写「可用 7B 级模型，16K 上下文」，`model` 却是 0.5B。
+- 根因：large 档找不到本地大模型时落到 0.5B 目录项，`reason` 仍按档位写死；7B 在 ModelScope 是**分片文件**，当前下载器只吃单文件。
+- 修法：① 下载目录新增 **Qwen2.5-1.5B-Instruct Q4_K_M（单文件 1.12GB，已实测 206 可下）**；② large 档没有本地大模型 → 推荐 1.5B，文案改「本机还没有 7B 级模型，先下 1.5B（约 1.1GB）跑通」；③ small/medium 在可用内存 ≥8GB 时优先 1.5B（0.5B 只留给 tiny/低内存兜底）；④ `probe-firstrun` 新增 4 条断言 → **22/22**。
+- 顺带补上了交接「下一步 2」的一半：1.5B 现在**在界面里可直接下载**（老笔记本不用手工拷文件）。
+
+### 四、收尾与口径
+
+- 复验：`probe-firstrun` 22/22、`probe-debug` 35/35（需已加载模型）、`probe-version` 14/14。
+- 落两处：`app.mjs` / `config-recommend.mjs` 已拷进 `dist\QingYaoTP AILauncher\app\`（SHA256 MATCH）；探针只在仓库，不进包。
+- config.ini 跑前跑后 SHA256 一致；开发工作区真实会话完好；发布包服务已停、headless Edge 已关、包内模型硬链接已删。
+- **断言口径：664 → 668**。下一轮全量按 668 核对；驱动会自己预置环境，不要再假设「工作区里有真实会话」。
+- 未做：7B 分片下载支持（要改下载器支持多文件 + 校验）；P4 的 live「空模型目录」重启验证（目前只有纯函数单测）。
+
+
 
 
 

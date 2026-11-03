@@ -13,6 +13,8 @@
  */
 
 const CATALOG = {
+  // 1.5B 是目前能「单文件下完」的最好档：8GB 机器也跑得动，质量明显好过 0.5B
+  "qwen25-15b-q4km": { label: "Qwen2.5-1.5B-Instruct · Q4_K_M", sizeGB: 1.12, file: "qwen2.5-1.5b-instruct-q4_k_m.gguf" },
   "qwen25-05b-q2k": { label: "Qwen2.5-0.5B Q2_K", sizeGB: 0.4, file: "qwen2.5-0.5b-instruct-q2_k.gguf" },
   "qwen25-05b-q4km": { label: "Qwen2.5-0.5B Q4_K_M", sizeGB: 0.47, file: "qwen2.5-0.5b-instruct-q4_k_m.gguf" },
   "qwen25-05b-q8": { label: "Qwen2.5-0.5B Q8_0", sizeGB: 0.64, file: "qwen2.5-0.5b-instruct-q8_0.gguf" },
@@ -86,11 +88,19 @@ export function recommendConfig(env = {}) {
     reason = `内存 ${ram.toFixed(1)}GB：可用 7B 级模型，16K 上下文`;
   }
 
-  // 选模型：优先已有的大模型；否则选下载目录里的 0.5B 档
+  // 选模型：优先本机已有的大模型；没有就走下载目录（能单文件下完的最大档是 1.5B）
   let id = "qwen25-05b-q4km";
   if (tier === "large" && big) return finish({ id, tier, contextSize, reason, hasVulkan, vram, big, models });
-  if (tier === "tiny" && usable < 4) id = "qwen25-05b-q2k";
-  if (tier === "small" || tier === "medium") id = usable >= 8 ? "qwen25-05b-q8" : "qwen25-05b-q4km";
+  if (tier === "large") {
+    // 以前这里落到 0.5B，但 reason 还写着「可用 7B 级模型」——文案和推荐自相矛盾（2026-11-02 实测）。
+    // 7B 在 ModelScope 是分片文件（-00001-of-00002），当前下载器只支持单文件，所以先推荐 1.5B 单文件档。
+    id = "qwen25-15b-q4km";
+    reason += "；本机还没有 7B 级模型，先下 1.5B（约 1.1GB）跑通，之后可在模型菜单换 7B";
+  } else if (tier === "tiny" && usable < 4) {
+    id = "qwen25-05b-q2k";
+  } else if (tier === "small" || tier === "medium") {
+    id = usable >= 8 ? "qwen25-15b-q4km" : "qwen25-05b-q4km";
+  }
   return finish({ id, tier, contextSize, reason, hasVulkan, vram, big, models });
 }
 

@@ -38,6 +38,15 @@ ok("32GB → 16K 上下文", large.contextSize === 16384, String(large.contextSi
 const noVk = recommendConfig({ ramTotalGB: 8, ramFreeGB: 4, vramGB: 0, hasVulkan: false, cpuCores: 8, models: [] });
 ok("Vulkan 不可用 → gpu=cpu", noVk.gpu === "cpu", noVk.gpu);
 
+// 2026-11-02 实测：内存 31.4GB + 模型目录为空时，reason 写「可用 7B 级模型」却推荐 0.5B（自相矛盾）。
+// 现在没有本地大模型就推荐能单文件下完的 1.5B，并把「本机还没有 7B」写进文案。
+const largeNoBig = recommendConfig({ ramTotalGB: 31.4, ramFreeGB: 6.1, vramGB: 2, hasVulkan: true, cpuCores: 22, models: [] });
+ok("32GB + 本机没有大模型 → 推荐下载 1.5B", largeNoBig.tier === "large" && largeNoBig.model.catalog === true && /1\.5b/i.test(largeNoBig.model.file), largeNoBig.model.file);
+ok("文案与推荐一致（说明本机还没有 7B、先下 1.5B）", /本机还没有/.test(largeNoBig.reason) && /1\.5B/.test(largeNoBig.reason), largeNoBig.reason);
+
+const mid = recommendConfig({ ramTotalGB: 20, ramFreeGB: 10, vramGB: 0, hasVulkan: true, cpuCores: 8, models: [] });
+ok("20GB（medium）→ 1.5B + 8K", mid.tier === "medium" && /1\.5b/i.test(mid.model.file) && mid.contextSize === 8192, mid.tier + "/" + mid.model.file + "/" + mid.contextSize);
+
 // ---- 2. /api/sysinfo ----
 const s = await j("/api/sysinfo");
 const d = s.data || {};
@@ -48,6 +57,8 @@ ok("带检查项（≥6，字段完整）", Array.isArray(d.checks) && d.checks.
 ok("推荐字段完整", !!d.recommend && !!d.recommend.model && Number(d.recommend.contextSize) > 0 && d.recommend.kvQuant === "q8_0", JSON.stringify({ ctx: d.recommend?.contextSize, kv: d.recommend?.kvQuant }));
 ok("推荐模型有 id 或已存在", !!(d.recommend?.model?.id || d.recommend?.model?.existing), d.recommend?.model?.file || "");
 ok("带 firstRunDone 标记", typeof d.firstRunDone === "boolean", String(d.firstRunDone));
+const cat = await j("/api/download/catalog");
+ok("下载目录里有 1.5B 单文件档", (cat.data?.models || []).some((m) => m.id === "qwen25-15b-q4km" && /1\.5b/i.test(m.file)), (cat.data?.models || []).map((m) => m.id).join(","));
 
 // ---- 3. /api/firstrun/apply ----
 const opt = { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dryRun: true }) };

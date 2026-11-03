@@ -21,8 +21,8 @@ await sleep(3000);
 await ev("(() => { const m = document.getElementById('msgs'); const d = document.createElement('div'); d.className = 'row assistant'; d.id = 'coverRow'; const b = document.createElement('div'); b.className = 'bubble'; b.textContent = '覆盖测试：这条消息以前会盖住菜单'; d.appendChild(b); m.appendChild(d); return 1; })()");
 await ev("document.getElementById('modelBtn').click(); 1");
 // 菜单是异步展开的：机器忙时固定 400ms 不够，5 行的矩形还是 0 高，
-// elementFromPoint 会落在 header 上 → 全 'other'（2026-11-02 第三轮实测偶发红）。
-// 改成按「每行已布局且命中菜单」轮询，不再赌 sleep。
+// elementFromPoint 会落在 header 上 → 全 'other'。另外首启引导面板（z-index 高于 header）
+// 也会盖住菜单——环境侧由驱动补「标记引导完成」。这里按「每行已布局且命中菜单」轮询，不赌 sleep。
 check("顶栏 z-index 已抬高", (await ev("getComputedStyle(document.querySelector('header')).zIndex")) === "40");
 let hits = [];
 for (let i = 0; i < 40; i++) {

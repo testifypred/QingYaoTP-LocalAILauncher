@@ -3680,6 +3680,8 @@ const DOWNLOAD_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
 const MS = "https://modelscope.cn/api/v1/models/Qwen/Qwen2.5-0.5B-Instruct-GGUF/repo?Revision=master&FilePath=";
+// 1.5B 是「能单文件下完」的最大档（7B 在 ModelScope 是 -00001-of-00002 分片，当前下载器只吃单文件）
+const MS15 = "https://modelscope.cn/api/v1/models/Qwen/Qwen2.5-1.5B-Instruct-GGUF/repo?Revision=master&FilePath=";
 const DOWNLOAD_CATALOG = [
   {
     id: "qwen25-05b-q4km",
@@ -3707,6 +3709,15 @@ const DOWNLOAD_CATALOG = [
     sizeMB: 644,
     note: "更准：体积与解码开销都更大",
     url: MS + "qwen2.5-0.5b-instruct-q8_0.gguf",
+  },
+  {
+    id: "qwen25-15b-q4km",
+    channel: "modelscope",
+    label: "Qwen2.5-1.5B-Instruct · Q4_K_M",
+    file: "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+    sizeMB: 1066,
+    note: "更聪明：1.5B，8GB 机器也跑得动；约 1.1GB（已实测可下）",
+    url: MS15 + "qwen2.5-1.5b-instruct-q4_k_m.gguf",
   },
 ];
 

@@ -31,7 +31,8 @@ check("点行内公式复制", /a\^2|a\^\{2\}/.test(tex2), tex2);
 
 // 会话内搜索
 await ev("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true })); 1");
-// 搜索条是下一帧才去掉 hidden：机器忙时固定 300ms 会抢在打开之前读（2026-11-02 第三轮实测偶发红）。
+// 搜索条是下一帧才去掉 hidden：机器忙时固定 300ms 会抢在打开之前读；首启引导面板打开时
+// 快捷键也可能被挡住（环境侧由驱动补「标记引导完成」）。这里轮询等它可见，不赌 sleep。
 let findOpen = false;
 for (let i = 0; i < 40; i++) {
   await sleep(120);

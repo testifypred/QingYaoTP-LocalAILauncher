@@ -223,6 +223,7 @@ console.log("\n== F. 选中 @ 模型即预加载 ==");
     cancelToasts = await ev(`[...document.querySelectorAll('#toasts .toast')].map(t => t.textContent)`);
     if ((after.extras?.files || []).length === 0 && cancelToasts.some((x) => /已取消，释放/.test(x))) break;
   }
+  ok("取消 @ 后释放常驻", (after.extras?.files || []).length === 0, JSON.stringify(after.extras));
   ok(
     "提示了「已取消 + 释放 X GB」",
     cancelToasts.some((x) => /预加载【.*】已取消，释放 \d+\.\d{2} GB 内存/.test(x)),
