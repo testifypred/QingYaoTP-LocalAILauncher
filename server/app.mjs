@@ -194,6 +194,14 @@ async function buildDiag() {
     add("backend", "warn", "推理后端", `CPU（慢，但稳定）${backendNote.text ? " · " + backendNote.text : ""}`,
       crashInfo.length >= 2 ? "最近 10 分钟 Vulkan 崩过 ≥2 次，程序自己切了 CPU；确认稳定后可删掉 server\\vulkan-crash.log 再重启恢复 Vulkan" : "");
   }
+  {
+    const vis = String(process.env.GGML_VK_VISIBLE_DEVICES ?? "").trim();
+    const names = gpuDeviceNames;
+    if (!names.length) add("vkdevices", "warn", "显卡选择", "没有可选的 Vulkan 设备（CPU 后端）");
+    else add("vkdevices", "ok", "显卡选择",
+      vis ? `只用设备 ${vis}：${names.join(" / ")}` : `自动：全部 ${names.length} 个设备（${names.join(" / ")}）`,
+      vis ? "" : "核显+独显的机器可在「设置 → 显卡」里指定独显（写 config.ini 的 vkDevices，重启生效）");
+  }
   if (crashInfo.length) {
     add("crash", "warn", "崩溃记录", `最近 ${crashInfo.length} 次（10 分钟内计数）`,
       "生成中途断开（点停止/关窗口）会触发 Vulkan device lost；这也是「崩两次自动切 CPU」的依据");
@@ -395,6 +403,20 @@ function detectGpus() {
   return gpuCache;
 }
 
+/** 读 config.ini 的 key=value（没有该文件时返回 {}；开发目录就是这样） */
+async function readConfigIni() {
+  const file = path.join(HERE, "..", "config.ini");
+  if (!existsSync(file)) return {};
+  try {
+    const out = {};
+    for (const line of (await readFile(file, "utf8")).split(/\r?\n/)) {
+      const m = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*?)\s*$/);
+      if (m) out[m[1]] = m[2];
+    }
+    return out;
+  } catch { return {}; }
+}
+
 /** 写 config.ini：只更新已知 key，保留注释；没有该文件（开发目录）就不写 */
 async function updateConfigFile(file, patch) {
   if (!existsSync(file)) return { wrote: false, reason: "没有 config.ini（开发目录），跳过" };
@@ -449,6 +471,12 @@ async function buildSysinfo() {
     { id: "vc", level: vc ? "ok" : "error", title: "VC++ 运行库", detail: vc ? "msvcp140.dll 已安装" : "缺少 msvcp140.dll", fix: vc ? "" : "装安装目录里的 vc_redist.x64.exe（或 aka.ms/vs/17/release/vc_redist.x64.exe）" },
     { id: "disk", level: !disk ? "warn" : disk.freeGB < 2 ? "error" : disk.freeGB < 5 ? "warn" : "ok", title: "磁盘", detail: disk ? `${disk.path} · 剩 ${disk.freeGB}GB` : "读不到模型目录", fix: disk && disk.freeGB < 2 ? "剩余不足 2GB：模型下载会失败" : "" },
     { id: "models", level: models.length ? "ok" : "warn", title: "已有模型", detail: `${models.length} 个 .gguf`, fix: models.length ? "" : "本机还没有模型，推荐先下载 " + rec.model.label },
+    (() => {
+      const vis = String(process.env.GGML_VK_VISIBLE_DEVICES ?? "").trim();
+      const names = gpuDeviceNames;
+      if (!names.length) return { id: "vkdevices", level: "warn", title: "显卡选择", detail: "CPU 后端：没有可选的 Vulkan 设备", fix: "" };
+      return { id: "vkdevices", level: "ok", title: "显卡选择", detail: vis ? `只用设备 ${vis}（${names.join(" / ")}）` : `自动：全部 ${names.length} 个设备（${names.join(" / ")}）`, fix: "" };
+    })(),
   ];
   const onboarding = await readOnboarding().catch(() => ({ done: false }));
   return {
@@ -4593,6 +4621,59 @@ async function handle(req, res) {
   }
 
   // 首次启动「自动检查用户配置」：硬件体检 + 推荐模型/上下文/后端
+  // ---------------------------------------------------------------- 显卡（Vulkan 设备）
+  // 「独显调动入口」：列出 llama 看到的 Vulkan 设备，把选择写进 config.ini 的 vkDevices。
+  // 真正生效要重启：GGML_VK_VISIBLE_DEVICES 只在 llama 初始化时读一次。
+  if (url === "/api/gpus") {
+    if (req.method === "GET") {
+      const names = gpuDeviceNames;
+      const cim = detectGpus();
+      const vramOf = (name) => {
+        const key = String(name || "").toLowerCase();
+        const hit = cim.find((g) => {
+          const gn = String(g.name || "").toLowerCase();
+          return !!gn && (gn === key || gn.includes(key.slice(0, 10)) || key.includes(gn.slice(0, 10)));
+        });
+        return hit?.vramGB ?? null;
+      };
+      const cfgNow = String((await readConfigIni()).vkDevices ?? "").trim();
+      const current = String(process.env.GGML_VK_VISIBLE_DEVICES ?? "").trim();
+      return sendJson(res, 200, {
+        ok: true,
+        backend: state.gpu ?? "",
+        pref: GPU_PREF,
+        devices: names.map((name, i) => ({ index: i, name, vramGB: vramOf(name) })),
+        current,
+        config: cfgNow,
+        needRestart: current !== cfgNow,
+        configWritable: existsSync(path.join(HERE, "..", "config.ini")),
+        note: names.length ? "" : (state.gpu === "vulkan" ? "Vulkan 后端没报出设备名" : "当前是 CPU 后端，没有可选的 Vulkan 设备"),
+      });
+    }
+    if (req.method === "POST") {
+      let body = {};
+      try { body = await readBody(req); } catch {}
+      const raw = body.devices === undefined ? "" : String(body.devices).trim();
+      let list = [];
+      if (raw !== "") {
+        list = [...new Set(raw.split(",").map((x) => Number(x.trim())).filter((n) => Number.isInteger(n) && n >= 0))].sort((a, b) => a - b);
+        if (!list.length) return sendJson(res, 400, { error: { message: "设备号无效：要逗号分隔的非负整数，例如 0 或 0,1" } });
+        if (gpuDeviceNames.length && list.some((n) => n >= gpuDeviceNames.length)) {
+          return sendJson(res, 400, { error: { message: "设备号越界：当前只有 " + gpuDeviceNames.length + " 个 Vulkan 设备（0.." + (gpuDeviceNames.length - 1) + "）" } });
+        }
+      }
+      const canonical = list.join(",");
+      const r = await updateConfigFile(path.join(HERE, "..", "config.ini"), { vkDevices: canonical });
+      return sendJson(res, 200, {
+        ok: true,
+        config: canonical,
+        saved: r.wrote === true,
+        needRestart: true,
+        note: r.wrote ? "已写入 config.ini，重启应用后生效" : "开发目录没有 config.ini，没写盘；可用环境变量 GGML_VK_VISIBLE_DEVICES 测试",
+      });
+    }
+  }
+
   if (req.method === "GET" && url === "/api/sysinfo") {
     return sendJson(res, 200, await buildSysinfo());
   }
@@ -5606,8 +5687,15 @@ async function handle(req, res) {
 }
 
 // ---------------------------------------------------------------- 启动
+// 便携版配置：契约面（环境变量）优先，其次 config.ini（开发目录没有该文件）
+const CFG = await readConfigIni();
+// 独显/设备选择：vkDevices = 逗号分隔的 Vulkan 设备号（空 = 全部设备）。
+// GGML_VK_VISIBLE_DEVICES 必须在 llama 初始化之前进环境变量，所以放在启动段最早处读；
+// 启动器（Launcher.cs）也会从同一个 config.ini 传这个值（发布包里走那条路）。
+const VK_DEVICES_CFG = String(CFG.vkDevices ?? "").trim();
+if (VK_DEVICES_CFG && !process.env.GGML_VK_VISIBLE_DEVICES) process.env.GGML_VK_VISIBLE_DEVICES = VK_DEVICES_CFG;
 // 后端偏好：auto（默认，先试 Vulkan 再退 CPU）/ vulkan / cpu
-const GPU_PREF = String(process.env.LOCALAI_GPU ?? "auto").toLowerCase();
+const GPU_PREF = String(process.env.LOCALAI_GPU ?? CFG.gpu ?? "auto").toLowerCase();
 /** 给界面看的后端说明：为什么是 CPU、缺什么 */
 const backendNote = { text: "" };
 
@@ -5675,6 +5763,18 @@ if (useCpu) {
     llama = await openLlama(false);
     state.gpu = "cpu";
   }
+}
+
+/** llama 初始化后能列出的 Vulkan 设备名；数组顺序 = GGML_VK_VISIBLE_DEVICES 的编号（接口是 async） */
+const gpuDeviceNames = await (async () => {
+  try {
+    const names = (await llama?.getGpuDeviceNames?.()) ?? [];
+    return (Array.isArray(names) ? names : []).filter((n) => typeof n === "string" && n);
+  } catch { return []; }
+})();
+if (gpuDeviceNames.length) {
+  const vis = String(process.env.GGML_VK_VISIBLE_DEVICES ?? "").trim();
+  log("Vulkan 设备：" + gpuDeviceNames.map((n, i) => i + "=" + n).join(" | ") + (vis ? "（只可见 " + vis + "）" : ""));
 }
 
 // ---------------------------------------------------------------- 代码块运行

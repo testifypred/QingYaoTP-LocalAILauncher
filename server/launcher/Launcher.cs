@@ -52,6 +52,7 @@ static class Launcher
     static int ContextSize = 16384;
     static bool KvReuse = true;
     static string Gpu = "auto";      // auto / vulkan / cpu
+    static string VkDevices = "";    // 例 0；空 = 全部 Vulkan 设备（GGML_VK_VISIBLE_DEVICES）
     static bool UseWebView = true;   // 用内嵌窗口；--no-webview 可强制回浏览器
 
     static Process Server;
@@ -280,6 +281,7 @@ static class Launcher
         try { if (!Directory.Exists(ModelDir)) Directory.CreateDirectory(ModelDir); } catch { }
         Gpu = defaults["gpu"].ToLowerInvariant();
         if (Gpu != "vulkan" && Gpu != "cpu") Gpu = "auto";
+        VkDevices = defaults.ContainsKey("vkDevices") ? defaults["vkDevices"].Trim() : "";
     }
 
     static string BaseUrl { get { return "http://127.0.0.1:" + Port; } }
@@ -312,6 +314,8 @@ static class Launcher
         psi.EnvironmentVariables["CONTEXT_SIZE"] = ContextSize.ToString();
         psi.EnvironmentVariables["KV_REUSE"] = KvReuse ? "1" : "0";
         psi.EnvironmentVariables["LOCALAI_GPU"] = Gpu;
+        // 显卡选择：逗号分隔的 Vulkan 设备号；llama.cpp 只在初始化时读这个变量。
+        if (VkDevices.Length > 0) psi.EnvironmentVariables["GGML_VK_VISIBLE_DEVICES"] = VkDevices;
         if (AutoLoad.Length > 0) psi.EnvironmentVariables["AUTO_LOAD"] = AutoLoad;
 
         var logPath = Path.Combine(LogDir, "app.log");

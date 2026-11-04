@@ -1,4 +1,4 @@
-﻿
+
 $base='http://127.0.0.1:8099'
 $cdp='http://127.0.0.1:9333'
 $out = if ($env:FULL_PROBE_OUT) { $env:FULL_PROBE_OUT } else { $PSScriptRoot }
@@ -122,6 +122,7 @@ $probes=@(
   @{n='probe-version'; a=@($base); t=90},
   @{n='probe-firstrun'; a=@($base); t=150},
   @{n='probe-debug'; a=@($base); t=150},
+  @{n='probe-gpu'; a=@($base); t=90},
   @{n='probe-func'; a=@('8099'); t=240},
   @{n='probe-ui-new'; a=@($cdp,$shots); t=150},
   @{n='probe-start-screen'; a=@($cdp,$shots); t=150},
@@ -148,6 +149,7 @@ $probes=@(
   @{n='probe-ui-rag'; a=@($cdp,$base,$shots); t=150},
   @{n='probe-ui-version'; a=@($cdp,$base); t=150},
   @{n='probe-ui-debug'; a=@($cdp,$base); t=200},
+  @{n='probe-ui-gpu'; a=@($cdp,$base); t=150},
   @{n='probe-ui-backup'; a=@($cdp,$base,$shots); t=200},
   @{n='probe-sidebar-search'; a=@($cdp,$base); t=180},
   @{n='probe-auto-title'; a=@($cdp,$shots); t=240},

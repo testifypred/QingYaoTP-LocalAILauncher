@@ -1891,6 +1891,42 @@ P4（首启建议 + 1.5B 下载档）改完只跑了 probe-firstrun，按规矩�
 - 驱动这次也验证了「标记首启引导完成」那一补丁：摘要里有 `[driver] 已标记首启引导完成`。
 - 证据：`server\docs\probe-full-2026-11-03\RESULT.md`。
 - ⚠️ **交付 zip 仍是 P4 之前打的**（dist 运行目录已含 P4 代码）——下次要交付得先重打 zip。
+
+---
+
+## 四十一、2026-11-04：显卡（Vulkan 设备）选择入口 —— 「独显调动」
+
+用户要「加个独立显卡调动入口，虽然这台机器没法用独显」。背景是交接文档里那条：老笔记本（i5-10210U + **Intel UHD 620 核显 + AMD RX640 2GB 独显**）
+上 llama.cpp 默认挑了枚举里的第一块，也就是**核显**，独显一直没干活。这一轮把「选哪块卡」做成了产品功能。
+
+### 一、做了什么
+
+| 层 | 改动 |
+|---|---|
+| 接口 | 新增 `GET /api/gpus`：Vulkan 设备清单 `{index,name,vramGB}[]` + `current`（本进程生效）+ `config`（config.ini 写的）+ `needRestart` + `backend`/`pref`；`POST /api/gpus` `{devices:"" | "0" | "0,1"}` 写 `config.ini` 的 `vkDevices`，非法/越界 400 |
+| 启动链路 | `Launcher.cs` 读 `config.ini` 的 `vkDevices` → 设 `GGML_VK_VISIBLE_DEVICES`（llama 只在初始化时读一次）；开发模式（`node app.mjs`）由启动段自己读 config 顶上 |
+| 界面 | **设置 → 显卡**：后端/偏好、设备列表（名称 + 显存）、「自动 / 设备 N」单选、保存 + 「重启生效」提示；CPU 后端时不可选 |
+| 可观测 | `app.log` 启动行 `Vulkan 设备：0=Intel(R) Arc(TM) Graphics（只可见 0）`；`/api/diag` 新增「显卡选择」检查项（调试工具里能看到） |
+| 配置模板 | `build-portable.ps1` 的 config 模板加 `vkDevices=`（留空 = 全部设备） |
+
+### 二、验证
+
+| 项 | 结果 |
+|---|---|
+| `probe-gpu`（新，接口） | **14/14**：形状、设备项、非法/越界 400、保存写盘、读回自洽、恢复空、diag 有「显卡选择」 |
+| `probe-ui-gpu`（新，界面） | **8/8**：页签、后端信息、设备选项数 = 服务端设备数 + 自动、保存后 config=0、提示、恢复、无 JS 异常 |
+| 端到端（启动器真传环境变量） | 写 `vkDevices=0` → 重启启动器 → `/api/gpus.current=0`、`needRestart=false`、日志 `（只可见 0）` ✅（本机只有 Intel Arc 一块，测不出「选独显」效果，但链路是通的） |
+| 全量回归（50 条） | 见 `server\docs\probe-full-2026-11-04\RESULT.md` |
+
+### 三、这台机器为什么测不出效果
+
+本机只有 **1 块 Vulkan 设备**（Intel Arc 核显，显存共享），没有独显可选——列表里就是那一项。
+功能是给老笔记本（UHD 620 + RX640）和其它双卡机器准备的：那边打开「设置 → 显卡」应该能看到两块，选独显那一项 → 保存 → 重启。
+
+### 四、留给下一轮
+
+- **老笔记本真机验证**：先看列表有没有 RX640；有就选它、重启、`app.log` 应出现 `只可见 1`（或对应设备号）且生成速度变化；没有就升 AMD 驱动（22.6.1 / 30.0.15021.11005）再看。
+- 交付 zip 仍是 P4 之前打的；这一轮又改了 app.mjs / app.html / Launcher.cs / config 模板，**下次交付必须重打 zip**（并确认包里的 `QingYaoTP AILauncher.exe` 是新的 57,856B 版本）。
 下次在这台机器上跑全量探针，要么先把运行目录的 modelDir 指回 `D:\LocalModels`，要么跑完立刻把界面能看到的模型恢复并告知。
 
 

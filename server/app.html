@@ -1271,6 +1271,7 @@ header::before{
     </div>
     <div class="settingsTabs">
       <button type="button" class="stab sel" data-tab="gen">生成</button>
+      <button type="button" class="stab" data-tab="gpu">显卡</button>
       <button type="button" class="stab" data-tab="tts">朗读</button>
       <button type="button" class="stab" data-tab="tools">工具</button>
       <button type="button" class="stab" data-tab="appear">外观</button>
@@ -1313,6 +1314,25 @@ header::before{
           <span id="setPreloadInfo" class="hintText">未启用</span>
         </div>
         <em>预加载会把你 @ 的模型同时装进内存常驻，第二意见不再等待装卸，主模型的 KV 缓存也能保住；代价是内存占用成倍增加，内存不够时会明显卡顿。</em>
+      </div>
+    </div>
+    <div class="settingsBody" id="paneGpu" data-pane="gpu" hidden>
+      <div class="field">
+        <span class="lbl">推理后端</span>
+        <em id="gpuBackendInfo">正在读取…</em>
+      </div>
+      <div class="field">
+        <span class="lbl">Vulkan 设备（显卡）</span>
+        <div id="gpuList" class="hintText">正在读取…</div>
+        <em>编号就是 GGML_VK_VISIBLE_DEVICES 的设备号。核显 + 独显的机器，选独显那一项就能让 llama.cpp 用独显；「自动」= 交给它挑（默认取枚举里的第一块，很多机器上第一块是核显，所以独显看着没干活）。</em>
+      </div>
+      <div class="exportRow">
+        <button id="gpuSave" class="ghost">保存选择</button>
+        <span id="gpuHint" class="hintText">改完需重启应用生效</span>
+      </div>
+      <div class="field">
+        <span class="lbl">说明</span>
+        <em>这一项写进 config.ini 的 <b>vkDevices</b>（逗号分隔，空 = 全部）。重启 QingYaoTP AILauncher.exe 后才生效。CPU 后端时不可选；独显能不能用还取决于驱动是否暴露 Vulkan 设备（老机器常需要升级驱动）。</em>
       </div>
     </div>
     <div class="settingsBody" id="paneTts" data-pane="tts" hidden>
@@ -4929,8 +4949,56 @@ function showSettingsTab(name) {
   for (const p of document.querySelectorAll('#settingsModal .settingsBody')) p.hidden = p.dataset.pane !== name;
   // 第一次进「朗读」页时才去探测引擎，免得启动就多打一个请求
   if (name === 'tts' && !ttsVoices.length) initTts().catch(() => {});
+  // 显卡页每次打开都重新读（选择和当前进程可能不一致，要如实显示）
+  if (name === 'gpu') loadGpuTab().catch(() => {});
 }
 for (const b of settingsTabs) b.onclick = () => showSettingsTab(b.dataset.tab);
+
+// ---- 显卡页：Vulkan 设备选择（独显调动入口）----
+// 设备号来自 /api/gpus（llama 报出的 Vulkan 设备列表）；选择写进 config.ini 的 vkDevices，
+// 重启后由启动器/启动段设成 GGML_VK_VISIBLE_DEVICES。改完必须重启才生效。
+async function loadGpuTab() {
+  const list = $('gpuList'), info = $('gpuBackendInfo'), hint = $('gpuHint');
+  if (!list) return;
+  try {
+    const j = await apiJson('/api/gpus');
+    info.textContent = '后端：' + (j.backend || '未初始化') + (j.backend === 'vulkan' ? '（GPU 加速）' : '（CPU）') + ' · 偏好：' + (j.pref || 'auto');
+    const devs = j.devices || [];
+    const saveBtn = $('gpuSave');
+    if (!devs.length) {
+      list.innerHTML = '<em>' + (j.note || '没有可选的 Vulkan 设备') + '</em>';
+      if (saveBtn) saveBtn.disabled = true;
+      hint.textContent = '设备列表为空：CPU 后端，或 Vulkan 驱动没报出设备';
+      return;
+    }
+    const cur = String(j.config || '').trim();
+    list.innerHTML = '<label class="chk"><input type="radio" name="gpuDev" value=""' + (cur === '' ? ' checked' : '') + '>自动（全部 ' + devs.length + ' 个设备）</label>' +
+      devs.map(function (d) {
+        return '<label class="chk" style="display:block;margin-top:6px"><input type="radio" name="gpuDev" value="' + d.index + '"' + (cur === String(d.index) ? ' checked' : '') + '>设备 ' + d.index + '：' + d.name + (d.vramGB ? '（显存 ' + d.vramGB + 'GB）' : '') + '</label>';
+      }).join('');
+    if (saveBtn) saveBtn.disabled = false;
+    hint.textContent = j.needRestart
+      ? ('选择与当前进程不一致：重启后生效（当前进程：' + (j.current || '自动') + '）')
+      : '当前进程已按此选择运行';
+  } catch (e) {
+    list.textContent = '读不到显卡信息：' + e.message;
+  }
+}
+$('gpuSave') && ($('gpuSave').onclick = async function () {
+  const sel = document.querySelector('input[name="gpuDev"]:checked');
+  const val = sel ? sel.value : '';
+  const btn = $('gpuSave');
+  if (btn) btn.disabled = true;
+  try {
+    const r = await apiJson('/api/gpus', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ devices: val }) });
+    $('gpuHint').textContent = (r.note || '已保存') + '（vkDevices=' + (r.config || '') + '）';
+    showToast(r.saved ? '显卡选择已保存，重启后生效' : '已保存（开发目录不写 config.ini）', r.saved ? 'ok' : 'warn', 5000);
+  } catch (e) {
+    $('gpuHint').textContent = '保存失败：' + e.message;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+});
 
 // ---- 关于页：版本 / 构建 / 运行环境 ----
 // 数据只认服务端 /api/version：界面不自己拼版本号，否则改了常量界面还显示旧的。

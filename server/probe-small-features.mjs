@@ -1,4 +1,5 @@
 import WebSocket from "ws";
+const APP = "http://127.0.0.1:8099";
 const list = await (await fetch("http://127.0.0.1:9333/json/list")).json();
 const page = list.find((t) => t.type === "page" && t.url.includes("8099"));
 const ws = new WebSocket(page.webSocketDebuggerUrl, { perMessageDeflate: false });
@@ -12,16 +13,40 @@ let pass = 0, fail = 0;
 const check = (n, c, d = "") => { if (c) { pass++; console.log("ok   " + n + (d ? "  [" + d + "]" : "")); } else { fail++; console.log("FAIL " + n + "  " + d); } };
 
 await send("Page.enable"); await send("Runtime.enable");
+// 这条探针要验「回答上的复制按钮」，不能靠环境里碰巧有会话：没有就自己造一个带回答的
+try {
+  const ses = await (await fetch(APP + "/api/sessions")).json();
+  const arr = Array.isArray(ses.sessions) ? ses.sessions : [];
+  if (!arr.some((s) => Number(s.count) >= 2)) {
+    const now = Date.now();
+    await fetch(APP + "/api/sessions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "探针临时会话",
+        messages: [
+          { role: "user", content: "探针预置：验证复制按钮的消息。", t: now },
+          { role: "assistant", content: "收到，这是预置回答。", t: now + 1000 },
+        ],
+      }),
+    });
+  }
+} catch {}
 await send("Page.reload", { ignoreCache: true });
 await sleep(3200);
 // 清掉所有会话草稿：上一条探针（公式面板「插入输入框」）会把 $E=mc^2$ 留在 'new' 的草稿里，
 // 不清就会被这条探针当成"切会话带了草稿"（测试互相污染，不是应用缺陷）
 await ev("Object.keys(localStorage).filter((k) => k.startsWith('localai.draft.')).forEach((k) => localStorage.removeItem(k)); 1");
 await ev("document.getElementById('recentOpen').click(); 1");
-await sleep(1500);
+// 等消息渲染出来（固定 sleep 在机器忙时会抢跑）
+let copyCount = 0;
+for (let i = 0; i < 20; i++) {
+  await sleep(300);
+  copyCount = Number(await ev("document.querySelectorAll('.copyBtn').length")) || 0;
+  if (copyCount > 0) break;
+}
 
 // 1) 复制按钮
-const copyCount = await ev("document.querySelectorAll('.copyBtn').length");
 check("回答上有复制按钮", copyCount > 0, "count=" + copyCount);
 await ev("(() => { window.__copied = ''; navigator.clipboard.writeText = (t) => { window.__copied = t; return Promise.resolve(); }; return 1; })()");
 await ev("document.querySelector('.copyBtn').click(); 1");

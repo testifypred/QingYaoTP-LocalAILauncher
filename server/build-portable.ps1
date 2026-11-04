@@ -200,6 +200,7 @@ $cfg = @"
 # contextSize 上下文长度，越大越吃内存
 # kvReuse     1 = 多轮对话复用 KV 缓存（推荐）；0 = 每轮全量重算（仅用于对照）
 # gpu         后端：auto（先试 Vulkan 再退 CPU）/ vulkan / cpu
+# vkDevices   Vulkan 设备号（逗号分隔，空 = 全部设备）；核显+独显的机器填独显那一项
 # 说明        首次启动会自动检查本机（CPU/内存/显卡/运行库/磁盘），给出模型与上下文建议，
 #             点「按建议配置并应用」即可写回本文件（下一次启动生效）。
 port=$Port
@@ -208,6 +209,7 @@ autoLoad=$AutoLoad
 contextSize=$ContextSize
 kvReuse=1
 gpu=auto
+vkDevices=
 "@
 Set-Content -Path (Join-Path $resolved 'config.ini') -Value $cfg -Encoding UTF8
 
