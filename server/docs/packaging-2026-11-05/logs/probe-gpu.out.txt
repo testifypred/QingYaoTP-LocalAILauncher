@@ -1,0 +1,20 @@
+
+== 目标 http://127.0.0.1:8099 ==
+
+  ok   /api/gpus 可用  [HTTP 200]
+  ok   后端字段是 vulkan/cpu  [vulkan]
+  ok   devices 是数组  [n=1]
+  ok   设备项带 index/name  [["0:Intel(R) Arc(TM) Graphics"]]
+  ok   current/config/needRestart 字段齐全  [current= config= needRestart=false]
+  ok   非法设备号被拒（400）  [HTTP 400]
+  ok   越界设备号被拒（400）  [HTTP 400]
+  ok   保存设备 0（200）  [HTTP 200 saved=true]
+  ok   保存结果回显 vkDevices=0  [config=0]
+  ok   写盘结果与 configWritable 一致  [configWritable=true saved=true]
+  ok   读回来 config 已是 0  [config=0]
+  ok   恢复「自动」（200）  [HTTP 200 config=]
+  ok   恢复后读回来是空  [config=]
+  ok   /api/diag 里有「显卡选择」项  [自动：全部 1 个设备（Intel(R) Arc(TM) Graphics）]
+
+== 结果: 14 通过 / 0 失败 ==
+

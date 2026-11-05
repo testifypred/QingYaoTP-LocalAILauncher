@@ -1,0 +1,17 @@
+﻿== HTTP checks @ 2026-11-05 23:53:10
+health                       200
+api/state                    200
+debug (page)                 200
+debug-icon.png               200
+debug-icon.ico               200
+api/debug/open (no token!)   403
+api/gpus                     200
+
+== /api/state body ==
+{"models":[{"file":"DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf","path":"D:\\LocalModels\\DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf","sizeGB":4.68,"label":"DeepSeek-R1-0528-Qwen3-8B-Q4_K_M","sharded":false},{"file":"Phi-4-mini-instruct-Q4_K_M.gguf","path":"D:\\LocalModels\\Phi-4-mini-instruct-Q4_K_M.gguf","sizeGB":2.32,"label":"Phi-4-mini-instruct-Q4_K_M","sharded":false},{"file":"qwen2.5-0.5b-instruct-q4_k_m.gguf","path":"D:\\LocalModels\\qwen2.5-0.5b-instruct-q4_k_m.gguf","sizeGB":0.46,"label":"qwen2.5-0.5b-instruct-q4_k_m","sharded":false},{"file":"qwen2.5-7b-instruct-1m-q4_k_m.gguf","path":"D:\\LocalModels\\qwen2.5-7b-instruct-1m-q4_k_m.gguf","sizeGB":4.36,"label":"qwen2.5-7b-instruct-1m-q4_k_m","sharded":false},{"file":"qwen3-5-4B-Q4_K_M.gguf","path":"D:\\LocalModels\\qwen3-5-4B-Q4_K_M.gguf","sizeGB":2.52,"label":"qwen3-5-4B-Q4_K_M","sharded":false}],"modelDir":"D:\\LocalModels","version":"1.1.0","build":{"commit":"","commitAt":"","builtAt":"2026-11-04T15:35:20.046Z","source":"mtime","dirty":false},"startedAt":"2026-11-05T15:52:29.326Z","loaded":null,"context":0,"layers":0,"gpu":"vulkan","backendNote":"","loading":false,"restarting":false,"error":null,"hasJinja":false,"supportsThinking":false,"localToken":"abbf5b99-ed80-4a13-bb53-6bfdad81db4a","activeChats":0,"kvReuse":true,"kvQuant":null,"kvQuantFallback":"","kvQuantActual":{"key":null,"value":null,"flashAttention":null},"cachedTokens":0,"draftFile":null,"draftTokens":8,"draftDisabledReason":null,"preloadContext":4096,"extras":{"files":[],"totalGB":0,"contextSize":4096}}
+
+== /api/gpus body ==
+{"ok":true,"backend":"vulkan","pref":"auto","devices":[{"index":0,"name":"Intel(R) Arc(TM) Graphics","vramGB":2}],"current":"","config":"","needRestart":false,"configWritable":true,"note":""}
+
+== /api/version body ==
+{"version":"1.1.0","commit":"","commitAt":"","builtAt":"2026-11-04T15:35:20.046Z","buildSource":"mtime","dirty":false,"startedAt":"2026-11-05T15:52:29.326Z","node":"v24.19.0","dir":"D:\\LocalModels\\dist\\QingYaoTP AILauncher\\app","pid":23368,"port":8099}

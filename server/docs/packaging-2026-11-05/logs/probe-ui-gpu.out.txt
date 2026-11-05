@@ -1,0 +1,11 @@
+  ok   设置里有「显卡」页签
+  ok   显示后端信息  [后端：vulkan（GPU 加速） · 偏好：auto]
+  ok   设备选项数 = 服务端设备数 + 自动  [rows=2 devices=1]
+  ok   有「自动」选项
+  ok   保存设备 0 后 config=0  [config=0]
+  ok   界面提示已保存/要重启  [已写入 config.ini，重启应用后生效（vkDevices=0）]
+  ok   恢复「自动」后 config 为空  [config=]
+  ok   没有未捕获的 JS 错误
+
+== 结果: 8 通过 / 0 失败 ==
+

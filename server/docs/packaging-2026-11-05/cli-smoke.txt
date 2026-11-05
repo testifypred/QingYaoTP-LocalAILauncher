@@ -1,0 +1,233 @@
+﻿=== localai-debug.cmd --json ===
+exit=0
+{
+  "now": "2026-11-05T15:53:17.827Z",
+  "version": {
+    "version": "1.1.0",
+    "commit": "",
+    "dirty": false,
+    "builtAt": "2026-11-04T15:35:20.046Z"
+  },
+  "server": {
+    "port": 8099,
+    "pid": 23368,
+    "uptimeSec": 55,
+    "activeChats": 0,
+    "gpu": "vulkan",
+    "backendNote": ""
+  },
+  "model": {
+    "file": "",
+    "context": 0,
+    "layers": 0,
+    "cachedTokens": 0,
+    "kvReuse": true,
+    "kvQuant": null,
+    "kvQuantFallback": "",
+    "kvQuantActual": {
+      "key": null,
+      "value": null,
+      "flashAttention": null
+    },
+    "count": 5
+  },
+  "system": {
+    "totalGB": 31.4,
+    "freeGB": 18.6,
+    "cpus": 22,
+    "platform": "win32",
+    "arch": "x64",
+    "node": "v24.19.0"
+  },
+  "paths": {
+    "dir": "D:\\LocalModels\\dist\\QingYaoTP AILauncher\\app",
+    "modelDir": "D:\\LocalModels",
+    "sessions": "D:\\LocalModels\\workspace\\sessions",
+    "logs": "D:\\LocalModels\\dist\\QingYaoTP AILauncher\\logs\\app.log",
+    "crashLog": "D:\\LocalModels\\dist\\QingYaoTP AILauncher\\app\\vulkan-crash.log"
+  },
+  "checks": [
+    {
+      "id": "server",
+      "level": "ok",
+      "title": "服务在跑",
+      "detail": "127.0.0.1:8099 · pid 23368 · 运行 1 分钟",
+      "fix": ""
+    },
+    {
+      "id": "bind",
+      "level": "ok",
+      "title": "只绑回环地址",
+      "detail": "127.0.0.1（外部机器连不进来）",
+      "fix": ""
+    },
+    {
+      "id": "busy",
+      "level": "ok",
+      "title": "并发对话",
+      "detail": "空闲（0 个进行中）",
+      "fix": ""
+    },
+    {
+      "id": "version",
+      "level": "ok",
+      "title": "版本",
+      "detail": "v1.1.0 · 打包 2026-11-04 15:35",
+      "fix": ""
+    },
+    {
+      "id": "msvcp",
+      "level": "ok",
+      "title": "VC++ 运行库",
+      "detail": "msvcp140.dll 已安装",
+      "fix": ""
+    },
+    {
+      "id": "node",
+      "level": "ok",
+      "title": "运行时",
+      "detail": "node v24.19.0 · win32 x64 · 22 核",
+      "fix": ""
+    },
+    {
+      "id": "mem",
+      "level": "ok",
+      "title": "内存",
+      "detail": "共 31.4 GB · 可用 18.6 GB",
+      "fix": ""
+    },
+    {
+      "id": "disk",
+      "level": "ok",
+      "title": "磁盘余量",
+      "detail": "D:\\LocalModels · 剩 302.3 GB",
+      "fix": ""
+    },
+    {
+      "id": "backend",
+      "level": "ok",
+      "title": "推理后端",
+      "detail": "Vulkan（核显加速）",
+      "fix": ""
+    },
+    {
+      "id": "vkdevices",
+      "level": "ok",
+      "title": "显卡选择",
+      "detail": "自动：全部 1 个设备（Intel(R) Arc(TM) Graphics）",
+      "fix": "核显+独显的机器可在「设置 → 显卡」里指定独显（写 config.ini 的 vkDevices，重启生效）"
+    },
+    {
+      "id": "crash",
+      "level": "ok",
+      "title": "崩溃记录",
+      "detail": "最近 10 分钟没有崩溃",
+      "fix": ""
+    },
+    {
+      "id": "models",
+      "level": "ok",
+      "title": "模型库",
+      "detail": "5 个 .gguf · D:\\LocalModels",
+      "fix": ""
+    },
+    {
+      "id": "loaded",
+      "level": "warn",
+      "title": "已加载模型",
+      "detail": "未加载（连界面都不能问答）",
+      "fix": "点左上角「∫ 模型」选一个加载，或看「模型」页"
+    },
+    {
+      "id": "sessions",
+      "level": "ok",
+      "title": "会话",
+      "detail": "3 个 · 24 KB",
+      "fix": ""
+    },
+    {
+      "id": "rag",
+      "level": "warn",
+      "title": "文档检索",
+      "detail": "0 个文件 / 0 段",
+      "fix": "workspace 里还没有可索引的文档（md/txt/docx/pdf）"
+    },
+    {
+      "id": "plugins",
+      "level": "ok",
+      "title": "插件",
+      "detail": "3 个可用 / 3 个文件",
+      "fix": ""
+    },
+    {
+      "id": "dist",
+      "level": "ok",
+      "title": "发布包与源码",
+      "detail": "三份文件哈希一致",
+      "fix": ""
+    }
+  ],
+  "summary": {
+    "error": 0,
+    "warn": 2,
+    "ok": 15
+  },
+  "resources": {
+    "now": "2026-11-05T15:53:17.846Z",
+    "cpu": {
+      "usagePct": null,
+      "cores": 22,
+      "model": "Intel(R) Core(TM) Ultra 7 155H"
+    },
+    "mem": {
+      "totalGB": 31.43,
+      "usedGB": 12.85,
+      "freeGB": 18.58,
+      "usedPct": 41
+    },
+    "proc": {
+      "pid": 23368,
+      "uptimeSec": 55,
+      "rssMB": 56,
+      "heapUsedMB": 20,
+      "externalMB": 5
+    },
+    "disk": {
+      "path": "D:\\LocalModels",
+      "totalGB": 551.6,
+      "freeGB": 302.3
+    },
+    "model": {
+      "file": "",
+      "context": 0,
+      "layers": 0,
+      "gpu": "vulkan",
+      "kvQuant": "",
+      "kvQuantActual": {
+        "key": null,
+        "value": null,
+        "flashAttention": null
+      },
+      "kvReuse": true,
+      "cachedTokens": 0,
+      "activeChats": 0
+    },
+    "crash": 0
+  }
+}
+
+=== localai.cmd models ===
+exit=0
+  DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf  4.68GB
+  Phi-4-mini-instruct-Q4_K_M.gguf  2.32GB
+  qwen2.5-0.5b-instruct-q4_k_m.gguf  0.46GB
+  qwen2.5-7b-instruct-1m-q4_k_m.gguf  4.36GB
+  qwen3-5-4B-Q4_K_M.gguf  2.52GB
+cmd.exe : 5 个模型，当前已加载：无
+所在位置 行:11 字符: 7
++ $o2 = & cmd.exe /c ('"' + (Join-Path $d 'localai.cmd') + '" models')  ...
++       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (5 个模型，当前已加载：无:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+

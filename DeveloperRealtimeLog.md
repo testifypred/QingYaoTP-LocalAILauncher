@@ -1933,3 +1933,62 @@ P4（首启建议 + 1.5B 下载档）改完只跑了 probe-firstrun，按规矩�
 
 
 
+
+---
+
+## 四十二、2026-11-05 深夜：紧急接手 → 重打发布包与交付 zip（补 `make-zip.ps1`）
+
+11-04 显卡选择收尾时留了一笔账：**dist 运行目录已是 11-04 的代码（P4 + 显卡选择），但对外交付的 `dist\QingYaoTP-AILauncher-v1.1.0.zip` 还是 11-01 21:52 打的**——两轮 RESULT 都写了「下次交付必须重打 zip」。11-05 23:45 接手，第一件事清这笔账。
+
+### 一、接手时的真实状态
+
+| 项 | 值 |
+|---|---|
+| git | HEAD `ef3fac6`（docs: 全量口径 50/690），工作区干净 |
+| 源码 / dist | 已同步：`app.mjs` 254,041 B、`app.html` 275,430 B；启动器 exe 57,856 B（11-04 23:34 重编） |
+| 应用 | 在跑：`node app.mjs` pid 15316 / 8099；qwen3-5-4B，上下文 64K；用户 23:23–23:39 在用（传了个 docx 建 RAG、TTS 一次） |
+| 交付 zip | **11-01 21:52 的旧包**：app.mjs 还是 247,886 B（缺 P4 与显卡两轮） |
+| 日志异常 | `app.log` 11-04 23:41:11 `vk::Device::getFenceStatus: ErrorDeviceLost` → 上下文损坏 → 进程退出码 42 → 启动器自动重启 1 次（`launcher.log` 23:41:22）。属已知限制「Vulkan 上一次 >2 万 token 预填充会 device lost」，不是新回归 |
+
+### 二、做了什么
+
+1. **备份**：`workspace`（3 个会话 + 快照 + RAG + 文件，342 个文件）→ `server\docs\session-backups\2026-11-05_2352\workspace-full`；旧 zip 改名 `dist\QingYaoTP-AILauncher-v1.1.0.zip.old-1101` 留证（不删）。
+2. **停应用 → 重打包**：`--stop` + 按命令行精确杀本项目进程（没用 `Stop-Process -Name` 一刀切）→ `build-portable.ps1`：8 步全过，**258.2 MB / 3443 文件**，启动器重编 57,856 B、DebugTool 42,496 B，config 模板带 `vkDevices=`。
+3. **补上「打 zip」这个缺环**：新增 `server\make-zip.ps1`（BOM + 5.1 Parser 0 错误）。在此之前「zip 由谁打」没有脚本，靠手搓——这正是 11-01、11-04 两次出现「dist 已更新、交付物还是旧的」的根因。脚本里写死四条规则：
+   - 只打载荷：`data\` / `logs\` 只留空目录（WebView2 缓存、运行日志不进包）；
+   - `models\` 留空目录（用户把 gguf 放这里，modelDir 留空即可用）；
+   - 根目录固定 `QingYaoTP AILauncher-v1.1.0/`，**所有条目用正斜杠且带这个前缀**；
+   - **对暂存副本的 `config.ini` 消毒**：`modelDir` / `autoLoad` / `vkDevices` 清空（dist 运行目录里的本机配置保持原样，不进交付包）。
+4. **踩到的三个坑**（都在 make-zip.ps1 里修掉了）：
+   - .NET Framework 的 `ZipFile.CreateFromDirectory` 会**用反斜杠**、并把源目录名当根（第一次打出来是 `qytp-zip-<guid>\QingYaoTP AILauncher-v1.1.0\…`，多套一层 TEMP 目录名）；
+   - 只加了根目录项、文件条目忘了加前缀 → 解压出来是一堆散文件（第二次）；
+   - dist 里 `config.ini` 已被本机改成 `modelDir=D:\LocalModels`，直接打进去就把绝对路径泄露给交付方（第三次）→ 改成打之前对暂存副本消毒。
+   - 另：`.ps1` 每次用编辑工具改完都会丢 BOM，必须用字节方式补回 `EF BB BF` 再用 5.1 Parser 复验（本轮又踩一次，改完直接跑会中文乱码 → 语法错误）。
+5. **产物**：`dist\QingYaoTP-AILauncher-v1.1.0.zip` = **121.8 MB / 3944 条目**，SHA256 `9A3D8E5A2C993E3B4A3DA28D5C56ABF1C758BBE04DFC7A64EBC59EA53397054B`；旧包 122.0 MB / 3947 条目，差异 = 去掉 `models\workspace` 泄漏（3 条）+ 目录项规范化。包内 `config.ini` 的 `modelDir=` 为空、无任何本机绝对路径。
+6. **验证**（见三）后，把本机运行目录的 `config.ini` 恢复成 `modelDir=D:\LocalModels` 并重启启动器——否则界面看不到本机 5 个模型；**zip 保持便携形态**，两者分工明确。
+
+### 三、验证
+
+| 层 | 结果 |
+|---|---|
+| 构建自检 | 8 步全过、退出 0；启动器 57,856 B / DebugTool 42,496 B 时间戳 = 本次构建；4 份源码 SHA256 与 `server\` 一致 |
+| HTTP 7 项 | `/health` 200、`/api/state` 200（5 个模型、vulkan、version 1.1.0）、`/debug` 200、`/debug-icon.png` 200、`/debug-icon.ico` 200、无令牌 `POST /api/debug/open` **403**、`/api/gpus` 200（1 块 Intel Arc） |
+| 包内 CLI | `localai-debug.cmd --json` exit 0；`localai.cmd models` exit 0（5 个模型） |
+| 目标探针组 | **probe-debug 35/35**（首跑 33/35，2 红是「未加载模型」时的 KV 断言，装 qwen2.5-0.5b 复跑全绿后 unload 复原）、**probe-rag 16/16**、**probe-gpu 14/14**、**probe-firstrun 22/22**、**probe-ui-gpu 8/8**；合计 6 次运行 / **95 断言**，0 崩溃、服务 pid 全程未变 |
+| 独立复核 | verifier 按 technique/05 的 12 项逐项验 dist 与最终 zip（解压冒烟 + 哈希 + 条目/前缀/卫生），结论见 `server\docs\packaging-2026-11-05\verify.md` |
+| 口径提醒 | 交接文档里的「probe-debug 25 条」是旧数，**现在是 35 条**（11-01 扩过）；`probe-firstrun` 在新首启形态下 `firstRunDone=false` 属正常 |
+
+### 四、留给下一轮
+
+- **`使用说明.txt` 里还有一句 v1.0 旧文案**：「默认指向 D:\LocalModels」——与便携默认（`modelDir` 留空 = `<安装目录>\models`）矛盾。这句在 `build-portable.ps1` 的 readme 模板里，改它要连带重打包，所以本轮只记不改。
+- **老笔记本真机验证**（仍未做）：设置 → 显卡 看有没有 RX640；有就选它、重启、`app.log` 应出现「只可见 1」；没有就升 AMD 驱动（22.6.1 / 30.0.15021.11005）。
+- **7B 分片下载 + 校验**：下载器还只吃单文件，large 档推不了 7B。
+- `probe-start-flow` 的偶发 `ECONNRESET`（11-04 遗留）本轮没撞到；再撞再按「探针 fetch 加 Connection: close」处理。
+
+### 五、补记（2026-11-06 00:01，第三版才定稿）
+
+上面第二节记的是第二版数字（3944 条目 / sha 9A3D8E5A…）。定稿前又发现一处泄漏：dist 里正在跑的服务写了 app\server.pid（5 字节，内容是本机 pid）被打进 zip。到目标机首启时，启动器的单实例 / --stop 判断可能被这个陈旧 pid 误导，属于必须排除的运行期文件。make-zip.ps1 增加一条：暂存副本 app\ 下的 .pid / .log / .tmp 一律删除再压缩。
+
+最终产物（以此为准）：dist\QingYaoTP-AILauncher-v1.1.0.zip，127,758,927 B（121.8MB）/ 3943 条目，mtime 2026-11-06 00:01:27，SHA256 7F49A8DC322B741FE31F979DF5466CE8C2D2A29A1CD789B98FF147A043AA1A4E。核对：包内 app.mjs 254,041 B、启动器 57,856 B、无 .pid/.log/.tmp、无 data/logs 文件、config.ini 的 modelDir= 为空。
+
+教训重复了一次：打 zip 的每一步都要对着交付方的机器想一遍——绝对路径、陈旧 pid、运行期缓存，任何一样带出去都可能在目标机变成怪问题。

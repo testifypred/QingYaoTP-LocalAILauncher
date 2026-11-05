@@ -1,0 +1,132 @@
+﻿=== ITEM 1: app key files ===
+OK   app.mjs                      254041
+OK   app.html                     275430
+OK   doc-extract.mjs               10750
+OK   config-recommend.mjs           6063
+OK   debug.html                    19774
+OK   localai-debug.mjs              8365
+OK   localai-debug.cmd               237
+OK   debug-icon-64.png              3371
+OK   debug.ico                     33273
+OK   localai.mjs                   16540
+OK   localai.cmd                     304
+OK   localai-tui.cmd                 258
+OKDIR vendor\katex
+OKDIR node_modules\node-llama-cpp
+OKDIR vendor
+app top-level entries:
+  node_modules                     <DIR>
+  vendor                           <DIR>
+  app.html                         275430
+  app.mjs                          254041
+  config-recommend.mjs             6063
+  debug-icon-64.png                3371
+  debug.html                       19774
+  debug.ico                        33273
+  doc-extract.mjs                  10750
+  localai-debug.cmd                237
+  localai-debug.mjs                8365
+  localai-tui.cmd                  258
+  localai-tui.mjs                  22261
+  localai.cmd                      304
+  localai.mjs                      16540
+  server.pid                       5
+
+=== ITEM 2: root files ===
+OK   QingYaoTP AILauncher.exe                    57856
+OK   DebugTool.exe                               42496
+OK   localai.ico                                 31308
+OK   config.ini                                    979
+OK   使用说明.txt                                     4946
+OK   Microsoft.Web.WebView2.Core.dll            698208
+OK   Microsoft.Web.WebView2.WinForms.dll         38752
+OK   WebView2Loader.dll                         194912
+OK   vc_redist.x64.exe                        25635768
+OK   runtime\node.exe                         92825416
+plugins *.mjs:
+  disk.mjs (1128 B)
+  hello.mjs (1059 B)
+  notes.mjs (1517 B)
+plugins mjs count = 3
+
+=== ITEM 3: source SHA256 (server vs dist app) ===
+app.mjs                  MATCH  server=41BC8F75C954EA62 (254041 B)  dist=41BC8F75C954EA62 (254041 B)
+app.html                 MATCH  server=D5A51C24400D46DF (275430 B)  dist=D5A51C24400D46DF (275430 B)
+doc-extract.mjs          MATCH  server=9E08B87B04751950 (10750 B)  dist=9E08B87B04751950 (10750 B)
+config-recommend.mjs     MATCH  server=FD2BD97860688F6D (6063 B)  dist=FD2BD97860688F6D (6063 B)
+
+=== ITEM 4: exe checks ===
+QingYaoTP AILauncher.exe: size=57856 mtime=2026-11-05 23:48:37 head=4D 5A 90 00
+DebugTool.exe: size=42496 mtime=2026-11-05 23:48:37 head=4D 5A 90 00
+
+=== ITEM 5: config.ini ===
+  | # QingYaoTP AILauncher（本地 AI）便携版配置（改完重启 QingYaoTP AILauncher.exe 生效）
+  | # port        服务端口
+  | # modelDir    gguf 所在目录；留空则用本目录下的 models\
+  | # autoLoad    启动后自动加载的模型文件名（留空 = 只起服务，在界面里手选）
+  | # contextSize 上下文长度，越大越吃内存
+  | # kvReuse     1 = 多轮对话复用 KV 缓存（推荐）；0 = 每轮全量重算（仅用于对照）
+  | # gpu         后端：auto（先试 Vulkan 再退 CPU）/ vulkan / cpu
+  | # vkDevices   Vulkan 设备号（逗号分隔，空 = 全部设备）；核显+独显的机器填独显那一项
+  | # 说明        首次启动会自动检查本机（CPU/内存/显卡/运行库/磁盘），给出模型与上下文建议，
+  | #             点「按建议配置并应用」即可写回本文件（下一次启动生效）。
+  | port=8099
+  | modelDir=D:\LocalModels
+  | autoLoad=
+  | contextSize=16384
+  | kvReuse=1
+  | gpu=auto
+  | vkDevices=
+modelDir raw: modelDir=D:\LocalModels
+autoLoad=
+vkDevices raw: vkDevices=
+has vkDevices line: True
+contains D:\LocalModels abs path: True
+contains C:\LocalModels: False
+
+=== ITEM 6: node_modules count + runtime node ===
+node_modules top-level dirs = 41
+  .bin
+  agent-base
+  asynckit
+  axios
+  base64-js
+  buffer
+  call-bind-apply-helpers
+  combined-stream
+  debug
+  delayed-stream
+  dunder-proto
+  es-define-property
+  es-errors
+  es-object-atoms
+  es-set-tostringtag
+  follow-redirects
+  form-data
+  function-bind
+  get-intrinsic
+  get-proto
+  gopd
+  has-symbols
+  has-tostringtag
+  hasown
+  https-proxy-agent
+  ieee754
+  inherits
+  isomorphic-ws
+  math-intrinsics
+  mime-db
+  mime-types
+  ms
+  msedge-tts
+  node-llama-cpp
+  proxy-from-env
+  readable-stream
+  safe-buffer
+  stream-browserify
+  string_decoder
+  util-deprecate
+  ws
+node_modules top-level files = 1: .package-lock.json
+runtime node -v: v24.19.0
+runtime node.exe size: 92825416

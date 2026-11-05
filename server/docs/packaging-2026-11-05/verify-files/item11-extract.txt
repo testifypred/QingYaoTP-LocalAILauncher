@@ -1,0 +1,19 @@
+﻿extract_sec=57.1
+files=3443
+missing_count=0
+missing=
+none
+node_checks=
+app.mjs=0 config-recommend.mjs=0 doc-extract.mjs=0
+appmjs_hash_match=
+True
+exe_size=
+57856
+DebugTool_size=
+42496
+pid_present=
+False
+config_modelDir_empty=
+True
+empty_dirs=
+data,logs,models

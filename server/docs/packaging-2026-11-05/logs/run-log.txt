@@ -1,0 +1,33 @@
+packaging-2026-11-05 目标探针组 run-log（Asia/Shanghai）
+服务：http://127.0.0.1:8099  health=200  pid=23368  version=1.1.0  dir=D:\LocalModels\dist\QingYaoTP AILauncher\app
+说明：串行执行；stdout/stderr 分别落 .out.txt/.err.txt（UTF-8 no BOM）
+
+[1] 2026-11-05 23:53:38-41
+cmd: node probe-debug.mjs http://127.0.0.1:8099
+exit: 1   assertions: 33/35   elapsed: 2859 ms
+note: 2 FAIL = KV 量化两项，loaded=null / kvQuant 为空（前置条件：未加载模型）
+
+[2] 2026-11-05 23:53:50-51
+cmd: node probe-rag.mjs http://127.0.0.1:8099
+exit: 0   assertions: 16/16   elapsed: 801 ms
+
+[3] 2026-11-05 23:53:56-57
+cmd: node probe-gpu.mjs http://127.0.0.1:8099
+exit: 0   assertions: 14/14   elapsed: 556 ms
+
+[4] 2026-11-05 23:54:04-05
+cmd: node probe-firstrun.mjs
+exit: 0   assertions: 22/22   elapsed: 476 ms
+note: firstRunDone=false；/api/firstrun/apply dry-run applied=null
+
+[5] 2026-11-05 23:54:31-40
+cmd: node probe-ui-gpu.mjs http://127.0.0.1:9333 http://127.0.0.1:8099
+exit: 0   assertions: 8/8   elapsed: 8202 ms
+note: headless Edge Edg/156.0.4314.58，--user-data-dir=%TEMP%\edge-probe --window-size=1440,900；跑完结束该 user-data-dir 的 9 个进程，9333 释放
+
+[6] 2026-11-05 23:55:51-53  （诊断复跑：先加载 qwen2.5-0.5b-instruct-q4_k_m.gguf，跑完 unload 复原）
+cmd: node probe-debug.mjs http://127.0.0.1:8099
+exit: 0   assertions: 35/35   elapsed: 2659 ms
+note: kvQuant=q8_0 / kvQuantActual=q8_0 两项通过；diag checks 17→19；unload 后 loaded=[] kvQuant=[]
+
+合计：6 次运行；首跑 93 通过 / 2 红（前置条件），复跑后全绿；无忙时超时，无崩溃，服务未重启。

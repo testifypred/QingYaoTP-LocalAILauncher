@@ -1,0 +1,41 @@
+
+== 目标 http://127.0.0.1:8099 ==
+
+  ok   /debug 页面可访问  [HTTP 200 · 18688 字节]
+  ok   页面自带检查项容器
+  ok   调试页声明了自己的图标
+  ok   调试工具图标可取（png）  [HTTP 200 · image/png]
+  ok   /api/diag 可用  [HTTP 200]
+  ok   检查项足够多（>=12）  [checks=19]
+  ok   每项都有 id/level/title
+  ok   summary 与检查项自洽  [{"error":0,"warn":0,"ok":19}]
+  ok   带版本信息  [{"version":"1.1.0","commit":"","dirty":false,"builtAt":"2026-11-04T15:35:20.046Z"}]
+  ok   带服务与系统信息  [8099 / v24.19.0]
+  ok   带路径（含日志与崩溃记录）  [D:\LocalModels\dist\QingYaoTP AILauncher\app\vulkan-crash.log]
+  ok   日志接口可用  [HTTP 200]
+  ok   日志报出文件与编码  [D:\LocalModels\dist\QingYaoTP AILauncher\logs\app.log · utf-8]
+  ok   日志内容不是空字符乱码  [===== 2026-11-05 23:52:23 启动 =====
+15:52]
+  ok   崩溃日志接口结构完整  [HTTP 200]
+  ok   资源接口可用（无令牌 GET）  [HTTP 200]
+  ok   资源字段形状完整（含 ISO 时间）  [cpu/mem/proc/model/now]
+  ok   内存 已用+空闲 ≈ 总量（±0.1 GB）  [15.12 + 16.31 vs 31.43]
+  ok   内存百分比与用量自洽（0–100）  [48%]
+  ok   进程 RSS > 0 且 heap 合理  [RSS 1363 MB · heap 44 MB]
+  ok   磁盘剩余可读（disk 为 null 或 freeGB ≥ 0）  [302.4 / 551.6 GB]
+  ok   第二次采样 CPU 占用是 0–100 的数字  [usagePct=19]
+  ok   第二次采样 now 推进  [2026-11-05T15:55:53.563Z → 2026-11-05T15:55:54.881Z]
+  ok   模型 KV 量化与 /api/state 一致  [q8_0 vs q8_0]
+  ok   KV 量化实际生效类型与配置一致（LlamaContext getter）  [actual=q8_0 · configured=q8_0 · resources=q8_0]
+  ok   清崩溃记录必须带令牌
+  ok   打开调试窗口必须带令牌
+  ok   带令牌能清崩溃记录  [{"ok":true,"removed":false,"exists":false}]
+  ok   清完文件真的没了
+  ok   原本没有崩溃记录，无需还原
+  ok   命令行版能跑（服务在跑时）  [exit=0]
+  ok   命令行版列出检查项
+  ok   --json 输出可解析  [exit=0]
+  ok   --json 里也有 checks  [n=19]
+  ok   --logs 能读日志  [exit=0]
+
+RESULT 35/35

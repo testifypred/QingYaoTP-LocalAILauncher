@@ -1,0 +1,151 @@
+﻿now = 2026-11-05 23:57:34
+poll t=23:57:34 mtime=23:56:51 size=127759094 entries=3944 stable=0
+poll t=23:57:49 mtime=23:56:51 size=127759094 entries=3944 stable=0
+poll t=23:58:04 mtime=23:56:51 size=127759094 entries=3944 stable=0
+poll t=23:58:19 mtime=23:56:51 size=127759094 entries=3944 stable=0
+poll t=23:58:34 mtime=23:56:51 size=127759094 entries=3944 stable=0
+poll t=23:58:49 mtime=23:56:51 size=127759094 entries=3944 stable=0
+poll t=23:59:04 mtime=23:56:51 size=127759094 entries=3944 stable=0
+poll t=23:59:19 mtime=23:56:51 size=127759094 entries=3944 stable=0
+poll t=23:59:35 mtime=23:56:51 size=127759094 entries=3944 stable=0
+poll t=23:59:50 mtime=23:56:51 size=127759094 entries=3944 stable=0
+poll t=00:00:05 mtime=23:56:51 size=127759094 entries=3944 stable=0
+poll t=00:00:20 mtime=23:56:51 size=127759094 entries=3944 stable=0
+poll t=00:00:35 mtime=00:00:35 size=26949405 entries=-1 stable=0
+poll t=00:00:50 mtime=00:00:50 size=38267411 entries=-1 stable=0
+poll t=00:01:05 mtime=00:01:05 size=63437737 entries=-1 stable=0
+poll t=00:01:20 mtime=00:01:20 size=90961414 entries=-1 stable=0
+poll t=00:01:35 mtime=00:01:27 size=127758927 entries=3943 stable=0
+poll t=00:01:50 mtime=00:01:27 size=127758927 entries=3943 stable=1
+poll t=00:02:05 mtime=00:01:27 size=127758927 entries=3943 stable=2
+poll t=00:02:20 mtime=00:01:27 size=127758927 entries=3943 stable=3
+FINAL ZIP: 127758927 bytes / 121.8 MiB / 121.8 MB decimal / mtime=2026-11-06 00:01:27 / stableReady=True
+FINAL ZIP sha256 = 7F49A8DC322B741FE31F979DF5466CE8C2D2A29A1CD789B98FF147A043AA1A4E
+
+===== ITEM 7: zip structure =====
+total entries = 3943
+distinct roots = 1: QingYaoTP AILauncher-v1.1.0
+root prefix expected 'QingYaoTP AILauncher-v1.1.0/' -> True
+root dir entry present? True
+dir entries = 500 ; file entries = 3443
+entries with backslash = 0
+entries with drive/absolute path = 0
+entries with .. = 0
+file entries missing root prefix = 0
+entries with empty name = 0
+
+===== ITEM 8: zip content =====
+config.ini: size=963 compressed=675
+  cfg | port=8099
+  cfg | modelDir=
+  cfg | autoLoad=
+  cfg | contextSize=16384
+  cfg | kvReuse=1
+  cfg | gpu=auto
+  cfg | vkDevices=
+  modelDir empty? True
+  autoLoad empty? True
+  vkDevices line exists? True
+  contains D:\LocalModels? False
+  contains C:\LocalModels? False
+  contains drive-letter path? False
+  app/app.mjs                            size=    254041
+  app/app.html                           size=    275430
+  app/doc-extract.mjs                    size=     10750
+  app/config-recommend.mjs               size=      6063
+  app/debug.html                         size=     19774
+  app/localai-debug.mjs                  size=      8365
+  app/localai-debug.cmd                  size=       237
+  app/debug-icon-64.png                  size=      3371
+  app/debug.ico                          size=     33273
+  QingYaoTP AILauncher.exe               size=     57856
+  DebugTool.exe                          size=     42496
+  localai.ico                            size=     31308
+  使用说明.txt                               size=      4946
+  runtime/node.exe                       size=  92825416
+  vc_redist.x64.exe                      size=  25635768
+  Microsoft.Web.WebView2.Core.dll        size=    698208
+  Microsoft.Web.WebView2.WinForms.dll    size=     38752
+  WebView2Loader.dll                     size=    194912
+  exe==57856 ? True
+  DebugTool==42496 ? True
+  app.mjs==254041 ? True
+  app.html==275430 ? True
+  plugins mjs = 3 -> disk.mjs, hello.mjs, notes.mjs
+  katex entries = 69
+  node-llama-cpp entries = 3155
+  app/node_modules package dirs = 41
+
+===== ITEM 9: zip hygiene =====
+data/ real files = 0
+logs/ real files = 0
+data/ dir entries = 1 -> QingYaoTP AILauncher-v1.1.0/data/
+logs/ dir entries = 1 -> QingYaoTP AILauncher-v1.1.0/logs/
+models/ dir entries = 6 -> QingYaoTP AILauncher-v1.1.0/models/, QingYaoTP AILauncher-v1.1.0/app/vendor/models/, QingYaoTP AILauncher-v1.1.0/app/vendor/models/deepseek.png, QingYaoTP AILauncher-v1.1.0/app/vendor/models/microsoft.png, QingYaoTP AILauncher-v1.1.0/app/vendor/models/openai.png, QingYaoTP AILauncher-v1.1.0/app/vendor/models/qwen.png
+  pattern [workspace] -> 0
+  pattern [sessions] -> 3
+      QingYaoTP AILauncher-v1.1.0/app/node_modules/axios/lib/helpers/Http2Sessions.js
+      QingYaoTP AILauncher-v1.1.0/app/node_modules/node-llama-cpp/node_modules/lowdb/lib/adapters/browser/SessionStorage.d.ts
+      QingYaoTP AILauncher-v1.1.0/app/node_modules/node-llama-cpp/node_modules/lowdb/lib/adapters/browser/SessionStorage.js
+  pattern [discovery\.json] -> 0
+  pattern [server\.pid] -> 0
+  pattern [qytp-zip-] -> 0
+  pattern [AppData] -> 0
+  pattern [/Temp/] -> 0
+  pattern [webview2] -> 3
+      QingYaoTP AILauncher-v1.1.0/Microsoft.Web.WebView2.Core.dll
+      QingYaoTP AILauncher-v1.1.0/Microsoft.Web.WebView2.WinForms.dll
+      QingYaoTP AILauncher-v1.1.0/WebView2Loader.dll
+  pattern [\.log$] -> 0
+  pattern [rag-index] -> 0
+  pattern [onboard] -> 0
+  entries containing 'temp' (any case) = 42
+      QingYaoTP AILauncher-v1.1.0/app/node_modules/node-llama-cpp/templates/
+      QingYaoTP AILauncher-v1.1.0/app/node_modules/node-llama-cpp/templates/packed/
+      QingYaoTP AILauncher-v1.1.0/app/node_modules/node-llama-cpp/dist/chatWrappers/generic/JinjaTemplateChatWrapper.d.ts
+      QingYaoTP AILauncher-v1.1.0/app/node_modules/node-llama-cpp/dist/chatWrappers/generic/JinjaTemplateChatWrapper.js
+      QingYaoTP AILauncher-v1.1.0/app/node_modules/node-llama-cpp/dist/chatWrappers/generic/JinjaTemplateChatWrapper.js.map
+      QingYaoTP AILauncher-v1.1.0/app/node_modules/node-llama-cpp/dist/chatWrappers/generic/TemplateChatWrapper.d.ts
+      QingYaoTP AILauncher-v1.1.0/app/node_modules/node-llama-cpp/dist/chatWrappers/generic/TemplateChatWrapper.js
+      QingYaoTP AILauncher-v1.1.0/app/node_modules/node-llama-cpp/dist/chatWrappers/generic/TemplateChatWrapper.js.map
+      QingYaoTP AILauncher-v1.1.0/app/node_modules/node-llama-cpp/dist/chatWrappers/generic/utils/chatHistoryFunctionCallMessageTemplate.d.ts
+      QingYaoTP AILauncher-v1.1.0/app/node_modules/node-llama-cpp/dist/chatWrappers/generic/utils/chatHistoryFunctionCallMessageTemplate.js
+
+===== ITEM 10: chinese filename =====
+non-ASCII entries = 1
+  CN: QingYaoTP AILauncher-v1.1.0/使用说明.txt size=4946
+manual exact entry: QingYaoTP AILauncher-v1.1.0/使用说明.txt size=4946
+  manual sha256 zip=B24F1F59D34E317E disk=B24F1F59D34E317E MATCH=True
+
+===== top-level (2-segment) entries =====
+           963 QingYaoTP AILauncher-v1.1.0/config.ini
+         42496 QingYaoTP AILauncher-v1.1.0/DebugTool.exe
+         31308 QingYaoTP AILauncher-v1.1.0/localai.ico
+        698208 QingYaoTP AILauncher-v1.1.0/Microsoft.Web.WebView2.Core.dll
+         38752 QingYaoTP AILauncher-v1.1.0/Microsoft.Web.WebView2.WinForms.dll
+         57856 QingYaoTP AILauncher-v1.1.0/QingYaoTP AILauncher.exe
+      25635768 QingYaoTP AILauncher-v1.1.0/vc_redist.x64.exe
+        194912 QingYaoTP AILauncher-v1.1.0/WebView2Loader.dll
+          4946 QingYaoTP AILauncher-v1.1.0/使用说明.txt
+--- top-level dirs ---
+  QingYaoTP AILauncher-v1.1.0/
+
+zip-entries.txt lines = 3943
+
+===== ITEM 12: old-1101 vs final zip =====
+old zip entries = 3947
+old distinct roots = 1: QingYaoTP AILauncher-v1.1.0
+removed (in old, not in new) = 4
+  - app/server.pid  (old size 5)
+  - models/workspace/  (old size 0)
+  - models/workspace/discovery.json  (old size 95)
+  - models/workspace/sessions/  (old size 0)
+added (in new, not in old) = 0
+size-changed common entries = 5
+  ~ app/app.html  271389 -> 275430
+  ~ app/app.mjs  247886 -> 254041
+  ~ app/config-recommend.mjs  5316 -> 6063
+  ~ config.ini  840 -> 963
+  ~ QingYaoTP AILauncher.exe  57344 -> 57856
+removed categories: data-logs=1, runtime-data=3
+added categories: 
