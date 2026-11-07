@@ -601,14 +601,59 @@ math-field:focus-within{border-color:var(--cyan)}
 .wsMain .CodeMirror-gutters{background:var(--panel-2);border-right:1px solid var(--line)}
 .wsMain .CodeMirror-linenumber{color:var(--dim)}
 
-/* 独立代码运行器 */
-.codePane{display:flex;flex-direction:column;gap:10px;padding:14px 16px;min-height:0;overflow:auto}
-.codeBar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.codeBar .hintText{font-size:11px;color:var(--dim);font-family:var(--mono)}
-#codeLang{padding:5px 8px;font-size:12px}
-#codeEditor{width:100%;min-height:240px;max-height:46vh;resize:vertical;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--code-bg);color:var(--code-ink);font:12.5px/1.6 var(--mono);outline:none}
-#codeEditor:focus{border-color:var(--cyan)}
-#codeOutput{max-height:34vh;overflow:auto}
+/* ---- 代码工作区（VS Code 式：文件列表 / 标签页 / 编辑器 / 审查面板） ---- */
+/* 双类选择器：.modalBox 的基础规则在本文件更后面，单类会被它压回 720px */
+.modalBox.cwBox{width:min(1180px,96vw);height:min(880px,90vh);max-height:92vh}
+.cwBox .hintText{font-size:11px;color:var(--dim);font-family:var(--mono)}
+.cwBox .spacer{flex:1}
+.cwBody{flex:1;display:flex;min-height:0}
+.cwSide{width:232px;flex:none;display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line);background:var(--panel-2)}
+.cwToolbar{display:flex;align-items:center;gap:6px;padding:8px;border-bottom:1px solid var(--line)}
+.cwToolbar input{flex:1;min-width:0;padding:4px 7px;border-radius:5px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:11.5px var(--mono);outline:none}
+.cwToolbar input:focus{border-color:var(--cyan)}
+.cwToolbar button{padding:4px 8px;font-size:11.5px;flex:none}
+.cwList{flex:1;overflow:auto;padding:6px}
+.cwItem{display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:5px;cursor:pointer;font-size:12.5px;color:var(--text-2);border:1px solid transparent}
+.cwItem:hover{background:var(--panel-3);border-color:var(--line)}
+.cwItem.sel{background:var(--accent-soft);border-color:var(--line-2);color:var(--text)}
+.cwItem .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cwItem .sz{margin-left:auto;color:var(--dim);font-size:10px;font-family:var(--mono);flex:none}
+.cwEmpty{padding:18px 12px;font-size:12px;line-height:1.7;color:var(--dim)}
+.cwCenter{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+.cwTabs{display:flex;align-items:center;gap:2px;padding:6px 8px 0;min-height:34px;overflow-x:auto;border-bottom:1px solid var(--line);background:var(--panel-2)}
+.cwTab{display:flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid var(--line);border-bottom:none;border-radius:6px 6px 0 0;background:var(--panel);color:var(--text-2);font-size:12px;cursor:pointer;white-space:nowrap;user-select:none}
+.cwTab:hover{color:var(--text);border-color:var(--line-2)}
+.cwTab.sel{background:var(--code-bg);color:var(--text);border-color:var(--line-2)}
+.cwTab.dirty .n::after{content:'●';margin-left:4px;color:var(--warn);font-size:9px}
+.cwTabX{padding:0;width:14px;height:14px;line-height:1;border:none;background:transparent;color:var(--dim);font-size:13px;font-weight:400}
+.cwTabX:hover:not(:disabled){color:var(--err);background:transparent;border:none;transform:none;box-shadow:none}
+.cwBar{display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.cwBar .hintText{font-size:11px;color:var(--dim);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cwBar button{padding:4px 10px;font-size:12px}
+.cwBar button.ghost{padding:4px 9px}
+#cwEditor{width:100%;flex:1;min-height:0;resize:none;padding:10px 12px;border:0;outline:none;background:var(--code-bg);color:var(--code-ink);font:12.5px/1.6 var(--mono)}
+.cwCenter .CodeMirror{flex:1;height:auto;min-height:0;font:12.5px/1.6 var(--mono);background:var(--code-bg);color:var(--code-ink)}
+.cwCenter .CodeMirror-gutters{background:var(--panel-2);border-right:1px solid var(--line)}
+.cwCenter .CodeMirror-linenumber{color:var(--dim)}
+#cwOutput{flex:none;max-height:32vh;overflow:auto;border-top:1px solid var(--line)}
+#cwReviewToggle.on{color:var(--accent-2);border-color:var(--accent);background:var(--accent-soft)}
+.cwReview{width:min(360px,36%);flex:none;display:flex;flex-direction:column;min-height:0;border-left:1px solid var(--line);background:var(--panel-2)}
+.cwReview[hidden]{display:none}
+.cwReviewHead{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line);font-size:12.5px;font-weight:600;color:var(--text)}
+#cwIntent{height:62px;margin:8px 10px 4px;padding:8px 10px;resize:vertical;border-radius:6px;border:1px solid var(--line);background:var(--code-bg);color:var(--text);font:12px/1.55 var(--mono);outline:none}
+#cwIntent:focus{border-color:var(--cyan)}
+.cwReviewBody{flex:1;overflow:auto;padding:6px 12px 14px;font-size:12.5px;line-height:1.7;color:var(--text-2)}
+.cwReviewBody h1,.cwReviewBody h2,.cwReviewBody h3,.cwReviewBody h4{margin:12px 0 5px;font-size:13.5px;color:var(--cyan);font-weight:650}
+.cwReviewBody p{margin:0 0 8px}
+.cwReviewBody ul,.cwReviewBody ol{margin:5px 0;padding-left:20px}
+.cwReviewBody li{margin:2px 0}
+.cwReviewBody code{font-family:var(--mono);font-size:12px;background:var(--code-bg);border:1px solid var(--line);border-radius:4px;padding:0 4px;color:var(--code-ink)}
+.cwReviewBody strong{color:var(--text)}
+.cwReviewErr{color:var(--err)}
+.cwReviewEmpty{color:var(--dim)}
+/* Agent 模式自动收录提示条 */
+.codeCaptured{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:6px;border:1px dashed var(--line-2);background:var(--accent-soft);font-size:12px;color:var(--text-2)}
+.codeCaptured button{font-size:11.5px;padding:3px 10px;font-weight:500}
 .field select{height:30px;padding:2px 8px;border-radius:5px;border:1px solid var(--line);background:var(--panel-2);color:var(--text);font-size:12.5px}
 .ttsTestRow{display:flex;align-items:center;gap:10px}
 .ttsTestRow .hintText{font-size:11px;color:var(--dim);font-family:var(--mono);word-break:break-all}
@@ -1242,22 +1287,41 @@ header::before{
 </div>
 
 <div id="codeModal" class="modal" hidden>
-  <div class="modalBox" style="width:min(880px,94vw)">
+  <div class="modalBox cwBox">
     <div class="modalHead">
-      <b>代码运行器</b>
-      <span class="spacer"></span>
-      <span id="codeMeta" class="hintText"></span>
+      <b>代码工作区</b><span id="cwDir" class="hintText">code/</span><span class="spacer"></span>
+      <span id="cwStatus" class="hintText"></span>
+      <button id="cwReviewToggle" class="ghost">审查面板</button>
       <button id="codeClose" class="ghost" title="关闭">✕</button>
     </div>
-    <div class="codePane">
-      <div class="codeBar">
-        <select id="codeLang" title="选择语言"></select>
-        <button id="codeRunBtn">运行</button>
-        <button id="codeClearBtn" class="ghost">清空</button>
-        <span class="hintText">Ctrl+Enter 运行 · 本机执行 · 10 秒超时 · 64KB 输出上限</span>
+    <div class="cwBody">
+      <div class="cwSide">
+        <div class="cwToolbar">
+          <input id="cwNewName" placeholder="new.js（回车新建）" spellcheck="false">
+          <button id="cwNew" class="ghost">新建</button>
+          <button id="cwRefresh" class="ghost">刷新</button>
+        </div>
+        <div id="cwList" class="cwList"></div>
+        <div id="cwEmpty" class="cwEmpty" hidden>还没有代码。Agent 模式下的代码会自动收进这里。</div>
       </div>
-      <textarea id="codeEditor" spellcheck="false" placeholder="在这里写代码，Ctrl+Enter 运行"></textarea>
-      <div id="codeOutput" class="codeOut" hidden></div>
+      <div class="cwCenter">
+        <div id="cwTabs" class="cwTabs"></div>
+        <div class="cwBar">
+          <span id="cwFile" class="hintText">未打开文件</span>
+          <span class="spacer"></span>
+          <button id="cwSave" class="ghost">保存</button>
+          <button id="cwDelete" class="ghost danger">删除</button>
+          <button id="cwRun">运行</button>
+          <button id="cwReview">模型审查</button>
+        </div>
+        <textarea id="cwEditor"></textarea>
+        <div id="cwOutput" class="codeOut" hidden></div>
+      </div>
+      <div id="cwReviewPanel" class="cwReview">
+        <div class="cwReviewHead">模型审查 <span id="cwReviewMeta" class="hintText"></span></div>
+        <textarea id="cwIntent" placeholder="用户意图（留空 = 自动取当前会话最后一条提问）"></textarea>
+        <div id="cwReviewBody" class="cwReviewBody"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -1291,6 +1355,7 @@ header::before{
       <div class="field">
         <span class="lbl">代码块</span>
         <label class="chk"><input type="checkbox" id="setCodeRun" checked>显示「运行」按钮</label>
+        <label class="chk"><input type="checkbox" id="setCodeCapture" checked>Agent 模式代码自动收录到代码工作区</label>
         <em>在本机执行代码（临时目录 + 10 秒超时 + 64KB 输出上限），不是安全沙箱：只跑自己信得过的代码。支持 JavaScript / Python / C / C++ / Java / Go / Rust，按本机已安装的工具链自动启用；缺工具链时点运行会说明缺什么。</em>
       </div>
       <div class="exportRow">
@@ -2470,6 +2535,7 @@ function renderMarkdown(src) {
           '<div class="codeHead"><span class="codeLang">' + escapeHtml(rawLang || 'code') + '</span><span class="codeSp"></span>' +
           '<button type="button" data-copy="1">复制</button>' +
           (canRun ? '<button type="button" class="codeRun">运行</button>' : '') +
+          '<button type="button" class="codeToWs" title="在代码工作区打开">工作区</button>' +
           '</div><pre><code>' + escapeHtml(c.body.replace(/\n$/, '')) + '</code></pre>' +
           '<div class="codeOut" hidden></div>' +
         '</div>',
@@ -2701,6 +2767,7 @@ msgsEl.addEventListener('click', (e) => {
   const codeEl = wrap.querySelector('code');
   if (!codeEl) return;
   if (btn.dataset.copy !== undefined) { copyCode(codeEl.textContent, btn); return; }
+  if (btn.classList.contains('codeToWs')) { cwOpenCodeBlock(wrap).catch(() => {}); return; }
   if (btn.classList.contains('codeRun')) runCodeBlock(wrap, btn);
 });
 
@@ -3246,89 +3313,517 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !wsModal.hidden) closeWs();
 });
 
-// ---------------------------------------------------------------- 独立代码运行器
-const codeModal = $('codeModal'), codeLangSel = $('codeLang'), codeEditor = $('codeEditor');
-const codeOutput = $('codeOutput'), codeMeta = $('codeMeta');
-let codeLangsLoaded = false;
-const CODE_DRAFT_KEY = 'localai.codeDraft';
+// ---------------------------------------------------------------- 代码工作区（VS Code 式：文件列表 + 标签页 + 模型审查）
+const codeModal = $('codeModal');
+const cwDirEl = $('cwDir'), cwStatusEl = $('cwStatus');
+const cwListEl = $('cwList'), cwEmptyEl = $('cwEmpty'), cwTabsEl = $('cwTabs');
+const cwFileEl = $('cwFile'), cwEditorEl = $('cwEditor'), cwOutputEl = $('cwOutput');
+const cwNewNameEl = $('cwNewName'), cwSaveEl = $('cwSave'), cwDeleteEl = $('cwDelete');
+const cwRunEl = $('cwRun'), cwReviewEl = $('cwReview');
+const cwReviewPanelEl = $('cwReviewPanel'), cwReviewToggleEl = $('cwReviewToggle');
+const cwReviewBodyEl = $('cwReviewBody'), cwReviewMetaEl = $('cwReviewMeta'), cwIntentEl = $('cwIntent');
 
-async function loadCodeLangs() {
-  if (codeLangsLoaded) return;
-  const j = await apiJson('/api/run/langs');
-  const entries = Object.entries(j.langs || {});
-  codeLangSel.innerHTML = '';
-  for (const [key, info] of entries) {
-    const o = document.createElement('option');
-    o.value = key;
-    o.textContent = info.label + (info.ok ? '' : '（未安装）');
-    o.disabled = !info.ok;
-    if (!info.ok) o.title = info.hint || '';
-    codeLangSel.appendChild(o);
+const CW_DIR = 'code';                             // 代码文件统一放工作区 code/ 下（契约第二节）
+const CW_OPEN_KEY = 'localai.cwOpen';              // 上次打开的文件
+const CW_INTENT_KEY = 'localai.cwIntent';          // 审查意图草稿
+const CW_REVIEW_OPEN_KEY = 'localai.cwReviewOpen'; // 审查面板是否展开
+const CW_MODES = {
+  js: 'javascript', mjs: 'javascript', cjs: 'javascript', json: 'javascript',
+  py: 'python',
+  c: 'text/x-csrc', h: 'text/x-csrc',
+  cpp: 'text/x-c++src', cc: 'text/x-c++src', cxx: 'text/x-c++src', hpp: 'text/x-c++src',
+  java: 'text/x-java', go: 'text/x-go', rs: 'text/x-rustsrc',
+};
+/** 扩展名 → /api/run 的语言（只列可运行类型；没有映射就不发请求） */
+const CW_RUN_LANGS = {
+  js: 'javascript', mjs: 'javascript', cjs: 'javascript',
+  py: 'python', c: 'c', cpp: 'cpp', cc: 'cpp', cxx: 'cpp',
+  java: 'java', go: 'go', rs: 'rust', rust: 'rust',
+};
+/** 围栏语言标记 → 自动收录时的文件扩展名（契约 4.3 第 2 条） */
+const CW_CAPTURE_EXT = {
+  js: 'js', jsx: 'js', javascript: 'js', mjs: 'js', node: 'js',
+  ts: 'ts', tsx: 'ts', typescript: 'ts',
+  py: 'py', python: 'py', python3: 'py',
+  c: 'c', cpp: 'cpp', 'c++': 'cpp', cc: 'cpp', cxx: 'cpp', h: 'h', hpp: 'hpp',
+  java: 'java', go: 'go', rust: 'rs', rs: 'rs',
+  html: 'html', htm: 'html', css: 'css', json: 'json',
+  sh: 'sh', bash: 'sh', shell: 'sh', sql: 'sql', md: 'md', markdown: 'md',
+};
+
+let cwCM = null;        // CodeMirror 实例（首次打开时懒建）
+let cwCurrent = '';     // 当前打开的文件路径（code/xxx）
+let cwDirty = false;    // 当前文件有没有未保存改动
+let cwTabs = [];        // 打开过的标签（按打开顺序）
+let cwLangs = null;     // /api/run/langs 结果：判断本机能不能运行
+let cwReviewTimer = null;
+let cwReviewBusy = false;
+
+function cwExt(p) { return (String(p || '').split('.').pop() || '').toLowerCase(); }
+function cwModeFor(p) { return CW_MODES[cwExt(p)] || 'text/plain'; }
+function cwLangFor(p) { return CW_RUN_LANGS[cwExt(p)] || ''; }
+
+/** 状态栏文字：kind=err 红字 / ok 绿字 / 其余暗色 */
+function cwSetStatus(text, kind) {
+  cwStatusEl.textContent = text || '';
+  cwStatusEl.style.color = kind === 'err' ? 'var(--err)' : kind === 'ok' ? 'var(--ok)' : '';
+}
+
+function cwEnsureEditor() {
+  if (cwCM || typeof CodeMirror !== 'function') return cwCM;
+  cwCM = CodeMirror.fromTextArea(cwEditorEl, {
+    lineNumbers: true,
+    lineWrapping: true,
+    indentUnit: 2,
+    viewportMargin: Infinity,
+    extraKeys: { 'Ctrl-S': () => cwSaveFile(), 'Cmd-S': () => cwSaveFile() },
+  });
+  cwCM.on('changes', () => {
+    if (!cwCurrent) return;
+    cwDirty = true;
+    cwRenderTabs();
+    cwFileEl.textContent = cwCurrent + ' · 未保存';
+  });
+  return cwCM;
+}
+
+function cwValue() {
+  const cm = cwEnsureEditor();
+  return cm ? cm.getValue() : cwEditorEl.value;
+}
+
+function cwRenderTabs() {
+  cwTabsEl.innerHTML = '';
+  for (const p of cwTabs) {
+    const tab = document.createElement('div');
+    tab.className = 'cwTab' + (p === cwCurrent ? ' sel' : '') + (p === cwCurrent && cwDirty ? ' dirty' : '');
+    tab.dataset.path = p;
+    tab.title = p;
+    const n = document.createElement('span');
+    n.className = 'n';
+    n.textContent = p.split('/').pop();
+    tab.appendChild(n);
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'cwTabX';
+    x.textContent = '×';
+    x.title = '关闭标签';
+    x.onclick = (e) => { e.stopPropagation(); cwCloseTab(p); };
+    tab.appendChild(x);
+    tab.onclick = () => { if (p !== cwCurrent) cwOpenFile(p); };
+    cwTabsEl.appendChild(tab);
   }
-  const firstOk = entries.find(([, v]) => v.ok);
-  if (firstOk) codeLangSel.value = firstOk[0];
-  codeLangsLoaded = true;
 }
 
-function saveCodeDraft() {
-  try {
-    localStorage.setItem(CODE_DRAFT_KEY, JSON.stringify({ lang: codeLangSel.value, code: codeEditor.value }));
-  } catch {}
+function cwMarkSel() {
+  for (const el of cwListEl.querySelectorAll('.cwItem')) el.classList.toggle('sel', el.dataset.path === cwCurrent);
 }
 
-async function openCodePanel() {
-  codeModal.hidden = false;
-  codeMeta.textContent = '';
+/** 把内容装进编辑器，并同步标签 / 按钮 / 选中态 / 上次打开位置 */
+function cwLoadIntoEditor(p, content) {
+  const cm = cwEnsureEditor();
+  cwCurrent = p || '';
+  cwDirty = false;
+  if (cm) {
+    cm.setOption('mode', cwModeFor(p));
+    cm.setValue(content == null ? '' : content);
+    cm.clearHistory();
+    setTimeout(() => cm.refresh(), 30);
+  } else {
+    cwEditorEl.value = content == null ? '' : content;
+  }
+  cwFileEl.textContent = p || '未打开文件';
+  cwSaveEl.disabled = !p;
+  cwDeleteEl.disabled = !p;
+  cwRunEl.disabled = !p;
+  cwRenderTabs();
+  cwMarkSel();
+  try { localStorage.setItem(CW_OPEN_KEY, p || ''); } catch {}
+}
+
+function cwAddTab(p) {
+  if (p && !cwTabs.includes(p)) cwTabs.push(p);
+}
+
+async function cwLoadList() {
+  const r = await apiJson('/api/workspace/list?dir=' + encodeURIComponent(CW_DIR));
+  const files = (r.entries || []).filter((e) => !e.dir);
+  cwDirEl.textContent = (r.dir || CW_DIR) + '/';
+  cwListEl.innerHTML = '';
+  cwEmptyEl.hidden = files.length > 0;
+  for (const e of files) {
+    const el = document.createElement('div');
+    el.className = 'cwItem';
+    el.dataset.path = e.path;
+    el.title = e.path;
+    const n = document.createElement('span');
+    n.className = 'n';
+    n.textContent = e.name;
+    const sz = document.createElement('span');
+    sz.className = 'sz';
+    sz.textContent = e.size > 1024 ? (e.size / 1024).toFixed(1) + 'K' : (e.size || 0) + 'B';
+    el.append(n, sz);
+    el.onclick = () => cwOpenFile(e.path);
+    cwListEl.appendChild(el);
+  }
+  cwMarkSel();
+  return files;
+}
+
+async function cwOpenFile(p) {
+  if (!p) return;
+  // 切文件前先把当前未保存的改动落盘，避免静默丢失
+  if (cwCurrent && cwCurrent !== p && cwDirty) {
+    const okSaved = await cwSaveFile(true);
+    if (!okSaved) return;
+  }
   try {
-    await loadCodeLangs();
+    const r = await apiJson('/api/workspace/read?path=' + encodeURIComponent(p));
+    cwAddTab(p);
+    cwLoadIntoEditor(p, r.content);
+    cwSetStatus('已打开 ' + p);
   } catch (e) {
-    codeMeta.textContent = '语言列表读取失败：' + e.message;
+    cwSetStatus('打开失败：' + e.message, 'err');
+    showToast('打开失败：' + e.message, 'err', 4500);
   }
-  try {
-    const d = JSON.parse(localStorage.getItem(CODE_DRAFT_KEY) || '{}');
-    if (d.code && !codeEditor.value) codeEditor.value = d.code;
-    if (d.lang && [...codeLangSel.options].some((o) => o.value === d.lang && !o.disabled)) codeLangSel.value = d.lang;
-  } catch {}
-  codeEditor.focus();
 }
 
-function closeCodePanel() { codeModal.hidden = true; }
+async function cwSaveFile(quiet) {
+  if (!cwCurrent) return false;
+  try {
+    const r = await apiJson('/api/workspace/save', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: cwCurrent, content: cwValue() }),
+    });
+    cwDirty = false;
+    cwFileEl.textContent = r.path + ' · 已保存';
+    cwRenderTabs();
+    cwSetStatus('已保存 ' + r.path + '（' + (r.size || 0) + ' 字节）', 'ok');
+    cwLoadList().catch(() => {});
+    return true;
+  } catch (e) {
+    cwSetStatus('保存失败：' + e.message, 'err');
+    if (!quiet) showToast('保存失败：' + e.message, 'err', 4500);
+    return false;
+  }
+}
 
-async function runCodePanel() {
-  const lang = codeLangSel.value;
-  const code = codeEditor.value;
-  if (!code.trim()) {
-    codeOutput.hidden = false;
-    codeOutput.className = 'codeOut err';
-    codeOutput.textContent = '代码是空的';
+/** 文件名规整成 code/ 下的路径：既可以只写名字，也可以写 code/x.js */
+function cwNormalizePath(name) {
+  let p = String(name || '').trim().replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!p) p = 'snippet.js';
+  if (!p.startsWith(CW_DIR + '/')) p = CW_DIR + '/' + p;
+  return p;
+}
+
+async function cwNewFile() {
+  const p = cwNormalizePath(cwNewNameEl.value);
+  try {
+    await apiJson('/api/workspace/save', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: p, content: '' }),
+    });
+    cwNewNameEl.value = '';
+    await cwLoadList();
+    await cwOpenFile(p);
+    cwSetStatus('已新建 ' + p, 'ok');
+  } catch (e) {
+    cwSetStatus('新建失败：' + e.message, 'err');
+    showToast('新建失败：' + e.message, 'err', 4500);
+  }
+}
+
+async function cwDeleteFile() {
+  if (!cwCurrent) return;
+  const p = cwCurrent;
+  if (!confirm('删除「' + p + '」？不可撤销。')) return;
+  try {
+    await apiJson('/api/workspace/delete', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: p }),
+    });
+    cwTabs = cwTabs.filter((x) => x !== p);
+    cwDirty = false;
+    await cwLoadList();
+    // 删完落到剩下的最后一个标签，没有就空着
+    const next = cwTabs[cwTabs.length - 1] || '';
+    if (next) await cwOpenFile(next);
+    else cwLoadIntoEditor('', '');
+    cwSetStatus('已删除 ' + p, 'ok');
+  } catch (e) {
+    cwSetStatus('删除失败：' + e.message, 'err');
+    showToast('删除失败：' + e.message, 'err', 4500);
+  }
+}
+
+function cwCloseTab(p) {
+  const idx = cwTabs.indexOf(p);
+  if (idx < 0) return;
+  if (p === cwCurrent && cwDirty && !confirm('「' + p + '」有未保存的改动，仍要关闭标签？')) return;
+  cwTabs.splice(idx, 1);
+  if (p === cwCurrent) {
+    cwDirty = false;
+    const next = cwTabs[Math.min(idx, cwTabs.length - 1)] || '';
+    if (next) cwOpenFile(next);
+    else cwLoadIntoEditor('', '');
+  } else {
+    cwRenderTabs();
+  }
+}
+
+async function cwLoadLangs() {
+  if (cwLangs) return;
+  const j = await apiJson('/api/run/langs');
+  cwLangs = j.langs || {};
+}
+
+async function cwRunFile() {
+  if (!cwCurrent) return;
+  const lang = cwLangFor(cwCurrent);
+  if (!lang) {
+    showToast('「' + cwExt(cwCurrent) + '」文件不支持在本机运行', 'warn', 4200);
     return;
   }
-  const btn = $('codeRunBtn');
-  btn.disabled = true;
-  btn.textContent = '运行中…';
-  codeOutput.hidden = false;
-  codeOutput.className = 'codeOut';
-  codeOutput.textContent = '正在执行…';
+  const info = cwLangs && cwLangs[lang];
+  if (info && !info.ok) {
+    cwOutputEl.hidden = false;
+    cwOutputEl.className = 'codeOut err';
+    cwOutputEl.textContent = '本机跑不了 ' + (info.label || lang) + '：' + (info.hint || '缺少工具链');
+    return;
+  }
+  const code = cwValue();
+  if (!code.trim()) { showToast('代码是空的', 'warn', 3200); return; }
+  const old = cwRunEl.textContent;
+  cwRunEl.disabled = true;
+  cwRunEl.textContent = '运行中…';
+  cwOutputEl.hidden = false;
+  cwOutputEl.className = 'codeOut';
+  cwOutputEl.textContent = '正在执行…';
   try {
     const r = await fetch('/api/run', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-local-token': localToken },
       body: JSON.stringify({ lang, code }),
     });
-    const j = await r.json();
+    const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error?.message || ('HTTP ' + r.status));
-    renderRunResult(codeOutput, j);
+    renderRunResult(cwOutputEl, j);
   } catch (e) {
-    codeOutput.hidden = false;
-    codeOutput.className = 'codeOut err';
-    codeOutput.textContent = '运行失败：' + e.message;
+    cwOutputEl.hidden = false;
+    cwOutputEl.className = 'codeOut err';
+    cwOutputEl.textContent = '运行失败：' + e.message;
   } finally {
-    btn.disabled = false;
-    btn.textContent = '运行';
+    cwRunEl.disabled = false;
+    cwRunEl.textContent = old;
   }
 }
 
-$('codeBtn').onclick = () => openCodePanel();
+/** 当前会话最后一条用户提问（审查意图留空时兜底） */
+function cwLastUserAsk() {
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i] && history[i].role === 'user') return String(history[i].content || '');
+  }
+  for (let i = transcript.length - 1; i >= 0; i--) {
+    if (transcript[i] && transcript[i].role === 'user') return String(transcript[i].content || '');
+  }
+  return '';
+}
+
+function cwSetReviewBody(html) { cwReviewBodyEl.innerHTML = html; }
+
+function cwResetReviewTimer() {
+  if (cwReviewTimer) { clearInterval(cwReviewTimer); cwReviewTimer = null; }
+}
+
+function cwReviewOpenPref() {
+  try { return localStorage.getItem(CW_REVIEW_OPEN_KEY) !== '0'; } catch { return true; }
+}
+
+function cwApplyReviewOpen(open) {
+  cwReviewPanelEl.hidden = !open;
+  cwReviewToggleEl.classList.toggle('on', !!open);
+}
+
+function cwToggleReviewPanel() {
+  const open = cwReviewPanelEl.hidden;
+  cwApplyReviewOpen(open);
+  try { localStorage.setItem(CW_REVIEW_OPEN_KEY, open ? '1' : '0'); } catch {}
+}
+
+async function cwReviewCode() {
+  if (cwReviewBusy) return;
+  const code = cwValue();
+  if (!code.trim()) { showToast('先打开或写点代码', 'warn', 3200); return; }
+  const lang = cwLangFor(cwCurrent) || cwExt(cwCurrent) || '';
+  const file = cwCurrent ? cwCurrent.split('/').pop() : '';
+  let intent = cwIntentEl.value.trim();
+  if (!intent) intent = cwLastUserAsk();
+  intent = intent.slice(0, 500);
+  try { localStorage.setItem(CW_INTENT_KEY, cwIntentEl.value); } catch {}
+  // 审查结果总要看得到：开始前自动展开面板
+  cwApplyReviewOpen(true);
+  try { localStorage.setItem(CW_REVIEW_OPEN_KEY, '1'); } catch {}
+  cwReviewBusy = true;
+  const old = cwReviewEl.textContent;
+  cwReviewEl.disabled = true;
+  const t0 = Date.now();
+  cwReviewEl.textContent = '审查中…（已用 0.0s）';
+  cwReviewMetaEl.textContent = '';
+  cwSetReviewBody('<span class="cwReviewEmpty">模型正在结合意图读代码…</span>');
+  cwResetReviewTimer();
+  cwReviewTimer = setInterval(() => {
+    cwReviewEl.textContent = '审查中…（已用 ' + ((Date.now() - t0) / 1000).toFixed(1) + 's）';
+  }, 200);
+  try {
+    const r = await fetch('/api/code/review', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code, lang, file, intent }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      if (r.status === 404) throw new Error('后端接口还没就绪（/api/code/review 未实现）');
+      throw new Error(j.error?.message || ('HTTP ' + r.status));
+    }
+    cwSetReviewBody(renderMarkdown(j.review || '（模型没有给出内容）'));
+    const model = String(j.model || '').split(/[\\/]/).pop() || '模型';
+    cwReviewMetaEl.textContent = model + ' · ' + Number(j.seconds || 0).toFixed(1) + 's';
+  } catch (e) {
+    cwSetReviewBody('<div class="cwReviewErr">审查失败：' + escapeHtml(e.message) + '</div>');
+    showToast('审查失败：' + e.message, 'err', 5200);
+  } finally {
+    cwResetReviewTimer();
+    cwReviewBusy = false;
+    cwReviewEl.disabled = false;
+    cwReviewEl.textContent = old;
+  }
+}
+
+async function openCodePanel(path) {
+  codeModal.hidden = false;
+  try { await cwLoadLangs(); } catch (e) { cwSetStatus('语言列表读取失败：' + e.message, 'err'); }
+  let files = [];
+  try { files = await cwLoadList(); } catch (e) { cwSetStatus('列表读取失败：' + e.message, 'err'); }
+  cwApplyReviewOpen(cwReviewOpenPref());
+  try { if (!cwIntentEl.value) cwIntentEl.value = localStorage.getItem(CW_INTENT_KEY) || ''; } catch {}
+  const list = files.map((f) => f.path);
+  if (path && list.includes(path)) {
+    // 明确指定了文件（收录提示 / 代码块「工作区」）就定位过去
+    await cwOpenFile(path);
+  } else {
+    let target = '';
+    try { target = localStorage.getItem(CW_OPEN_KEY) || ''; } catch {}
+    if (!cwCurrent || !list.includes(cwCurrent)) {
+      if (target && list.includes(target)) await cwOpenFile(target);
+      else if (list.length) await cwOpenFile(list[0]);
+      else cwLoadIntoEditor('', '');
+    }
+  }
+  cwEnsureEditor();
+  setTimeout(() => { if (cwCM) cwCM.refresh(); }, 60);
+}
+
+function closeCodePanel() {
+  if (cwDirty) cwSaveFile(true); // 关面板顺手保存，别让改动丢了
+  try { localStorage.setItem(CW_INTENT_KEY, cwIntentEl.value); } catch {}
+  cwResetReviewTimer();
+  codeModal.hidden = true;
+}
+
+// ---- Agent 模式自动收录：围栏代码块 → code/，聊天里留一条提示 ----
+function cwStamp() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+}
+
+function cwCaptureName(lang, stamp, n) {
+  const key = String(lang || '').trim().toLowerCase().replace(/^language-/, '');
+  const ext = CW_CAPTURE_EXT[key] || 'txt';
+  const base = (key === 'c++' ? 'cpp' : key === 'c#' ? 'csharp' : key.replace(/[^a-z0-9]+/g, '')) || 'code';
+  return base + '-' + stamp + '-' + n + '.' + ext;
+}
+
+/** 从助手回复里抽围栏代码块（规则与 renderMarkdown 相同） */
+function cwExtractBlocks(text) {
+  const blocks = [];
+  const re = /```([^\n`]*)\n?([\s\S]*?)```/g;
+  let m;
+  while ((m = re.exec(String(text || '')))) {
+    const lang = String(m[1] || '').trim();
+    const body = String(m[2] || '').replace(/\n$/, '');
+    if (!body.trim()) continue;
+    blocks.push({ lang, code: body });
+  }
+  return blocks;
+}
+
+/**
+ * 收尾钩子（doSend 的 finally 里调用）：Agent 模式下把本轮代码自动收进代码工作区。
+ * 失败只 toast，不抛异常、不影响对话。
+ */
+async function captureAgentCode(text, outEl) {
+  const blocks = cwExtractBlocks(text);
+  if (!blocks.length) return;
+  const stamp = cwStamp();
+  const files = blocks.map((b, i) => ({ name: cwCaptureName(b.lang, stamp, i + 1), content: b.code }));
+  try {
+    const r = await apiJson('/api/code/capture', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ files }),
+    });
+    const saved = (r.saved || []).filter((x) => x && x.path);
+    if (!saved.length) return;
+    // capture 返回顺序与块顺序一致：把路径挂到对应代码块上，点「工作区」直接定位
+    const wraps = outEl ? Array.from(outEl.querySelectorAll('.codeWrap')) : [];
+    for (let i = 0; i < wraps.length && i < saved.length; i++) wraps[i].dataset.wsPath = saved[i].path;
+    const bar = document.createElement('div');
+    bar.className = 'codeCaptured';
+    const txt = document.createElement('span');
+    txt.textContent = 'Agent 模式：已收录 ' + saved.length + ' 段代码到代码工作区';
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.className = 'codeCapturedOpen';
+    openBtn.textContent = '打开';
+    openBtn.title = '打开代码工作区并定位到 ' + saved[0].path;
+    openBtn.onclick = () => openCodePanel(saved[0].path);
+    bar.append(txt, openBtn);
+    if (outEl && outEl.parentNode) outEl.parentNode.insertBefore(bar, outEl.nextSibling);
+    if (!codeModal.hidden) cwLoadList().catch(() => {});
+  } catch (e) {
+    showToast('代码收录失败：' + e.message, 'err', 5000);
+  }
+}
+
+/** 代码块头的「工作区」按钮：有收录路径就打开，没有就补收录一次再打开 */
+async function cwOpenCodeBlock(wrap) {
+  const codeEl = wrap.querySelector('code');
+  if (!codeEl) return;
+  let p = wrap.dataset.wsPath || '';
+  if (!p) {
+    try {
+      const lang = String(wrap.dataset.lang || '').trim();
+      const r = await apiJson('/api/code/capture', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ files: [{ name: cwCaptureName(lang, cwStamp(), 1), content: codeEl.textContent }] }),
+      });
+      p = r.saved && r.saved[0] ? r.saved[0].path : '';
+      if (p) wrap.dataset.wsPath = p;
+      if (!codeModal.hidden) cwLoadList().catch(() => {});
+    } catch (e) {
+      showToast('收录失败：' + e.message, 'err', 5000);
+      return;
+    }
+  }
+  if (p) openCodePanel(p);
+}
+
+$('codeBtn').onclick = () => openCodePanel().catch((e) => setStatus('err', '代码工作区打不开：' + e.message));
 // 终端：服务端用 start 拉起一个真实控制台窗口跑 localai-tui，所以新窗口里是真 TTY
 $('termBtn').onclick = () => openTerminal();
 function openTerminal() {
@@ -3340,19 +3835,27 @@ function openTerminal() {
     })
     .catch((e) => showToast('打开终端失败：' + e.message, 'err', 6000));
 }
-$('codeRunBtn').onclick = () => runCodePanel();
 $('codeClose').onclick = () => closeCodePanel();
 codeModal.addEventListener('click', (e) => { if (e.target === codeModal) closeCodePanel(); });
-$('codeClearBtn').onclick = () => { codeEditor.value = ''; codeOutput.hidden = true; saveCodeDraft(); codeEditor.focus(); };
-codeEditor.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); runCodePanel(); }
+$('cwRefresh').onclick = () => { cwLoadList().catch((e) => cwSetStatus('刷新失败：' + e.message, 'err')); };
+$('cwNew').onclick = () => cwNewFile();
+$('cwSave').onclick = () => cwSaveFile();
+$('cwDelete').onclick = () => cwDeleteFile();
+$('cwRun').onclick = () => cwRunFile();
+$('cwReview').onclick = () => cwReviewCode();
+$('cwReviewToggle').onclick = () => cwToggleReviewPanel();
+cwNewNameEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); cwNewFile(); }
 });
-let codeSaveTimer = null;
-const scheduleCodeSave = () => { clearTimeout(codeSaveTimer); codeSaveTimer = setTimeout(saveCodeDraft, 300); };
-codeEditor.addEventListener('input', scheduleCodeSave);
-codeLangSel.addEventListener('change', saveCodeDraft);
+// 快捷键：Ctrl+S 保存 / Ctrl+Enter 运行 / Esc 关闭（CodeMirror 里的 Ctrl+S 由 extraKeys 兜住）
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !codeModal.hidden) closeCodePanel();
+  if (codeModal.hidden) return;
+  if (e.key === 'Escape') { e.preventDefault(); closeCodePanel(); return; }
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+    const k = String(e.key || '').toLowerCase();
+    if (k === 's') { e.preventDefault(); cwSaveFile(); }
+    else if (k === 'enter') { e.preventDefault(); cwRunFile(); }
+  }
 });
 
 function greetingText() {
@@ -4837,6 +5340,8 @@ stopBtn.hidden = false;
       });
       saveTranscript();
     }
+    // Agent 模式：把本轮回复里的代码自动收进代码工作区（失败只 toast，不影响对话）
+    if (acc && toolChk.checked && codeCaptureOn) captureAgentCode(acc, out);
     if (latestEntry) stats.appendChild(makeRegenBtn(transcript.length - 1));
     const statsText = document.createElement('span');
     statsText.textContent = formatStats(usage, metrics);
@@ -4869,7 +5374,7 @@ stopBtn.hidden = false;
 // ---------------------------------------------------------------- 设置 / 停止 / 重生成 / 导出
 const stopBtn = $('stopBtn'), settingsBtn = $('settingsBtn'), settingsModal = $('settingsModal');
 const setMaxTokens = $('setMaxTokens'), setTemp = $('setTemp'), setTempVal = $('setTempVal');
-const setAutoRead = $('setAutoRead'), setCodeRun = $('setCodeRun'), exportBtn = $('exportBtn'), exportHint = $('exportHint');
+const setAutoRead = $('setAutoRead'), setCodeRun = $('setCodeRun'), setCodeCapture = $('setCodeCapture'), exportBtn = $('exportBtn'), exportHint = $('exportHint');
 
 let genAC = null;          // 当前生成的中止器
 let latestEntry = null;    // 刚写入 transcript 的那条助手消息
@@ -4884,6 +5389,7 @@ let preloadMuted = false;  // 「我已知晓，不再提醒」
 let webEnabled = false;    // 联网工具开关（默认关）
 let toolEnabled = false;   // 「调用工具」开关（持久化，否则刷新后联网开着却发不出 web 标记）
 let codeRunOn = true;      // 代码块默认显示「运行」按钮
+let codeCaptureOn = true;  // Agent 模式代码自动收录到代码工作区（默认开）
 let webMuted = false;      // 联网须知「不再提示」
 
 /**
@@ -4909,6 +5415,13 @@ function loadSettings() {
     webMuted = s.webMuted === true;
     toolEnabled = s.tools === true;
     codeRunOn = s.codeRun !== false;
+    // Agent 模式代码自动收录：主存进设置对象；契约里点名的单独键 localai.codeCapture 也认
+    codeCaptureOn = s.codeCapture !== false;
+    try {
+      const cap = localStorage.getItem('localai.codeCapture');
+      if (cap === 'false' || cap === '0') codeCaptureOn = false;
+      else if (cap === 'true' || cap === '1') codeCaptureOn = true;
+    } catch {}
     // 兼容旧版单独存放的朗读 key
     if (!genTtsVoice) {
       try { genTtsVoice = localStorage.getItem('localai.ttsVoice') || ''; } catch {}
@@ -4934,7 +5447,10 @@ function saveSettings() {
       webMuted,
       tools: toolChk.checked,
       codeRun: codeRunOn,
+      codeCapture: codeCaptureOn,
     }));
+    // 契约 4.3 按 localai.codeCapture 判断：顺手镜像一份，别处读也一致
+    localStorage.setItem('localai.codeCapture', codeCaptureOn ? 'true' : 'false');
   } catch {}
 }
 loadSettings();
@@ -5090,6 +5606,7 @@ settingsBtn.onclick = () => {
   ttsSpeedVal.textContent = Number(genTtsSpeed).toFixed(1) + '×';
   if (genTtsVoice && ttsVoices.some((v) => v.id === genTtsVoice)) ttsVoice.value = genTtsVoice;
   setCodeRun.checked = codeRunOn;
+  setCodeCapture.checked = codeCaptureOn;
   $('setPromptInfo').textContent = sysPrompt.trim()
     ? sysPrompt.trim().replace(/\s+/g, ' ').slice(0, 40) + (sysPrompt.trim().length > 40 ? '…' : '')
     : '未设置，使用内置默认';
@@ -5110,6 +5627,7 @@ $('settingsSave').onclick = () => {
   genTemp = Math.max(0, Math.min(1.5, Number(setTemp.value) || 0));
   autoRead = setAutoRead.checked;
   codeRunOn = setCodeRun.checked;
+  codeCaptureOn = setCodeCapture.checked;
   applyCodeRunSetting();
   if (ttsVoice.value) genTtsVoice = ttsVoice.value;
   genTtsSpeed = Math.max(0.7, Math.min(1.5, Number(ttsSpeed.value) || 1));

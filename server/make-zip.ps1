@@ -4,15 +4,15 @@
 # 11-01 与 11-04 两轮都出现过「dist 已更新、交付 zip 还是旧的」。这里把规则固定下来：
 #   · 只打发布载荷：data\ 与 logs\ 只保留空目录（WebView2 缓存、运行日志不进包）
 #   · models\ 保留空目录（用户把 gguf 放这里，modelDir 留空即可用）
-#   · 根目录名固定 QingYaoTP AILauncher-v1.1.0，条目一律用正斜杠（跨工具兼容）
+#   · 根目录名固定 QingYaoTP AILauncher-v1.2.0，条目一律用正斜杠（跨工具兼容）
 #
 # 用法：powershell -NoProfile -ExecutionPolicy Bypass -File .\make-zip.ps1
-# 产出：D:\LocalModels\dist\QingYaoTP-AILauncher-v1.1.0.zip
+# 产出：D:\LocalModels\dist\QingYaoTP-AILauncher-v1.2.0.zip
 
 param(
     [string]$Dist = 'D:\LocalModels\dist\QingYaoTP AILauncher',
-    [string]$Zip = 'D:\LocalModels\dist\QingYaoTP-AILauncher-v1.1.0.zip',
-    [string]$RootName = 'QingYaoTP AILauncher-v1.1.0'
+    [string]$Zip = 'D:\LocalModels\dist\QingYaoTP-AILauncher-v1.2.0.zip',
+    [string]$RootName = 'QingYaoTP AILauncher-v1.2.0'
 )
 
 $ErrorActionPreference = 'Stop'

@@ -34,7 +34,7 @@ const DEBUG_UI = path.join(HERE, "debug.html");
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 /** 版本号：发版只改这一处；server\package.json 的 version 必须与它一致（probe-version 会查） */
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.2.0";
 /** 产品正式名（2026-11-01 起）：QingYaoTP AILauncher；QingYaoTP = QingYaoTestifypred */
 const APP_NAME = "QingYaoTP AILauncher";
 const APP_SUB = "本地 AI";
@@ -1686,6 +1686,175 @@ async function wsSave(rel, content) {
   await writeFile(full, text, "utf8");
   const st = await stat(full);
   return { path: wsRel(full), size: st.size };
+}
+
+// ---------------------------------------------------------------- 代码工作区（Agent 模式代码收录 / 模型审查）
+/**
+ * Agent 模式下助手回复里的围栏代码块由前端提取后 POST 到 /api/code/capture，
+ * 统一落到工作区 code/ 子目录；这里只做清洗、限量与落盘，路径复用上面的 ws* 函数。
+ */
+const CODE_CAPTURE_MAX_FILES = 20;
+const CODE_FILE_MAX_CHARS = 200000;
+const CODE_TOTAL_MAX_CHARS = 400000;
+const CODE_REVIEW_MAX_CHARS = 20000;
+/** 审查用小上下文的档位：首选 8192，模型训练上下文小就逐档回退（4096 → 2048） */
+const CODE_REVIEW_CONTEXT_SIZES = [8192, 4096, 2048];
+/** 代码审查的 system prompt（契约第三节 3.2 逐字）：四节固定标题，先结论后问题 */
+const CODE_REVIEW_SYSTEM =
+  "你是严格的代码审查员。结合用户给出的意图，判断这段代码的实现是否合理：先给结论，再列主要问题（按严重度排序，指出具体位置或片段），再给可执行的改进建议，最后说明风险与边界。用中文、Markdown，四节标题固定为：## 结论 / ## 主要问题 / ## 改进建议 / ## 风险与边界。不要复述整段代码，不要客套。";
+
+/**
+ * 把前端/模型给的文件名洗成安全的 basename：
+ * 剥掉路径（/ 与 \）、折叠 ..、只留 [A-Za-z0-9._-] 与中文；
+ * 空名 → snippet，无扩展名 → 补 .txt。
+ */
+function codeSafeName(raw) {
+  let name = String(raw ?? "").split(/[\\/]/).pop() ?? "";
+  name = name.replace(/[^\w.\-\u4e00-\u9fa5]/g, "");
+  name = name.replace(/\.{2,}/g, ".");
+  name = name.replace(/^\.+/, "").replace(/\.+$/, "");
+  if (!name) return "snippet.txt";
+  // 超长文件名在 Windows 上会直接 ENAMETOOLONG，扩展名之前最多留 60 个字符
+  const ext = path.extname(name).slice(0, 12);
+  if (!ext) return name.slice(0, 60) + ".txt";
+  const stem = name.slice(0, -ext.length).slice(0, 60) || "snippet";
+  return stem + ext;
+}
+
+/**
+ * 以「不覆盖」的方式写文件：同名时依次退到 name-2.ext、name-3.ext…
+ * 用 open(…, "wx") 判断是否已存在，避免先 exists 再写之间的竞态。
+ */
+async function codeWriteUnique(dirRel, baseName, content) {
+  const ext = path.extname(baseName);
+  const stem = baseName.slice(0, baseName.length - ext.length) || "snippet";
+  for (let n = 1; n <= 999; n++) {
+    const name = n === 1 ? baseName : stem + "-" + n + ext;
+    const full = wsResolve(dirRel + "/" + name);
+    let fh = null;
+    try {
+      fh = await open(full, "wx");
+    } catch (e) {
+      if (e?.code === "EEXIST") continue;
+      throw e;
+    }
+    try {
+      await fh.writeFile(content, "utf8");
+    } finally {
+      await fh.close().catch(() => {});
+    }
+    const st = await stat(full);
+    return { name, path: wsRel(full), bytes: st.size };
+  }
+  throw new Error("同名文件过多");
+}
+
+/** POST /api/code/capture：收录 1–20 段代码到 code/，返回落盘清单 */
+async function handleCodeCapture(req, res) {
+  let body;
+  try {
+    body = await readBody(req);
+  } catch (e) {
+    const status = e?.code === "BODY_TOO_LARGE" ? 413 : 400;
+    return sendJson(res, status, { error: { message: e?.message ?? "JSON 解析失败" } });
+  }
+  const files = Array.isArray(body?.files) ? body.files : [];
+  if (!files.length) return sendJson(res, 400, { error: { message: "缺少 files" } });
+  if (files.length > CODE_CAPTURE_MAX_FILES) {
+    return sendJson(res, 400, { error: { message: "一次最多收录 " + CODE_CAPTURE_MAX_FILES + " 个文件" } });
+  }
+  let total = 0;
+  const prepared = [];
+  for (const f of files) {
+    const content = typeof f?.content === "string" ? f.content : "";
+    if (!content) return sendJson(res, 400, { error: { message: "文件的 content 必须是非空字符串" } });
+    if (content.length > CODE_FILE_MAX_CHARS) {
+      return sendJson(res, 413, { error: { message: "单个文件超过 " + CODE_FILE_MAX_CHARS + " 字符" } });
+    }
+    total += content.length;
+    prepared.push({ name: codeSafeName(f?.name), content });
+  }
+  if (total > CODE_TOTAL_MAX_CHARS) {
+    return sendJson(res, 413, { error: { message: "合计超过 " + CODE_TOTAL_MAX_CHARS + " 字符" } });
+  }
+  try {
+    await mkdir(wsResolve("code"), { recursive: true });
+    const saved = [];
+    for (const p of prepared) saved.push(await codeWriteUnique("code", p.name, p.content));
+    log("代码收录 " + saved.length + " 个 → code/：" + saved.map((s) => s.name).join("、"));
+    return sendJson(res, 200, { ok: true, dir: "code", saved });
+  } catch (err) {
+    return sendJson(res, 500, { error: { message: String(err?.message ?? err) } });
+  }
+}
+
+/**
+ * POST /api/code/review：结合用户意图审查一段代码。
+ * 照 generateTitleWithModel() 的写法单开一个 8192 的小 context，
+ * 不往主会话的 sequence 里塞 token，因此不会破坏下一轮复用的 KV 缓存；用完即 dispose。
+ */
+async function handleCodeReview(req, res) {
+  let body;
+  try {
+    body = await readBody(req);
+  } catch (e) {
+    const status = e?.code === "BODY_TOO_LARGE" ? 413 : 400;
+    return sendJson(res, status, { error: { message: e?.message ?? "JSON 解析失败" } });
+  }
+  const code = typeof body?.code === "string" ? body.code : "";
+  if (!code.trim()) return sendJson(res, 400, { error: { message: "缺少 code" } });
+  if (code.length > CODE_REVIEW_MAX_CHARS) {
+    return sendJson(res, 413, { error: { message: "代码太长（上限 " + CODE_REVIEW_MAX_CHARS + " 字符）" } });
+  }
+  if (!state.model) return sendJson(res, 409, { error: { message: "先加载一个模型" } });
+  if (activeChats > 0) return sendJson(res, 409, { error: { message: "模型正忙，稍后再试" } });
+
+  const file = String(body.file ?? "").trim().slice(0, 120) || "未命名";
+  const lang = String(body.lang ?? "").trim().slice(0, 40) || "未知";
+  const intent = String(body.intent ?? "").trim().slice(0, 500) || "（未提供，按代码本身判断）";
+  const rawMax = Number(body.max_tokens);
+  const maxTokens = Math.max(128, Math.min(1600, Number.isFinite(rawMax) && rawMax > 0 ? Math.round(rawMax) : 900));
+  const prompt =
+    "【用户意图】" + intent + "\n" +
+    "【文件】" + file + "\n" +
+    "【语言】" + lang + "\n\n" +
+    "```" + (lang === "未知" ? "" : lang) + "\n" + code + "\n```";
+
+  const t0 = Date.now();
+  let ctx = null;
+  let ctxSize = 0;
+  let ctxErr = null;
+  try {
+    // 档位回退：8192 在 2048/4096 训练上下文的模型上建不起来（createContext 抛错），
+    // 依次降档；实际用到的档位写进日志和响应，探针/排错能一眼看出。
+    for (const size of CODE_REVIEW_CONTEXT_SIZES) {
+      try {
+        ctx = await state.model.createContext({ contextSize: size });
+        ctxSize = size;
+        break;
+      } catch (e) {
+        ctxErr = e;
+        log("代码审查上下文 " + size + " 建不起来，降到下一档：" + String(e?.message ?? e).slice(0, 80));
+      }
+    }
+    if (!ctx) throw ctxErr ?? new Error("无法创建代码审查用的上下文");
+    const session = new LlamaChatSession({
+      contextSequence: ctx.getSequence(),
+      // 必须和主聊天路径用同一个「不思考」模板，否则思考模型会先写满思维链
+      chatWrapper: state.wrapperNoThink ?? "auto",
+      systemPrompt: CODE_REVIEW_SYSTEM,
+    });
+    const review = String(await session.prompt(prompt, { maxTokens, temperature: 0.2 })).trim();
+    const seconds = +((Date.now() - t0) / 1000).toFixed(1);
+    log("代码审查 " + file + " " + (review ? "ok" : "空输出") + " 上下文 " + ctxSize + " " + seconds + "s");
+    return sendJson(res, 200, { ok: true, review, seconds, model: state.file, maxTokens, contextSize: ctxSize });
+  } catch (e) {
+    const seconds = +((Date.now() - t0) / 1000).toFixed(1);
+    log("代码审查 " + file + " 失败 " + (ctxSize ? "上下文 " + ctxSize + " " : "") + seconds + "s: " + String(e?.message ?? e));
+    return sendJson(res, 500, { error: { message: String(e?.message ?? e) } });
+  } finally {
+    if (ctx) await ctx.dispose().catch(() => {});
+  }
 }
 
 
@@ -4894,6 +5063,10 @@ async function handle(req, res) {
       return sendJson(res, 500, { error: { message: String(err?.message ?? err) } });
     }
   }
+  // ---- 代码工作区：Agent 模式代码收录 / 模型审查 ----
+  if (req.method === "POST" && url === "/api/code/capture") return handleCodeCapture(req, res);
+  if (req.method === "POST" && url === "/api/code/review") return handleCodeReview(req, res);
+
   // ---- 工作区（文件管理） ----
   if (url.startsWith("/api/workspace/")) {
     const act = url.slice("/api/workspace/".length);

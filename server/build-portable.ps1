@@ -248,8 +248,8 @@ QingYaoTP AILauncher（本地 AI）便携版
   想强制用浏览器窗口：QingYaoTP AILauncher.exe --no-webview
 
 三、模型
-  模型体积大，不随包分发。默认指向 D:\LocalModels；换机器时改 config.ini 的 modelDir，
-  或者把 gguf 放进本目录的 models\ 里（modelDir 留空即用该目录）。
+  模型体积大，不随包分发。默认用本目录的 models\（把 gguf 放进去即可）；
+  换机器/换目录时改 config.ini 的 modelDir（留空 = 本目录的 models\）。
   实测主力：qwen2.5-7b-instruct-q4_k_m（4.36GB，两分片，约 10 tok/s）。
 
   想跑得更快：config.ini 里的 gpu 保持 auto（先试 Vulkan，失败自动退 CPU）。

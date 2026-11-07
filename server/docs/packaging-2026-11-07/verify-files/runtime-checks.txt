@@ -1,0 +1,13 @@
+﻿runtime read-only checks 2026-11-07 11:29:57
+api/version: {"version":"1.2.0","commit":"","commitAt":"","builtAt":"2026-11-07T02:53:57.491Z","buildSource":"mtime","dirty":false,"startedAt":"2026-11-07T03:25:47.205Z","node":"v24.19.0","dir":"D:\\LocalModels\\dist\\QingYaoTP AILauncher\\app","pid":20324,"port":8099}
+api/state status=200 size=1542
+http://127.0.0.1:8099/debug -> 200 19774
+http://127.0.0.1:8099/debug-icon.png -> 200 3371
+http://127.0.0.1:8099/debug-icon.ico -> 200 33273
+http://127.0.0.1:8099/api/workspace/list?dir=code -> 200 39
+served / chars = 276964
+served html contains id="cwReview" = True
+served html contains id="cwEditor" = True
+served html contains id="cwList" = True
+served html contains id="cwTabs" = True
+served html contains setCodeCapture = True

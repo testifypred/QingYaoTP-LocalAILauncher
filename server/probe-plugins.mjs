@@ -14,14 +14,15 @@ const BASE = process.argv[2] || "http://127.0.0.1:8099";
 const FILE = "probe_tmp_plugin.mjs";
 const TOOL = "probe_tmp_tool";
 
-// 插件目录/禁用名单要按「跑的是源码还是发布包」推：
-//   - 源码：HERE=server → server\plugins
-//   - 发布包：HERE=dist\...\app → dist\...\plugins（= HERE\..\plugins）
-// /api/diag.paths.dir 给的就是 HERE，paths.sessions 给 workspace\sessions。
+// 插件目录/禁用名单要按「服务端实际用的目录」来，不要自己猜：
+//   服务端 PLUGIN_DIR = process.env.PLUGIN_DIR ?? <HERE>\..\plugins
+//   → 源码模式 HERE=server 时是 D:\LocalModels\plugins（不是 server\plugins！），
+//     发布包 HERE=...\app 时是 ...\plugins。猜错过一次（2026-11-07 全量在源码模式跑时 5 条红）。
+// /api/plugins 直接返回 dir，用它；拿不到再退回 diag 推断。
 const diag = await (await fetch(BASE + "/api/diag")).json();
 const HERE_DIR = String(diag?.paths?.dir || "");
-const isPackaged = path.basename(HERE_DIR) === "app";
-const PLUGIN_DIR = process.argv[3] || (isPackaged ? path.resolve(HERE_DIR, "..", "plugins") : path.resolve(HERE_DIR, "plugins"));
+const pluginsApi = await (await fetch(BASE + "/api/plugins")).json().catch(() => ({}));
+const PLUGIN_DIR = process.argv[3] || String(pluginsApi?.dir || "") || path.resolve(HERE_DIR, "..", "plugins");
 const CONFIG = path.join(path.dirname(String(diag?.paths?.sessions || path.join(HERE_DIR, "workspace", "sessions"))), "plugins.json");
 
 let pass = 0, fail = 0;

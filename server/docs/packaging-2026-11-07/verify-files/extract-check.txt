@@ -1,0 +1,67 @@
+﻿extract dir = C:\Users\lenovo\AppData\Local\Temp\qytp-verify-v120-20261107-112712
+extract OK in 16.4s
+extracted root = QingYaoTP AILauncher-v1.2.0
+files=3443 dirs=499 bytes=270762491 (258.2 MiB)
+
+=== key files after extract ===
+  OK   QingYaoTP AILauncher.exe                                57856
+  OK   DebugTool.exe                                           42496
+  OK   localai.ico                                             31308
+  OK   config.ini                                                963
+  OK   使用说明.txt                                                 4939
+  OK   Microsoft.Web.WebView2.Core.dll                        698208
+  OK   Microsoft.Web.WebView2.WinForms.dll                     38752
+  OK   WebView2Loader.dll                                     194912
+  OK   vc_redist.x64.exe                                    25635768
+  OK   runtime\node.exe                                     92825416
+  OK   app\app.mjs                                            262620
+  OK   app\app.html                                           298897
+  OK   app\doc-extract.mjs                                     10750
+  OK   app\config-recommend.mjs                                 6063
+  OK   app\debug.html                                          19774
+  OK   app\localai-debug.mjs                                    8365
+  OK   app\localai-debug.cmd                                     237
+  OK   app\debug-icon-64.png                                    3371
+  OK   app\debug.ico                                           33273
+  OK   app\vendor\katex\katex.min.js                          272868
+  OK   app\node_modules\node-llama-cpp\package.json             7829
+  OK   plugins\disk.mjs                                         1128
+  OK   plugins\hello.mjs                                        1059
+  OK   plugins\notes.mjs                                        1517
+  missing = 0
+  dir data: exists=True children=0
+  dir logs: exists=True children=0
+  dir models: exists=True children=0
+  unwanted: app\server.pid=False ; data\webview2=False
+
+=== hashes (extracted vs server) ===
+  app.mjs                  MATCH  server=98849B624597CDF8 extracted=98849B624597CDF8
+  app.html                 MATCH  server=EB5AADA5D7868D0C extracted=EB5AADA5D7868D0C
+  doc-extract.mjs          MATCH  server=9E08B87B04751950 extracted=9E08B87B04751950
+  config-recommend.mjs     MATCH  server=FD2BD97860688F6D extracted=FD2BD97860688F6D
+  all match = True
+  launcher exe MATCH=True size=57856
+  DebugTool exe MATCH=True size=42496
+
+=== extracted config.ini ===
+  | port=8099
+  | modelDir=
+  | autoLoad=
+  | contextSize=16384
+  | kvReuse=1
+  | gpu=auto
+  | vkDevices=
+  modelDir empty = True ; contains D:\LocalModels = False
+
+=== node --check (extracted runtime node) ===
+  node -v = v24.19.0
+  --check app.mjs                exit=0 
+  --check config-recommend.mjs   exit=0 
+  --check doc-extract.mjs        exit=0 
+  --check localai-debug.mjs      exit=0 
+  --check localai.mjs            exit=0 
+  --check localai-tui.mjs        exit=0 
+
+=== readme extracted ===
+  contains D:\LocalModels = False ; contains 默认用本目录的 models = True
+

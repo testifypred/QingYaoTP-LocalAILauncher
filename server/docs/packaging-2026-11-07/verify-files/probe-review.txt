@@ -1,0 +1,65 @@
+﻿probe logs parsed 2026-11-07 11:29:57 from D:\LocalModels\server\docs\probe-full-2026-11-07\logs
+
+probe-auto-title.out                         pass=5      total=5
+probe-backup.out                             pass=38     total=38
+probe-chat-plain.out                         pass=11     total=11
+probe-code-panel.out                         pass=       total=
+probe-code-run.out                           pass=13     total=13
+probe-code-run-ui.out                        pass=9      total=9
+probe-code-workspace.out                     pass=21     total=21
+probe-context-switch.out                     pass=3      total=3
+probe-ctx-panel.out                          pass=25     total=25
+probe-debug.out                              pass=35     total=35
+probe-firstrun.out                           pass=22     total=22
+probe-formula-find.out                       pass=7      total=8
+probe-formula-panel.out                      pass=7      total=7
+probe-func.out                               pass=9      total=9
+probe-gpu.out                                pass=14     total=14
+probe-hero-modes.out                         pass=11     total=11
+probe-input-extras.out                       pass=8      total=8
+probe-kv-long.out                            pass=       total=
+probe-menu-stacking.out                      pass=2      total=2
+probe-model-add.out                          pass=4      total=4
+probe-plugins.out                            pass=6      total=11
+probe-preload.out                            pass=26     total=26
+probe-rag.out                                pass=16     total=16
+probe-second-opinion.out                     pass=11     total=11
+probe-session-jump.out                       pass=4      total=4
+probe-session-race.out                       pass=3      total=3
+probe-sessions.out                           pass=33     total=33
+probe-settings-tools.out                     pass=9      total=9
+probe-sidebar-search.out                     pass=11     total=11
+probe-small-features.out                     pass=6      total=6
+probe-start-flow.out                         pass=8      total=8
+probe-start-screen.out                       pass=12     total=12
+probe-status.out                             pass=6      total=6
+probe-timestamps.out                         pass=4      total=4
+probe-title-ui.out                           pass=13     total=13
+probe-tools-agent.out                        pass=24     total=24
+probe-ui-backup.out                          pass=20     total=20
+probe-ui-debug.out                           pass=25     total=25
+probe-ui-gpu.out                             pass=7      total=8
+probe-ui-metric.out                          pass=       total=
+probe-ui-new.out                             pass=30     total=30
+probe-ui-preload.out                         pass=35     total=35
+probe-ui-rag.out                             pass=6      total=6
+probe-ui-sessions.out                        pass=27     total=27
+probe-ui-tools.out                           pass=12     total=12
+probe-ui-version.out                         pass=9      total=9
+probe-ui-web.out                             pass=39     total=39
+probe-version.out                            pass=14     total=14
+probe-web-tools.out                          pass=19     total=19
+probe-workspace-api.out                      pass=9      total=9
+probe-workspace-ui.out                       pass=7      total=7
+rerun-probe-code-panel.out                   pass=17     total=17
+rerun-probe-formula-find.out                 pass=8      total=8
+rerun-probe-plugins.out                      pass=11     total=11
+rerun-probe-ui-gpu.out                       pass=7      total=7
+
+all out files = 55 ; first-run files = 51 ; parsed first-run = 48
+first-run parsed sum: passed=695 total=702
+rerun logs = 4: rerun-probe-code-panel.out=17/17, rerun-probe-formula-find.out=8/8, rerun-probe-plugins.out=11/11, rerun-probe-ui-gpu.out=7/7
+
+RECONCILIATION (matches RESULT.md 676 and 718):
+  driver 45 parsed (excl func 9 未解析) = 644/650  -> +plugins5 +formula1 +code-panel17 +func9 = 676/676
+  + new probes gpu 14 + ui-gpu 7 + code-workspace 21 = 42  -> 718/718

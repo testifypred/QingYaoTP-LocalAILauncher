@@ -1,0 +1,77 @@
+# 前端自测：代码工作区（task-4，只改 server/app.html）
+
+时间：2026-11-07 10:47–10:58（Asia/Shanghai）
+改动范围：仅 server/app.html（git diff --stat：1 file changed, 605 insertions(+), 88 deletions(-)）
+
+## 1. 语法检查（node --check）
+
+- 把 app.html 里两段内联脚本抽出为临时文件检查（检查后已删除）：
+  - inline#1（主题预设，原第 8 行起）→ exit 0
+  - inline#2（主脚本，183,849 字节）→ exit 0
+- node --check server/app.mjs → exit 0（未改后端，只确认集成基线）
+
+## 2. 静态页面 / API 检查（临时服务 PORT=8101）
+
+临时服务用独立 MODEL_DIR（docs 下临时目录），不写用户 workspace；测完已停（8101 无监听）并删除临时目录。
+
+- GET / → 200，长度 269,980
+- 契约 DOM id 全部存在：codeModal / cwList / cwTabs / cwEditor / cwSave / cwRun / cwReview / cwOutput /
+  cwReviewBody / cwIntent / cwReviewMeta / cwNew / cwNewName / cwRefresh / cwDelete / cwDir / cwStatus /
+  cwReviewToggle / cwEmpty / cwReviewPanel / codeClose / codeBtn / setCodeCapture
+- 旧 id 已删除：codeLang / codeEditor / codeOutput / codeRunBtn / codeClearBtn / codeMeta → 页面均无
+- 页面含 class="codeToWs"、codeCapturedOpen、#setCodeCapture
+- GET /api/run/langs → javascript,python,java,cpp,c,go,rust
+- POST /api/code/capture（2 文件）→ 200：code/selftest-alpha.py:11、code/selftest-beta.js:15
+  （第二个名字 ../escape/selftest-beta.js 被后端清洗，落盘路径不含 ..）
+- GET /api/workspace/list?dir=code → 2 条；read 读回一致；save 后读回一致；delete ×2 → ok；list → 0
+- POST /api/code/review（未加载模型）→ 409（前端会显示「审查失败：先加载一个模型」）
+- POST /api/code/capture（files:[]）→ 400
+
+## 3. headless Edge 9335 + CDP 行为自测：41/41 PASS
+
+独立 Edge profile（--headless=new --remote-debugging-port=9335 --user-data-dir=临时目录），
+Page.reload 后驱动；结束用 Browser.close 关闭（9335 无监听、无残留 _selftest Edge 进程）。
+
+页面与 DOM：
+- 页面加载完成 / 无 JS 运行时异常 / 无意外资源错误（404 只有既有的 /favicon.ico）
+- #codeBtn 存在；CodeMirror 库已加载；契约 DOM id 齐全；#codeModal 初始隐藏；#setCodeCapture 默认勾选
+
+文件列表 / 标签页 / 编辑器：
+- 点 #codeBtn 打开面板；左侧列表 >=2 条；标签页出现；CodeMirror 挂载且有内容；标签带 data-path
+- 点列表切文件 → 标签 >=2 且选中项切换
+
+编辑 / 保存（dirty）：
+- CodeMirror.setValue 后标签出现 .dirty；点 #cwSave → .dirty 消失；/api/workspace/read 读回 print(4242) 一致
+- Ctrl+S 同样能保存（.dirty 清掉）
+
+新建 / 删除：
+- #cwNewName 填 ui-test-new.py 点 #cwNew → 列表 +1 且自动打开新文件
+- 删除（探针内 window.confirm 替身为 true）→ 文件与标签关掉，列表恢复
+
+运行：
+- 打开 python 文件写 print(42)，点 #cwRun → #cwOutput 可见，内容「✓ exit 0 · 91 ms」+ 42
+- Ctrl+Enter → 输出「✓ exit 0 · 79 ms」+ 7
+
+模型审查：
+- 未加载模型时点 #cwReview → 面板红字「审查失败：先加载一个模型」，按钮恢复可用，不崩（409 路径）
+- 计时文案/按钮置灰逻辑在请求期间生效（代码路径，见修改段）
+- 404 未就绪路径：后端已集成好，本次无法真实触发；前端按 status===404 提示「后端接口还没就绪」（代码自查）
+
+Agent 自动收录：
+- 用 window.renderMarkdown 渲染 2 段围栏代码（python/js）+ 调用 window.captureAgentCode：
+  - 每个 .codeHead 都有 .codeToWs（2/2）
+  - 大气泡后插入 .codeCaptured：「Agent 模式：已收录 2 段代码到代码工作区」+ .codeCapturedOpen
+  - 两个 .codeWrap 分别挂上 dataset.wsPath=code/python-105646-1.py、code/js-105646-2.py
+  - 点 .codeCapturedOpen → 打开工作区并定位第一个文件；点第 2 个代码块「工作区」→ 定位第二个文件
+
+设置 / 快捷键 / 其它：
+- 设置 → 生成：#setCodeCapture 默认勾选；取消并保存 → localai.settings.codeCapture=false、localai.codeCapture=false；
+  恢复勾选后 localai.codeCapture=true
+- body.noCodeRun 跟随 #setCodeRun 的既有逻辑未被破坏（保存后 body 无 noCodeRun）
+- Esc 关闭面板生效
+- 测试创建的 code/ 文件全部清理（list → 0）
+
+## 4. 备注
+
+- 临时文件（抽取的 inline js、CDP 脚本、Edge profile、临时 MODEL_DIR）均已删除，只留本文件。
+- 本目录里的 backend-selftest* 是后端同学的文件，未改动。

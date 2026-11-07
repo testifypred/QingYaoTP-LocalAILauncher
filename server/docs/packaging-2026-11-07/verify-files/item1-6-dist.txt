@@ -1,0 +1,86 @@
+﻿=== ITEM 1: app key files (dist) ===
+OK   app.mjs                      262620
+OK   app.html                     298897
+OK   doc-extract.mjs               10750
+OK   config-recommend.mjs           6063
+OK   debug.html                    19774
+OK   localai-debug.mjs              8365
+OK   localai-debug.cmd               237
+OK   debug-icon-64.png              3371
+OK   debug.ico                     33273
+OK   localai.mjs                   16540
+OK   localai.cmd                     304
+OK   localai-tui.mjs               22261
+OK   localai-tui.cmd                 258
+OK   vendor\katex\katex.min.js
+OK   node_modules\node-llama-cpp\package.json
+
+=== ITEM 2: root files (dist) ===
+OK   QingYaoTP AILauncher.exe                    57856
+OK   DebugTool.exe                               42496
+OK   localai.ico                                 31308
+OK   config.ini                                    979
+OK   使用说明.txt                                     4939
+OK   Microsoft.Web.WebView2.Core.dll            698208
+OK   Microsoft.Web.WebView2.WinForms.dll         38752
+OK   WebView2Loader.dll                         194912
+OK   vc_redist.x64.exe                        25635768
+OK   runtime\node.exe                         92825416
+plugins mjs count = 3 -> disk.mjs, hello.mjs, notes.mjs
+
+=== ITEM 3: source SHA256 server vs dist ===
+app.mjs                  MATCH  server=98849B624597CDF8(262620B) dist=98849B624597CDF8(262620B)
+app.html                 MATCH  server=EB5AADA5D7868D0C(298897B) dist=EB5AADA5D7868D0C(298897B)
+doc-extract.mjs          MATCH  server=9E08B87B04751950(10750B) dist=9E08B87B04751950(10750B)
+config-recommend.mjs     MATCH  server=FD2BD97860688F6D(6063B) dist=FD2BD97860688F6D(6063B)
+
+=== ITEM 4: exe checks ===
+QingYaoTP AILauncher.exe: size=57856 mtime=2026-11-07 11:24:04 head=4D 5A 90 00
+DebugTool.exe: size=42496 mtime=2026-11-07 11:24:05 head=4D 5A 90 00
+
+=== ITEM 5: dist config.ini ===
+  | port=8099
+  | modelDir=D:\LocalModels
+  | autoLoad=
+  | contextSize=16384
+  | kvReuse=1
+  | gpu=auto
+  | vkDevices=
+dist config.ini mtime = 2026-11-07 11:25:37
+modelDir empty? False
+has vkDevices line? True
+contains D:\LocalModels? True
+contains any drive path? True
+
+=== ITEM 6: node_modules + runtime node ===
+node_modules top-level dirs = 41
+node_modules top-level files = 1 -> .package-lock.json
+runtime node -v = v24.19.0
+
+=== version 1.2.0 three places ===
+app.mjs: const APP_VERSION = "1.2.0";
+server package.json: "version": "1.2.0",
+/api/version: {"version":"1.2.0","commit":"","commitAt":"","builtAt":"2026-11-07T02:53:57.491Z","buildSource":"mtime","dirty":false,"startedAt":"2026-11-07T03:25:47.205Z","node":"v24.19.0","dir":"D:\\LocalModels\\dist\\QingYaoTP AILauncher\\app","pid":20324,"port":8099}
+/api/health ERR
+
+=== 使用说明.txt (dist) ===
+readme size = 4939
+contains 'D:\LocalModels' = False
+contains 'models\' = True
+-- lines mentioning 模型目录 / models --
+  |   config.ini                端口、模型目录、自动加载模型
+  |   模型体积大，不随包分发。默认用本目录的 models\（把 gguf 放进去即可）；
+  |   换机器/换目录时改 config.ini 的 modelDir（留空 = 本目录的 models\）。
+  |   第一次没有模型也没关系：首启会引导你扫描本机，或者从 ModelScope 直接下一个（约 470MB）。
+
+=== code workspace markers (dist) ===
+app.html contains id="cwReview"      = True
+app.html contains id="cwEditor"      = True
+app.html contains id="cwList"        = True
+app.html contains id="cwTabs"        = True
+app.html contains setCodeCapture     = True
+app.html contains cwReview           = True
+app.html contains cwEditor           = True
+app.mjs contains /api/code/capture      = True
+app.mjs contains /api/code/review       = True
+dist app.mjs size = 262620 ; app.html size = 298897

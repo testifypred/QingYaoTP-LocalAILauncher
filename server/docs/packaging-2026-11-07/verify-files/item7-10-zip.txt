@@ -1,0 +1,107 @@
+﻿ZIP: 127767661 bytes (121.8 MiB) mtime=2026-11-07 11:25:21
+ZIP sha256 = 7E6DC404FCAF4477CCE4B5ED4F61CF30F9A69C1F5C20B98546616C5BAC6E3D72
+
+===== ITEM 7 structure =====
+entries=3943 dirs=500 files=3443
+roots=1 -> QingYaoTP AILauncher-v1.2.0
+root == 'QingYaoTP AILauncher-v1.2.0' -> True
+root dir entry present -> True
+entries with backslash = 0
+entries without root prefix = 0
+entries with drive/abs path = 0
+entries with .. = 0
+entries with v1.1.0 in name = 0
+entries with v1.2.0 prefix = 3943
+
+===== ITEM 8 content =====
+config.ini size=963
+  | port=8099
+  | modelDir=
+  | autoLoad=
+  | contextSize=16384
+  | kvReuse=1
+  | gpu=auto
+  | vkDevices=
+  modelDir empty = True
+  vkDevices line = True
+  contains D:\LocalModels = False
+  contains drive path = False
+  app/app.html                         size=    298897 expected=    298897 OK
+  app/app.mjs                          size=    262620 expected=    262620 OK
+  app/config-recommend.mjs             size=      6063 expected=      6063 OK
+  app/debug.html                       size=     19774 expected=     19774 OK
+  app/debug.ico                        size=     33273 expected=     33273 OK
+  app/debug-icon-64.png                size=      3371 expected=      3371 OK
+  app/doc-extract.mjs                  size=     10750 expected=     10750 OK
+  app/localai-debug.cmd                size=       237 expected=       237 OK
+  app/localai-debug.mjs                size=      8365 expected=      8365 OK
+  DebugTool.exe                        size=     42496 expected=     42496 OK
+  localai.ico                          size=     31308 expected=     31308 OK
+  Microsoft.Web.WebView2.Core.dll      size=    698208 expected=    698208 OK
+  Microsoft.Web.WebView2.WinForms.dll  size=     38752 expected=     38752 OK
+  QingYaoTP AILauncher.exe             size=     57856 expected=     57856 OK
+  runtime/node.exe                     size=  92825416 expected=  92825416 OK
+  vc_redist.x64.exe                    size=  25635768 expected=  25635768 OK
+  WebView2Loader.dll                   size=    194912 expected=    194912 OK
+  使用说明.txt                             size=      4939 expected=      4939 OK
+  -- source hash (zip vs server) --
+  app.mjs                  MATCH  zip=98849B624597CDF8 server=98849B624597CDF8
+  app.html                 MATCH  zip=EB5AADA5D7868D0C server=EB5AADA5D7868D0C
+  doc-extract.mjs          MATCH  zip=9E08B87B04751950 server=9E08B87B04751950
+  config-recommend.mjs     MATCH  zip=FD2BD97860688F6D server=FD2BD97860688F6D
+  -- code workspace markers in zip --
+  app.html id="cwReview"      = True
+  app.html id="cwEditor"      = True
+  app.html id="cwList"        = True
+  app.html id="cwTabs"        = True
+  app.html setCodeCapture     = True
+  app.mjs /api/code/capture    = True
+  app.mjs /api/code/review     = True
+  app.mjs APP_VERSION 1.2.0 = True
+  readme contains D:\LocalModels = False
+  readme contains '默认用本目录的 models' = True
+  readme md5-line:   模型体积大，不随包分发。默认用本目录的 models\（把 gguf 放进去即可）； //   换机器/换目录时改 config.ini 的 modelDir（留空 = 本目录的 models\）。 //   第一次没有模型也没关系：首启会引导你扫描本机，或者从 ModelScope 直接下一个（约 470MB）。
+  plugins mjs = 3 -> disk.mjs, hello.mjs, notes.mjs
+  katex entries = 69 ; node-llama-cpp entries = 3155
+  app/node_modules package dirs = 41
+
+===== ITEM 9 hygiene =====
+data/ real files = 0
+logs/ real files = 0
+data dir entry = True
+logs dir entry = True
+models dir entry = True
+  [(?i)\.pid$] -> 0
+  [(?i)\.log$] -> 0
+  [(?i)\.tmp$] -> 0
+  [workspace] -> 0
+  [discovery\.json] -> 0
+  [qytp-zip-] -> 0
+  [AppData] -> 0
+  [/Temp/] -> 0
+  [server\.pid] -> 0
+  [rag-index] -> 0
+  [/sessions] -> 2
+      QingYaoTP AILauncher-v1.2.0/app/node_modules/node-llama-cpp/node_modules/lowdb/lib/adapters/browser/SessionStorage.d.ts
+      QingYaoTP AILauncher-v1.2.0/app/node_modules/node-llama-cpp/node_modules/lowdb/lib/adapters/browser/SessionStorage.js
+  entries containing 'LocalModels' = 0
+
+===== ITEM 10 chinese filename =====
+non-ASCII entries = 1
+  CN: QingYaoTP AILauncher-v1.2.0/使用说明.txt size=4939
+manual entry = QingYaoTP AILauncher-v1.2.0/使用说明.txt size=4939
+  manual sha zip=652DF809364A09D9 disk=652DF809364A09D9
+
+===== top-level (2-seg) entries =====
+           963 QingYaoTP AILauncher-v1.2.0/config.ini
+         42496 QingYaoTP AILauncher-v1.2.0/DebugTool.exe
+         31308 QingYaoTP AILauncher-v1.2.0/localai.ico
+        698208 QingYaoTP AILauncher-v1.2.0/Microsoft.Web.WebView2.Core.dll
+         38752 QingYaoTP AILauncher-v1.2.0/Microsoft.Web.WebView2.WinForms.dll
+         57856 QingYaoTP AILauncher-v1.2.0/QingYaoTP AILauncher.exe
+      25635768 QingYaoTP AILauncher-v1.2.0/vc_redist.x64.exe
+        194912 QingYaoTP AILauncher-v1.2.0/WebView2Loader.dll
+          4939 QingYaoTP AILauncher-v1.2.0/使用说明.txt
+--- top-level dirs ---
+  QingYaoTP AILauncher-v1.2.0/
+zip-entries.txt lines = 3943

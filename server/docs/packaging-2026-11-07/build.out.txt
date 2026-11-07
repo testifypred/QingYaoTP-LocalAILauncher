@@ -1,0 +1,39 @@
+﻿**********************
+Windows PowerShell transcript start
+Start time: 20261107112340
+Username: LAPTOP-H83U4VIF\lenovo
+RunAs User: LAPTOP-H83U4VIF\lenovo
+Configuration Name: 
+Machine: LAPTOP-H83U4VIF (Microsoft Windows NT 10.0.26200.0)
+Host Application: C:\WINDOWS\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -Command Start-Transcript -Path 'D:\LocalModels\server\docs\packaging-2026-11-07\build.out.txt' -Force | Out-Null; & 'D:\LocalModels\server\build-portable.ps1'; Stop-Transcript | Out-Null
+Process ID: 8328
+PSVersion: 5.1.26100.9711
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9711
+BuildVersion: 10.0.26100.9711
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+==> 清空旧产物 D:\LocalModels\dist\QingYaoTP AILauncher
+==> 复制服务端与界面
+   已附带 vc_redist.x64.exe（24MB）
+   已附带插件 3 个
+==> 复制 node-llama-cpp（剔除 cuda / arm64 变体）
+==> 复制 TTS 依赖（msedge-tts / ws 等，约 3MB）
+==> 复制 Node 运行时
+==> 编译启动器（带图标 + WebView2 内嵌窗口）
+
+==> 编译调试工具（独立窗口 + 自己的 ico）
+
+==> 写配置与说明
+
+完成：D:\LocalModels\dist\QingYaoTP AILauncher
+  app\\      144.2 MB
+  合计       258.2 MB / 3443 个文件
+  另有 data\\  156.5 MB（运行期缓存，可随时删）
+**********************
+Windows PowerShell transcript end
+End time: 20261107112406
+**********************

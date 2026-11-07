@@ -51,9 +51,14 @@ if (want > 0) {
   await ev("(() => { const r = document.querySelector('#gpuList input[name=gpuDev][value=\"0\"]'); r.checked = true; return 1; })()");
   await ev("document.getElementById('gpuSave').click(); 1"); await sleep(1200);
   const saved = await j("GET", "/api/gpus");
-  ok("保存设备 0 后 config=0", String(saved.config) === "0", "config=" + saved.config);
   const hint = String(await ev("(document.getElementById('gpuHint')||{}).textContent||''"));
-  ok("界面提示已保存/要重启", /已保存|重启|config\.ini/.test(hint), hint.slice(0, 60));
+  if (api0.configWritable === false) {
+    // 源码模式（node app.mjs）没有 config.ini：服务端只回 note 不写盘，这里断言「给了说明」而不是 config=0
+    ok("保存设备 0 后未写盘并给出说明（开发目录）", String(saved.config) === "" && /config\.ini|没写盘|环境变量/.test(hint), "config=" + String(saved.config) + " hint=" + hint.slice(0, 40));
+  } else {
+    ok("保存设备 0 后 config=0", String(saved.config) === "0", "config=" + saved.config);
+    ok("界面提示已保存/要重启", /已保存|重启|config\.ini/.test(hint), hint.slice(0, 60));
+  }
   // 恢复「自动」
   await ev("(() => { const r = document.querySelector('#gpuList input[name=gpuDev][value=\"\"]'); r.checked = true; return 1; })()");
   await ev("document.getElementById('gpuSave').click(); 1"); await sleep(1200);

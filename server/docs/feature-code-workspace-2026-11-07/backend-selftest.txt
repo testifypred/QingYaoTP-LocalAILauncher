@@ -1,0 +1,137 @@
+# /api/code/capture + /api/code/review 后端自测（task-3 / backend）
+
+- 时间：2026-11-07 10:50–10:59（Asia/Shanghai；初测 10:50–10:53，追加改动后复测 10:57–10:59）
+- 环境：node v24.17.0（DSH 内置运行时）、PORT=8100 临时实例、MODEL_DIR=D:\LocalModels、未加载任何模型
+- 8099：没有任何测试请求发往 8099（一次启动命令漏设 PORT 的过程记录见 §6.5）
+- 改动文件：仅 D:\LocalModels\server\app.mjs（APP_VERSION 1.1.0 → 1.2.0；新增契约第三节两个接口与路由）
+- 本目录内的服务日志：backend-selftest-server.out.log / backend-selftest-server.err.log
+- 自测脚本位于系统临时目录，跑完已删除（未留在仓库里）
+
+## 1. 语法自测
+
+命令（cwd = D:\LocalModels\server）：
+  node --check app.mjs
+结果：EXIT=0（无输出）
+
+## 2. 启动临时实例（8100）
+
+  $env:PORT='8100'; Start-Process node app.mjs -WorkingDirectory D:\LocalModels\server
+结果：/health 200（4s 内就绪）
+      /api/state → version=1.2.0，loaded=false，activeChats=0
+
+## 3. 接口断言（29/29 PASS）
+
+PASS  capture 正常 2 文件 → 200  :: status=200
+PASS  capture 返回 ok/dir  :: "code"
+PASS  capture saved 2 条且路径以 code/ 开头  :: ["code/hello.py","code/中文名.js"]
+PASS  capture 中文名保留  :: 中文名.js
+PASS  capture bytes 为 UTF-8 字节数  :: 10
+PASS  capture 文件确实落在 workspace\code\ 下  :: code/hello.py,code/中文名.js
+PASS  capture 重名追加 -2  :: ["dup.js","dup-2.js"]
+PASS  capture 重名不覆盖（内容各自保留）  :: ["A","B"]
+PASS  capture 跨请求重名 → dup-2-2.js  :: dup-2-2.js
+PASS  capture ../evil.js 被剥成 evil.js  :: {"name":"evil.js","path":"code/evil.js","bytes":1}
+PASS  capture ..\evil2.js 被剥成 evil2.js  :: "evil2.js"
+PASS  capture 空名 → snippet.txt  :: snippet.txt
+PASS  capture 无扩展名 → .txt  :: makefile.txt
+PASS  capture 缺 files → 400  :: status=400 msg=缺少 files
+PASS  capture files 非数组 → 400  :: status=400
+PASS  capture 空数组 → 400  :: status=400
+PASS  capture 21 个 → 400  :: status=400 msg=一次最多收录 20 个文件
+PASS  capture content 非字符串 → 400  :: status=400
+PASS  capture content 空 → 400  :: status=400
+PASS  capture 单文件 >200000 → 413  :: status=413
+PASS  capture 合计 >400000 → 413  :: status=413
+PASS  GET /api/workspace/list?dir=code 200  :: status=200 count=9
+PASS  列表包含 hello.py / 中文名.js  :: 中文名.js,dup-2-2.js,dup-2.js,dup.js,evil.js,evil2.js,hello.py,makefile.txt,snippet.txt
+PASS  review 缺 code → 400  :: status=400 msg=缺少 code
+PASS  review 空白 code → 400  :: status=400
+PASS  review >20000 字符 → 413  :: status=413
+PASS  review 未加载模型 → 409 先加载一个模型  :: status=409 msg=先加载一个模型
+PASS  清理测试文件  :: 9/9
+PASS  清理后列表不再有测试文件
+
+SUMMARY: 全部通过（29 项）
+
+## 4. 落盘与清理验证
+
+- capture 返回的 path 逐个用 fs.access 验证存在：D:\LocalModels\workspace\code\<name>
+- 重名不覆盖：dup.js 内容 "A"、dup-2.js 内容 "B"；再提交同名 dup-2.js → dup-2-2.js
+- 穿越名清洗：../evil.js → code/evil.js，..\evil2.js → code/evil2.js（name 与 path 均不含 ".."）
+- 空名 → snippet.txt；无扩展名 makefile → makefile.txt
+- 清理：9 个测试文件全部经 POST /api/workspace/delete 删除；清理后
+  GET /api/workspace/list?dir=code → entries=0，磁盘 D:\LocalModels\workspace\code 下文件数=0（目录保留，供前端工作区使用）
+- 收尾：8100 临时实例已停止，127.0.0.1:8100 不再监听（HTTP_REFUSED），8099 无测试请求
+
+## 5. 未覆盖项 / 风险
+
+1. review 成功路径（真正调用模型生成审查文本）未实测：按硬约束不加载大模型，本机未加载模型，故只实测了 400/413/409 分支。
+2. review 的「模型正忙」409（activeChats>0）未实测：需要并发长推理才能触发；分支实现与契约一致。
+3. 8192 小上下文：已按 Lead 要求改为按 [8192, 4096, 2048] 逐档回退（见 §6），建不起来的档位会 log 一行并降档；
+   仍存在的风险是「上下文建得起来但 prompt 塞不下」：code 上限 20000 字符 + maxTokens 最多 1600，
+   长中文/大文件在 8192 档仍可能超窗（2048/4096 档更明显）。是否按长度再限流，留待 Lead 决定。
+4. server\package.json 的 version 仍是 1.1.0，APP_VERSION 已 1.2.0；probe-version 会比较两者，
+   需 Lead 在收尾时同步（本任务范围限定只改 server/app.mjs，故未动 package.json）。
+5. 兼容性：只新增两条 POST 分支（在 /api/workspace/ block 之前），不改既有接口；旧前端不调用时无影响。
+
+## 6. 追加改动（Lead 收尾要求）与复测 10:57–10:59
+
+### 6.1 改动内容（仍在 server/app.mjs 内，未动别的文件）
+
+- 新增常量 CODE_REVIEW_CONTEXT_SIZES = [8192, 4096, 2048]（L1700–1701）
+- handleCodeReview()：createContext 改为按档位依次尝试，抛错就降一档；每个失败档位 log 一行
+  「代码审查上下文 N 建不起来，降到下一档：…」；实际档位写入成功日志与响应
+- 成功响应追加 contextSize 字段：{ ok, review, seconds, model, maxTokens, contextSize }，契约其它字段不变
+- server\package.json 未动（Lead 负责同步 1.2.0）
+
+### 6.2 静态检查
+
+  node --check app.mjs            → EXIT=0
+  源码确认档位循环与字段：
+    const CODE_REVIEW_CONTEXT_SIZES = [8192, 4096, 2048];
+    for (const size of CODE_REVIEW_CONTEXT_SIZES) { try { ctx = await state.model.createContext({ contextSize: size }); ... } catch ... }
+    return sendJson(res, 200, { ok: true, review, seconds, model: state.file, maxTokens, contextSize: ctxSize });
+
+### 6.3 复测（PORT=8100，未加载模型；21/21 PASS）
+
+PASS  capture 2 文件 → 200 / dir=code  :: status=200
+PASS  saved 路径均以 code/ 开头、bytes=UTF-8 长度  :: [{"name":"r-hello.py","path":"code/r-hello.py","bytes":10},{"name":"r-中文.js","path":"code/r-中文.js","bytes":15}]
+PASS  中文名保留  :: r-中文.js
+PASS  落盘存在  :: code/r-hello.py,code/r-中文.js
+PASS  同请求重名 → r-dup.js / r-dup-2.js  :: ["r-dup.js","r-dup-2.js"]
+PASS  重名不覆盖  :: ["A","B"]
+PASS  名字 ../r-evil.js → r-evil.js（无 ..）  :: {"name":"r-evil.js","path":"code/r-evil.js","bytes":1}
+PASS  空名 → snippet.txt  :: snippet.txt
+PASS  缺 files → 400 缺少 files  :: status=400 msg=缺少 files
+PASS  files 非数组 → 400  :: status=400
+PASS  21 个 → 400  :: status=400
+PASS  content 非字符串 → 400  :: status=400
+PASS  单文件 >200000 → 413  :: status=413
+PASS  合计 >400000 → 413  :: status=413
+PASS  workspace/list?dir=code 200 且含刚写的文件  :: status=200 count=6
+PASS  review 缺 code → 400 缺少 code  :: status=400 msg=缺少 code
+PASS  review 空白 code → 400  :: status=400
+PASS  review >20000 → 413  :: status=413
+PASS  review 未加载模型 → 409 先加载一个模型  :: status=409 msg=先加载一个模型
+PASS  清理测试文件  :: 6/6
+PASS  清理后无残留
+
+SUMMARY: 全部通过（21 项）
+
+- 结论：capture 全路径与 review 的 400/413/409 分支无回归；新增档位回退只发生在「已加载模型、进入 createContext」之后，
+  未加载模型时仍在建上下文之前返回 409，语义与契约一致。
+- 本次实例日志：backend-selftest2-server.out.log（启动、收录 4 行；review 走 409 路径不产生生成日志，符合预期）
+- 收尾：后台任务已停止，127.0.0.1:8100 无监听、HTTP_REFUSED；server.pid 残留已删；
+  测试文件清理后 workspace\code 文件数=0。
+
+### 6.4 未覆盖
+
+- 档位回退本身（8192 失败→4096→2048）与 contextSize 成功响应无法在「不加载模型」的硬约束下实测，
+  只能静态检查；建议 Lead 集成后用一个小上下文模型跑一次 review，确认日志出现「上下文 4096/2048」。
+- review 成功文本、activeChats>0 的 409 同 §5 第 1、2 条。
+
+### 6.5 过程记录（如实登记）
+
+10:54 复测首次启动命令漏写 $env:PORT='8100'，临时实例按默认端口在 8099 上启动并空闲约 2 分钟
+（无任何 API 请求、无 workspace 落盘；期间用户应用未在该端口运行），随后被工具超时终止。
+复测改为显式 PORT=8100 的受管后台任务，已确认 8099/8100 当前均无监听。
