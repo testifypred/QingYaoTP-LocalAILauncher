@@ -1,0 +1,135 @@
+视觉 sidecar 探针说明（vision-prober / 2026-11-07）
+=================================================
+
+一、交付物（只动了这些文件）
+----------------------------
+1) server/probe-vision-api.mjs      纯 API 探针，201 行，31 个 ok() 调用点（有 pair 约 25 条，无 pair 约 14 条）
+2) server/probe-ui-vision.mjs       UI 探针（CDP 9333），225 行，22 个 ok() 调用点（有 pair 约 19 条，无 pair 约 18 条）
+3) server/docs/probe-full-2026-11-02/run-full.ps1
+   在 $probes 末尾插入两条（第 166-168 行）：
+     @{n='probe-ui-vision';  a=@($cdp,$base,$shots); t=240}
+     @{n='probe-vision-api'; a=@($base);              t=420}
+   顺序有意：UI 探针只动 DOM，先跑；API 探针的 start 会按契约卸载 nlc 文本模型
+   （内存互斥），所以放最后，避免把后面需要「模型已加载」的探针弄红。
+4) 本文件 + 证据图 server/docs/feature-vision-sidecar-2026-11-07/test-image-320x180.png
+   （就是探针里 base64 常量的原图，供人眼复核）。
+
+没有改 app.mjs / app.html / dist / zip / workspace。
+
+二、probe-vision-api.mjs 断言清单（契约 §5.1）
+---------------------------------------------
+A. state 结构
+  - GET /api/vision/state -> 200
+  - ok === true；port === 8101；running 为布尔
+  - pairs 是数组，且每项 model/mmproj 都是字符串
+  - selected 是对象或 null（对象时含 model/mmproj）
+B. 有 pair 分支
+  - selected 非空
+  - POST /api/vision/start -> 200，running:true，port:8101，pid > 0，model/mmproj 非空
+    （start 请求带 selected 的 model/mmproj，超时 150s；后端自身轮询 /health 上限 120s）
+  - 再查 state：running 仍为 true
+  - 内存互斥：start 后 GET /api/state.loaded 必须为空（契约 3.2 必须先卸载文本模型）
+  - GET http://127.0.0.1:8101/health -> 200 且文本含 ok
+C. 发一帧真图（内置 320x180、红底白字 QWEN 42，dataURL 常量，不落盘）
+  - POST /v1/chat/completions {stream:false, max_tokens:256, temperature:0, images:[dataURL]}
+    -> 200；有 choices 数组；content 非空
+  - content 含 QWEN（宽松：含 42 也算；严格 QWEN 42 的结果打印在测试输出里，不单独判红）
+D. stop 与端口释放
+  - POST /api/vision/stop -> 200 且 running:false
+  - 轮询直到 8101 的 /health 不可达（<= 15s）
+  - 再查 state.running:false
+E. 无 pair 分支（按 pairs.length === 0 条件）
+  - start -> 400/409 且错误信息含「视觉模型」
+  - 带图聊天 -> 409 且提示「视觉模型 / mmproj」（契约 3.4）
+  - 跳过 B/C/D 的慢步骤并打印 skip
+F. 自复位（finally，必执行）
+  - 先查 state，若 running 就 stop 并等端口释放
+  - 断言：sidecar 已停止且 8101 无监听
+  - 不加载文本模型
+另外：探针启动后先 GET /api/state 取 localToken，并在请求里带 x-local-token。
+      目前契约没要求 /api/vision/* 校验令牌，带上是为了后端将来加校验时探针不用改。
+
+三、probe-ui-vision.mjs 断言清单（契约 §5.2）
+---------------------------------------------
+A. 输入区 DOM
+  - #imgBtn / #imgInput / #imgPreview 存在
+  - #imgInput type=file 且 accept 含 image
+  - #imgPreview 初始 hidden
+  - #imgBtn 未禁用
+B. DataTransfer 注入 64x64 PNG（蓝底白点的 base64 常量）
+  - input.files = DataTransfer.files 后派发 change，注入成功
+  - 轮询 <= 7.5s：#imgPreview 不再 hidden 且恰好 1 个 .imgThumb
+  - .imgThumb 里的 <img> src 是 data:image/ 或 blob:（说明真的解码/缩放成预览了）
+  - .imgThumb 内有 button.imgDel
+C. 删除
+  - 点 .imgDel 后 .imgThumb 数量归 0
+D. 设置里的视觉入口
+  - 先按文本/ data-tab 找「视觉」页签；找到则点开取可见 .settingsBody
+  - 兼容契约 §4.1 允许的另一种形态：没有页签时检查生成页里是否有「视觉模型 / mmproj」段落
+  - 有 pair 时：面板里至少 1 个 select，选项数 >= pairs 数；有运行状态文案
+    （未启动/未运行/未加载/运行中/启动中/已停止/状态）；有「启动」或「停止」按钮
+  - 无 pair 时：面板文案提示缺 mmproj / 没有可用的视觉模型
+  - 截图：shots/ui-vision-preview.png、shots/ui-vision-settings.png
+E. 无 pair 时点 #imgBtn 的 toast（按 pairs.length === 0 条件）
+  - 点 #imgBtn 后 <= 6s 内 #toasts .toast 文本含「视觉模型」或「mmproj」
+F. 自复位
+  - localStorage.localai.visionPair 清空；预览清空；设置弹窗关闭；残留 toast 清掉
+  - 不加载/卸载模型，不发真实视觉请求
+
+四、自查结果（全部已做，未跑探针本体）
+-------------------------------------
+- node --check probe-vision-api.mjs  -> 通过（API SYNTAX OK）
+- node --check probe-ui-vision.mjs   -> 通过（UI SYNTAX OK）
+- run-full.ps1：BOM 已确认（前 4 字节 239,187,191,10）
+- run-full.ps1：[System.Management.Automation.Language.Parser]::ParseFile -> parserErrors=0
+- run-full.ps1：探针条目 51 -> 53（任务书写的是 48->50，实际文件在本次改动前已是 51 条；
+  没有删任何旧条目，只追加 2 条，所以最终 53 条）
+- 内置图片：320x180 PNG、5193 字节、base64 6924 字符；64x64 PNG、243 字节、base64 324 字符；
+  已用 Pillow 解码回读确认 PNG 签名与尺寸；原图落在 docs 里供人眼复核。
+- 上述命令均在 D:\LocalModels\server 下执行；证据即本条记录 + 原图。
+
+五、按指令未做（Lead 集成后统一跑）
+----------------------------------
+- 没有运行两条探针（后端 /api/vision/* 与前端 DOM 尚未实现，现在跑必红）。
+- 没有占用 8099 做任何长测试；没有加载文本模型、没有起 sidecar。
+
+六、集成后的建议跑法与前置
+--------------------------
+1) 先人工/脚本确认 /api/state.loaded 为空，再单跑：
+     cd D:\LocalModels\server
+     node probe-vision-api.mjs
+   再跑 UI（需要 9333 的 CDP 和目标页面）：
+     node probe-ui-vision.mjs http://127.0.0.1:9333 http://127.0.0.1:8099
+2) 也可以直接跑整套 run-full.ps1；两条探针在最后。
+3) 跑之前确认 8101 没被别的 llama-server 占着；跑完确认 8101 已释放。
+4) API 探针会卸载文本模型（契约要求的内存互斥），全套跑完服务里没有文本模型；
+   如果之后还要验界面，需要重新 POST /api/load。
+5) 视觉加载约 16s、单帧推理约 13s；探针给 start 150s、推理 180s，驱动总超时 420s。
+
+七、与契约/任务书不一致的地方（都已按契约处理）
+----------------------------------------------
+1) 任务书写「48->50 条」，实际 run-full.ps1 改动前已是 51 条，改动后 53 条。
+   未删除任何既有探针（删条目不是本任务范围）。
+2) 契约 §4.1 允许「设置 -> 新增视觉页签（或生成页里一段）」。UI 探针因此做双形态兼容：
+   有「视觉」页签按页签验（下拉/状态/启动按钮）；没有页签则验生成页里的视觉段落。
+   任务书说「设置视觉页签存在」，若前端最终做成生成页内一段，探针仍会通过（这是契约允许的）。
+3) 契约 §5.1 的「content 含 QWEN（宽松：含 42 或非空也算过，但优先严格）」按宽松判定实现：
+   断言 QWEN 或 42；严格 QWEN 42 只打印不判红。避免 OCR 输出轻微差异（如 QWEN42）假红。
+4) 在 §5.1 之外多了一条「start 后文本模型已卸载」的断言：硬约束把内存互斥写成功能要求，
+   这条能直接抓住「start 忘了 unload」的回归。
+
+八、风险 / 已知未覆盖
+--------------------
+- 未实测。首次跑可能因前端 DOM 细节变红；断言用的是契约里定死的
+  #imgBtn/#imgInput/#imgPreview/.imgThumb/.imgDel，以及现有的 #toasts .toast、
+  .settingsTabs .stab、.settingsBody、settingsModal、localai.visionPair。
+- 缩略图尺寸/压缩（最长边 <=1024、JPEG q0.85、单张 <=4MB、最多 3 张）没有断言：
+  契约 §5.2 未要求，且属前端实现细节；只验「预览出现/可删」。
+- 不发真实视觉请求、不验消息气泡里的 .msgImgs 缩略图、不验「视觉」回复徽标与
+  「正在启动视觉模型…」状态栏文案：都是慢路径，由 API 探针与人工验收覆盖。
+- 无 pair 分支只有在模型目录确实没有 mmproj 时才走到；当前开发环境有 pair，实际会走有 pair 分支。
+- 若驱动超时用 Stop-Process -Force 强杀探针进程，finally 来不及执行，可能残留 llama-server
+  （8101 被占）。跑完请顺手查 8101；必要时 POST /api/vision/stop 或 taskkill /IM llama-server.exe。
+- UI 探针用 Page.setInterceptFileChooserDialog 拦住文件选择框，避免点头像按钮时挂住；
+  不发文件、不落盘。
+- 探针只依赖 HTTP/CDP，不写 workspace；API 探针的测试图是内存里的 base64 常量。

@@ -2050,3 +2050,55 @@ P4（首启建议 + 1.5B 下载档）改完只跑了 probe-firstrun，按规矩�
 ### 八、教训
 
 这次功能动了 `send()` 的收尾路径（收录钩子），最值钱的回归是 `probe-chat-plain`（11/11）和一圈 `probe-ui-*`——它们全绿说明「加钩子没有把对话弄坏」。**凡是往聊天主链路里塞东西，先把这几条探针列进必跑清单。**
+
+---
+
+## 四十四、2026-11-07 晚：图片入口（视觉 sidecar，v1.3.0）——「让本地模型看见图」
+
+用户要「加图片入口 + 找视觉模型」。查清楚后的结论：**能加，但不能在现有 JS 层加**。
+
+### 一、关键判断：底层有，不等于上层能用
+
+随包的原生库里明确有 `mtmd/mmproj/qwen2vl/qwen3vl/minicpmv/gemma3/gemma4` 符号（llama.cpp 的视觉管线），
+但 **node-llama-cpp 3.22.1 没有视觉 API**；我把 npm 上最新 3.22.3 的类型定义整个搜了一遍，`mmproj/image/vision` 零命中。
+所以方案定为**独立进程 sidecar**：随包带官方 `llama-server.exe`（llama.cpp b12144 / v0.9.0-dev Vulkan 构建，101 MB），按需启动、主服务转发。
+
+### 二、实现
+
+| 层 | 内容 |
+|---|---|
+| 打包 | `tools\llama.cpp` → `app\llama\`（+101 MB）；config 模板加 `visionModel`/`visionMmproj`；使用说明加「九、看图」 |
+| 后端 | `GET /api/vision/state`、`POST /api/vision/start|stop`、`/v1/chat/completions` 带图转发（SSE 透传、补 `enable_thinking=false`）、`/api/load` 前停 sidecar、mmproj 不进模型列表、退出杀进程树 |
+| 前端 | 🖼 按钮/粘贴/拖拽、缩略图条、≤1024px JPEG、最多 3 张、气泡缩略图、「视觉」徽标、设置→视觉页签、首屏也可发图 |
+| 探针 | `probe-vision-api`(25)、`probe-ui-vision`(19)；全量驱动 51 → 53 |
+
+### 三、踩到的坑（每个都改了代码）
+
+1. **Qwen3.5 的 thinking 会把回答吞光**：不带 `chat_template_kwargs.enable_thinking=false` 时，200 个 token 全在思维链里，`content` 为空。后端转发时强制补上。
+2. **Vulkan 图像编码在这台核显上会 device lost**：`ggml_vulkan: device lost on Vulkan0` → `mtmd_batch_encode ErrorDeviceLost` → sidecar 退出 `0xC0000005`。我原以为是并发导致，查 app.log 才发现**单条请求也崩**（每次请求成功返回后进程就死）。改成 **CPU 后端 `-ngl 0`** 后彻底稳定；GPU 只留 `VISION_NGL=99` 开关供以后对比。
+3. **并发必须串行**：即使 CPU 后端，两个视觉请求同时进 sidecar 也会互相踩；加了 FIFO 队列（同刻一个、排队上限 180s、超时 503），并且排队期间 `/api/load` 返回 409。
+4. **崩溃要能自愈**：转发前查进程+/health，已退出自动重启；失败最多重启重试 1 次，仍失败 502 且带 `vision.log` 路径。自测里外部 taskkill 后下一条请求 200（17.8s）。
+5. **前端 4MB 上限挡掉了手机照片**：11MB 的 4000×3000 照片旧实现直接拒。改成原图上限 20MB + 单次解码 + 自适应 JPEG 质量（超 700KB 逐级降到 0.52，再不行降到 768px），3 张 dataURL 约 2.1MB，不撑爆后端 4MB 请求体。
+6. **全量回归被环境漂移坑了一次**：21:54 前后应用重启（无模型），导致 probe-debug / probe-func / probe-start-flow / probe-status 一片红——不是回归，是无模型。受影响的 8 条探针在恢复模型后逐条复跑全绿。
+
+### 四、验证
+
+- 发布包（CPU 后端）：start **9.8s**；串行 3 条 **13.1 / 2.6 / 2.6s**（后两条 KV 复用，内容均 `QWEN 42 hello`）；并发 2 条都 200；**sidecar pid 不变、device lost 0 次**；stop 后 8101 释放。
+- 后端自测（8102 + CPU sidecar）：串行 3/3、并发 2/2、kill 后自愈、stop；**28/28 PASS**。
+- 探针：probe-vision-api **25/25**、probe-ui-vision **19/19**；受影响复跑：probe-version 14/14、probe-debug 35/35、probe-func 9/9、probe-start-flow 8/8、probe-status 6/6、probe-code-panel 17/17+跳过 1。
+- 界面 E2E：注入真图 → 发送 → 气泡缩略图 + 视觉徽标 + 正确回答。
+
+### 五、打包
+
+- v1.3.0：**359.4 MB / 3496 文件**（app\ 245.4 MB，其中 app\llama 101.1 MB）；交付 zip **158.5 MB / 3997 条目 / sha256 `103D6777…`**。
+- 22:01 的第一版包落后于源码（加了队列/CPU/自愈），22:08 重打；verifier 认的是第一版（判 🔴），重打后由 Lead 复验哈希与视觉，verify.md 追加了 §10 说明。
+
+### 六、留给下一轮
+
+- sidecar 闲置自动退出（现在要手动停/加载文本模型时才停）；首张图 10–35s，考虑预热或缩图策略。
+- GPU 视觉（`VISION_NGL=99`）在别的机器上可以试；这台核显暂时只能 CPU。
+- 4MB 请求体上限（长历史 + 3 图可能 413）；HEIC；多 mmproj 组合；「视觉增强包」拆分分发（主包不带 101MB）。
+
+### 七、教训
+
+**「底层库有符号」不等于「上层 API 能用」**——先查绑定层，再决定架构。另外，核显上的 Vulkan 图像编码不可靠，默认 CPU 是理性选择：慢一点，但不会每次请求后进程暴毙。

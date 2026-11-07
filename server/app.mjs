@@ -34,12 +34,47 @@ const DEBUG_UI = path.join(HERE, "debug.html");
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 /** 版本号：发版只改这一处；server\package.json 的 version 必须与它一致（probe-version 会查） */
-const APP_VERSION = "1.2.0";
+const APP_VERSION = "1.3.0";
 /** 产品正式名（2026-11-01 起）：QingYaoTP AILauncher；QingYaoTP = QingYaoTestifypred */
 const APP_NAME = "QingYaoTP AILauncher";
 const APP_SUB = "本地 AI";
 /** 进程启动时刻：配合版本号回答「你现在跑的到底是哪一版、几点起来的」 */
 const STARTED_AT = new Date().toISOString();
+
+// ---------------------------------------------------------------- 视觉 sidecar（图片入口）
+/**
+ * node-llama-cpp 3.22.x 没有视觉 API（mmproj/mtmd 只在 llama.cpp 底层层面上有），
+ * 所以带图请求转给官方 llama-server.exe：独立进程、独立端口（默认 8101），主服务只做转发。
+ *
+ * 路径优先级：环境变量 LOCALAI_LLAMA_DIR → 发布包 app/llama → 开发目录 server/../tools/llama.cpp
+ * （发布包里由 build-portable.ps1 把 tools/llama.cpp 拷成 app/llama）
+ */
+const LLAMA_DIR =
+  process.env.LOCALAI_LLAMA_DIR ||
+  (existsSync(path.join(HERE, "llama", "llama-server.exe"))
+    ? path.join(HERE, "llama")
+    : path.join(HERE, "..", "tools", "llama.cpp"));
+const LLAMA_SERVER = path.join(LLAMA_DIR, "llama-server.exe");
+/** 视觉 sidecar 监听端口：固定 8101（契约定死，状态接口也按这个显示） */
+const VISION_PORT = Number(process.env.VISION_PORT ?? 8101);
+const VISION_HOST = "127.0.0.1";
+/** sidecar 参数：上下文 8192（契约） */
+const VISION_CONTEXT = 8192;
+/**
+ * offload 到 GPU 的层数：默认 0 = CPU。
+ * 实测 Vulkan 后端在 mtmd 图像编码时会 device lost（0xC0000005，ggml_vulkan: device lost on Vulkan0），
+ * 先默认 CPU 保全稳定；想开 GPU 对比用环境变量 VISION_NGL=99。
+ */
+const VISION_NGL = Math.max(0, Math.min(999, Math.floor(Number(process.env.VISION_NGL ?? 0)) || 0));
+/** 启动等待上限：模型加载约 16s，留足余量；超时杀进程回 504 */
+const VISION_START_TIMEOUT_MS = 120000;
+/** 单次视觉请求最长等 10 分钟（流式大回答兜底） */
+const VISION_REQUEST_TIMEOUT_MS = 600000;
+/** 视觉请求排队上限：同一时刻只允许一个请求进 sidecar，第二个最多等 180s */
+const VISION_QUEUE_TIMEOUT_MS = 180000;
+/** sidecar 日志：发布包 <安装目录>/logs/vision.log，开发目录 <工作目录>/logs/vision.log */
+const VISION_LOG_DIR = path.resolve(HERE, "..", "logs");
+const VISION_LOG = path.join(VISION_LOG_DIR, "vision.log");
 
 /**
  * 构建标识。开发目录里有 .git 就取短哈希（报问题能直接对上哪次提交）；
@@ -1203,6 +1238,7 @@ async function scanModels() {
     if (!e.isFile()) continue;
     const n = e.name;
     if (!/\.gguf$/i.test(n)) continue;
+    if (/mmproj/i.test(n)) continue; // 视觉投影（mmproj）不是可加载的文本模型，别列进模型库
     if (isShard(n) && !isFirstShard(n)) continue; // 分片只列第一片
     const full = path.join(MODEL_DIR, n);
     let sizeGB = 0;
@@ -1441,6 +1477,716 @@ async function readBody(req) {
     raw += c;
   }
   return JSON.parse(raw || "{}");
+}
+
+// ---------------------------------------------------------------- 视觉（图片入口）实现
+/**
+ * sidecar 进程状态：一次只跑一个 llama-server.exe（端口 8101）。
+ * lock 把 start/stop 串行化：两个请求同时点「启动」不会起出两个进程。
+ */
+const vision = {
+  proc: null,
+  pid: null,
+  model: "", // 正在运行的视觉模型绝对路径
+  mmproj: "", // 正在运行的 mmproj 绝对路径
+  startedAt: 0,
+  starting: false,
+  error: "",
+  active: 0, // 正在转发的视觉请求数（>0 时不允许加载文本模型）
+  lock: Promise.resolve(),
+};
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** 带 HTTP 状态码的错误：路由层据此回 409/400/500/504 */
+function visionFail(status, message) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
+
+/** start/stop 串行：上一个动作（可能等 120s 启动）结束后才开始下一个 */
+function runVisionLocked(fn) {
+  const run = vision.lock.then(fn, fn);
+  vision.lock = run.catch(() => {});
+  return run;
+}
+
+function visionRunning() {
+  return Boolean(vision.proc && vision.proc.exitCode === null && !vision.proc.killed);
+}
+
+function resetVisionState() {
+  vision.proc = null;
+  vision.pid = null;
+  vision.model = "";
+  vision.mmproj = "";
+  vision.startedAt = 0;
+  vision.starting = false;
+}
+
+/** 杀进程树：llama-server 可能拉子进程；Windows 用 taskkill /T /F */
+function killPidTree(pid) {
+  if (!pid) return;
+  try {
+    if (process.platform === "win32") {
+      spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, encoding: "utf8", timeout: 5000 });
+    } else {
+      process.kill(pid, "SIGKILL");
+    }
+  } catch (err) {
+    log("视觉：杀 sidecar 失败:", err?.message ?? err);
+  }
+}
+
+/** 绝对路径 → 模型目录内的相对名（pairs 用相对名，方便写进 config.ini / localStorage） */
+function relativeToModelDir(abs) {
+  const root = path.resolve(MODEL_DIR);
+  const rel = path.relative(root, path.resolve(abs));
+  return rel && !rel.startsWith("..") && !path.isAbsolute(rel) ? rel : path.resolve(abs);
+}
+
+/** 量化/精度后缀：Q4_K_M、Q8_0、IQ4_XS、BF16、MXFP4……剥离后得到「模型家族名」 */
+const VISION_QUANT_SUFFIX = /[-_.](?:iq[0-9]+[a-z0-9_]*(?:_[a-z0-9]+)*|q[0-9]+[a-z0-9_]*(?:_[a-z0-9]+)*|bf16|f16|f32|fp16|mxfp4)$/i;
+
+/**
+ * 模型家族名：Qwen3.5-9B-Q4_K_M → Qwen3.5-9B；Qwen3.5-9B-mmproj-F16 → Qwen3.5-9B。
+ * mmproj 与模型的配对就靠它：名字族一致才可能是同一个视觉模型。
+ */
+function visionFamily(name) {
+  let s = String(name).replace(/\.gguf$/i, "");
+  s = s.replace(/[-_.]?mmproj.*$/i, "");
+  for (let i = 0; i < 4; i++) {
+    const next = s.replace(VISION_QUANT_SUFFIX, "");
+    if (next === s) break;
+    s = next;
+  }
+  return s.trim();
+}
+
+/** 给界面看的参数量提示：Qwen3.5-9B-... → 9B */
+function visionExpect(name) {
+  const m = String(name).match(/([0-9]+(?:\.[0-9]+)?B)/i);
+  return m ? m[1] : "";
+}
+
+/**
+ * 扫描「模型 + mmproj」组合。
+ * 模型 = MODEL_DIR 顶层 *.gguf（跳过名字含 mmproj 的、分片只留第一片）；
+ * mmproj = MODEL_DIR/mmproj/*.gguf 以及顶层名字含 mmproj 的 *.gguf。
+ * 配对优先级：config.ini 的 visionModel/visionMmproj → 文件名族匹配 → 只给候选 + note。
+ */
+async function scanVisionPairs() {
+  const models = [];
+  const mmprojs = [];
+  let entries = [];
+  try {
+    entries = await readdir(MODEL_DIR, { withFileTypes: true });
+  } catch (err) {
+    log("视觉：无法读取模型目录:", err?.message ?? err);
+  }
+  for (const e of entries) {
+    if (!e.isFile() || !/\.gguf$/i.test(e.name)) continue;
+    if (/mmproj/i.test(e.name)) {
+      mmprojs.push({ name: e.name, rel: e.name }); // 顶层放 mmproj 也认（契约允许）
+      continue;
+    }
+    if (isShard(e.name) && !isFirstShard(e.name)) continue;
+    models.push({ name: e.name, rel: e.name });
+  }
+  try {
+    const sub = await readdir(path.join(MODEL_DIR, "mmproj"), { withFileTypes: true });
+    for (const e of sub) {
+      if (e.isFile() && /\.gguf$/i.test(e.name)) mmprojs.push({ name: e.name, rel: path.join("mmproj", e.name) });
+    }
+  } catch {
+    // 没有 mmproj 子目录是常态（只有纯文本模型时）
+  }
+  models.sort((a, b) => a.name.localeCompare(b.name));
+  mmprojs.sort((a, b) => a.name.localeCompare(b.name));
+
+  // 1) config.ini 指定的组合优先
+  const cfg = await readConfigIni();
+  const cfgModel = String(cfg.visionModel ?? "").trim();
+  const cfgMmproj = String(cfg.visionMmproj ?? "").trim();
+  let configPair = null;
+  if (cfgModel && cfgMmproj) {
+    const mAbs = path.isAbsolute(cfgModel) ? path.resolve(cfgModel) : path.resolve(MODEL_DIR, cfgModel);
+    const pAbs = path.isAbsolute(cfgMmproj) ? path.resolve(cfgMmproj) : path.resolve(MODEL_DIR, cfgMmproj);
+    if (existsSync(mAbs) && existsSync(pAbs)) {
+      configPair = { model: relativeToModelDir(mAbs), mmproj: relativeToModelDir(pAbs) };
+    }
+  }
+
+  const pairs = [];
+  const seen = new Set();
+  const addPair = (model, mmproj, expect) => {
+    const key = model + "|" + mmproj;
+    if (seen.has(key)) return;
+    seen.add(key);
+    pairs.push({ model, mmproj, expect });
+  };
+  if (configPair) addPair(configPair.model, configPair.mmproj, visionExpect(configPair.model));
+
+  // 2) 文件名族匹配：mmproj 名字里含模型名主体才算一对（如 Qwen3.5-9B-mmproj-F16 ↔ Qwen3.5-9B-Q4_K_M）
+  let matched = 0;
+  for (const m of models) {
+    const fam = visionFamily(m.name).toLowerCase();
+    if (!fam) continue;
+    let hit = mmprojs.find((p) => visionFamily(p.name).toLowerCase() === fam);
+    if (!hit && fam.length >= 6) {
+      hit = mmprojs.find((p) => {
+        const pf = visionFamily(p.name).toLowerCase();
+        return pf.length >= 6 && (pf.includes(fam) || fam.includes(pf));
+      });
+    }
+    if (hit) {
+      addPair(m.rel, hit.rel, visionExpect(m.name));
+      matched++;
+    }
+  }
+
+  let selected = configPair;
+  let note = "";
+  if (!selected && pairs.length) {
+    selected = { model: pairs[0].model, mmproj: pairs[0].mmproj };
+    note = "按文件名族自动配对：" + selected.model + " + " + selected.mmproj;
+  } else if (selected) {
+    note = "当前组合来自 config.ini（visionModel / visionMmproj）";
+  }
+  if (!selected) {
+    // 3) 配不上：只给候选，让用户自己挑（或在 config.ini 定死）
+    if (!models.length) {
+      note = "模型目录里没有可用模型：请先把 .gguf 放到 " + MODEL_DIR;
+    } else if (!mmprojs.length) {
+      note = "没有可用的视觉模型：请把 mmproj 文件放到 " + path.join(MODEL_DIR, "mmproj") + " 下（或在 config.ini 指定 visionModel / visionMmproj）";
+    } else {
+      for (const m of models) {
+        for (const p of mmprojs) {
+          if (pairs.length >= 20) break;
+          addPair(m.rel, p.rel, visionExpect(m.name));
+        }
+      }
+      note = "没有按文件名匹配到「模型 + mmproj」组合：请从候选中选择，或在 config.ini 指定 visionModel / visionMmproj";
+    }
+  }
+  return { pairs, selected, note };
+}
+
+/** /health：加载中返回 503，只有 status=ok 才算就绪 */
+async function visionHealthOk() {
+  try {
+    const r = await fetch("http://" + VISION_HOST + ":" + VISION_PORT + "/health", { signal: AbortSignal.timeout(1500) });
+    if (!r.ok) return false;
+    const j = await r.json().catch(() => null);
+    return Boolean(j && j.status === "ok");
+  } catch {
+    return false;
+  }
+}
+
+/** 8101 上有没有进程在听（不管是不是我们起的）：启动前用来报告端口占用 */
+async function visionPortInUse() {
+  try {
+    await fetch("http://" + VISION_HOST + ":" + VISION_PORT + "/health", { signal: AbortSignal.timeout(800) });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function visionPublicState(scan) {
+  const running = visionRunning();
+  let note = scan.note || "";
+  if (!existsSync(LLAMA_SERVER)) {
+    note = (note ? note + "；" : "") + "视觉组件缺失：找不到 " + LLAMA_SERVER;
+  }
+  return {
+    ok: true,
+    running,
+    port: VISION_PORT,
+    pid: running ? vision.pid : null,
+    model: running ? vision.model : "",
+    mmproj: running ? vision.mmproj : "",
+    startedAt: running ? vision.startedAt : 0,
+    logPath: VISION_LOG,
+    pairs: scan.pairs,
+    selected: scan.selected,
+    note,
+    starting: vision.starting,
+    error: vision.error,
+  };
+}
+
+async function visionState() {
+  return visionPublicState(await scanVisionPairs());
+}
+
+/**
+ * 解析启动组合：显式 {model, mmproj} 优先（相对模型目录或绝对路径都行），
+ * 否则用扫描出的 selected；文件不存在 → 400，没有可用组合 → 409。
+ */
+function resolveVisionTarget(reqModel, reqMmproj, scan) {
+  let modelRel = reqModel;
+  let mmRel = reqMmproj;
+  if (!modelRel && !mmRel) {
+    if (!scan.selected) {
+      throw visionFail(409, "没有可用的视觉模型：请把 mmproj 放到模型目录 mmproj" + path.sep + " 下，或在 config.ini 指定 visionModel / visionMmproj");
+    }
+    modelRel = scan.selected.model;
+    mmRel = scan.selected.mmproj;
+  } else {
+    // 只给了一半就用 selected 的另一半补齐（前端可能只传变化的那个）
+    if (!modelRel && scan.selected) modelRel = scan.selected.model;
+    if (!mmRel && scan.selected) mmRel = scan.selected.mmproj;
+    if (!modelRel) throw visionFail(400, "缺少 model 参数（视觉模型文件名）");
+    if (!mmRel) throw visionFail(400, "缺少 mmproj 参数（视觉投影文件名）");
+  }
+  const toAbs = (rel, label) => {
+    const abs = path.isAbsolute(rel) ? path.resolve(rel) : path.resolve(MODEL_DIR, rel);
+    if (!/\.gguf$/i.test(abs)) throw visionFail(400, label + "不是 .gguf 文件：" + rel);
+    if (!existsSync(abs)) throw visionFail(400, label + "文件不存在：" + abs);
+    return abs;
+  };
+  return { model: toAbs(modelRel, "视觉模型"), mmproj: toAbs(mmRel, "视觉投影（mmproj）") };
+}
+
+/**
+ * 启动视觉 sidecar：同一组合幂等；换组合先 stop；启动前释放 nlc 文本模型（内存互斥）。
+ * 等 /health 就绪（≤120s），超时杀进程回 504。
+ */
+async function startVision(opts) {
+  const reqModel = String((opts && opts.model) || "").trim();
+  const reqMmproj = String((opts && opts.mmproj) || "").trim();
+  return runVisionLocked(async () => {
+    const scan = await scanVisionPairs();
+    const want = resolveVisionTarget(reqModel, reqMmproj, scan);
+
+    if (visionRunning()) {
+      if (want.model === vision.model && want.mmproj === vision.mmproj) return visionPublicState(scan);
+      log("视觉：切换组合，先停止旧 sidecar");
+      await stopVisionLocked();
+    }
+
+    if (!existsSync(LLAMA_SERVER)) {
+      throw visionFail(500, "没有视觉组件：找不到 " + LLAMA_SERVER + "（发布包应带 app/llama/llama-server.exe，开发目录用 tools/llama.cpp）");
+    }
+    // 内存互斥：文本模型（含预加载常驻）先全部释放，再起 sidecar
+    if (activeChats > 0) throw visionFail(409, "有文本对话正在进行，无法启动视觉模型，请等它结束（或点停止）");
+    if (state.loading) throw visionFail(409, "文本模型正在加载，请稍后再试");
+    if (state.model || state.context) {
+      log("视觉：先卸载文本模型（内存互斥）");
+      await unloadModel();
+    }
+    const freed = await clearExtras();
+    if (freed.length) log("视觉：释放预加载模型 " + freed.length + " 个（内存互斥）");
+    if (await visionPortInUse()) {
+      throw visionFail(500, "端口 " + VISION_PORT + " 已被其他程序占用，请先关闭它");
+    }
+
+    await mkdir(VISION_LOG_DIR, { recursive: true }).catch(() => {});
+    const args = ["-m", want.model, "--mmproj", want.mmproj, "-c", String(VISION_CONTEXT), "-ngl", String(VISION_NGL), "--host", VISION_HOST, "--port", String(VISION_PORT), "--jinja", "--no-webui", "-np", "1"];
+    let out = null;
+    try {
+      out = createWriteStream(VISION_LOG, { flags: "a" });
+      out.on("error", () => {});
+      out.write("\n===== " + new Date().toISOString() + " 启动视觉 sidecar =====\n" + LLAMA_SERVER + " " + args.join(" ") + "\n");
+    } catch {
+      out = null;
+    }
+
+    vision.starting = true;
+    vision.error = "";
+    let child;
+    try {
+      child = spawn(LLAMA_SERVER, args, { cwd: LLAMA_DIR, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    } catch (err) {
+      vision.starting = false;
+      if (out) out.end();
+      throw visionFail(500, "启动视觉 sidecar 失败：" + String(err?.message ?? err) + "（检查 llama-server.exe 是否完整、是否被杀毒软件拦截）；详见 " + VISION_LOG);
+    }
+    let exited = null;
+    vision.proc = child;
+    vision.pid = child.pid || null;
+    if (child.stdout) child.stdout.on("data", (buf) => { try { if (out) out.write(buf); } catch {} });
+    if (child.stderr) child.stderr.on("data", (buf) => { try { if (out) out.write(buf); } catch {} });
+    child.on("error", (err) => {
+      exited = exited || { code: null, signal: null, error: err };
+      if (vision.proc === child) {
+        vision.proc = null;
+        vision.pid = null;
+        vision.starting = false;
+        vision.error = String(err?.message ?? err);
+      }
+      if (out) {
+        try { out.end(); } catch {}
+      }
+      log("视觉：spawn 失败 " + String(err?.message ?? err));
+    });
+    child.on("exit", (code, signal) => {
+      exited = exited || { code, signal };
+      if (out) {
+        try { out.end(); } catch {}
+      }
+      // vision.proc 还指着它 = 不是我们主动 stop 的：那就是崩溃，明确记下来（下次转发会自动重启）
+      if (vision.proc === child) {
+        resetVisionState();
+        log("视觉：sidecar 崩溃（code=" + code + (signal ? " signal=" + signal : "") + "），下次转发会崩溃重启；详见 " + VISION_LOG);
+      } else {
+        log("视觉 sidecar 退出（code=" + code + (signal ? " signal=" + signal : "") + "）");
+      }
+    });
+
+    log("视觉：启动 " + path.basename(want.model) + " + " + path.basename(want.mmproj) + "（-ngl " + VISION_NGL + (VISION_NGL ? " GPU" : " CPU") + "，pid " + vision.pid + "），等待 /health ...");
+    const t0 = Date.now();
+    let ready = false;
+    while (Date.now() - t0 < VISION_START_TIMEOUT_MS) {
+      if (exited) break;
+      if (await visionHealthOk()) {
+        ready = true;
+        break;
+      }
+      await sleep(500);
+    }
+    if (!ready) {
+      let status = 504;
+      let why = "等待 /health 超时（" + Math.round(VISION_START_TIMEOUT_MS / 1000) + "s）";
+      if (exited) {
+        status = 500;
+        why = exited.error ? String(exited.error.message || exited.error) : "进程已退出（code=" + exited.code + "）";
+      }
+      const pid = vision.pid;
+      killPidTree(pid);
+      resetVisionState();
+      vision.error = why;
+      throw visionFail(status, "视觉 sidecar 启动失败：" + why + "；详见 " + VISION_LOG);
+    }
+    vision.starting = false;
+    vision.model = want.model;
+    vision.mmproj = want.mmproj;
+    vision.startedAt = Date.now();
+    log("视觉 sidecar 就绪（" + path.basename(want.model) + " + " + path.basename(want.mmproj) + "，" + ((Date.now() - t0) / 1000).toFixed(1) + "s，pid " + vision.pid + "）");
+    return visionPublicState(await scanVisionPairs());
+  });
+}
+
+/** 停止视觉 sidecar：杀进程树 + 等端口释放（供 /api/vision/stop 与 /api/load 使用） */
+async function stopVision() {
+  return runVisionLocked(stopVisionLocked);
+}
+
+async function stopVisionLocked() {
+  const child = vision.proc;
+  const pid = vision.pid || (child && child.pid) || null;
+  if (!child && !pid) {
+    resetVisionState();
+    return { ok: true, running: false };
+  }
+  log("视觉：停止 sidecar（pid " + pid + "）");
+  killPidTree(pid);
+  try {
+    if (child && child.exitCode === null) child.kill();
+  } catch {}
+  resetVisionState();
+  // 等端口真正释放：否则紧接着 start 会撞上「端口占用」
+  const t0 = Date.now();
+  while (Date.now() - t0 < 10000) {
+    if (!(await visionPortInUse())) break;
+    await sleep(200);
+  }
+  return { ok: true, running: false };
+}
+
+/** 收集请求里的图片：应用级 images 数组 + messages 里已有的 image_url */
+function collectVisionImages(payload) {
+  const images = [];
+  if (Array.isArray(payload?.images)) {
+    for (const im of payload.images) {
+      if (typeof im === "string" && im.trim()) images.push(im.trim());
+      else if (im && typeof im.url === "string" && im.url.trim()) images.push(im.url.trim());
+    }
+  }
+  const messages = Array.isArray(payload?.messages) ? payload.messages : [];
+  let hasContentImage = false;
+  for (const m of messages) {
+    if (Array.isArray(m?.content) && m.content.some((p) => p && p.type === "image_url")) hasContentImage = true;
+  }
+  return { images, hasContentImage };
+}
+
+/** 视觉转发串行队列：同一时刻只允许一个请求进 sidecar（Vulkan 并发会 device lost） */
+const visionRequests = { busy: false, waiters: [] };
+
+/** 排队等一个视觉转发槽位：FIFO，等太久（180s）就失败 */
+function acquireVisionSlot() {
+  return new Promise((resolve, reject) => {
+    const waiter = { resolve, reject, timer: null, settled: false };
+    waiter.timer = setTimeout(() => {
+      if (waiter.settled) return;
+      const i = visionRequests.waiters.indexOf(waiter);
+      if (i >= 0) visionRequests.waiters.splice(i, 1);
+      waiter.settled = true;
+      reject(visionFail(503, "视觉请求排队超时（" + Math.round(VISION_QUEUE_TIMEOUT_MS / 1000) + "s）：上一个视觉请求还没结束，请稍后再试"));
+    }, VISION_QUEUE_TIMEOUT_MS);
+    visionRequests.waiters.push(waiter);
+    dispatchVisionSlot();
+  });
+}
+
+/** 叫号：空闲时取队首，resolve 一个只生效一次的 release */
+function dispatchVisionSlot() {
+  if (visionRequests.busy) return;
+  const waiter = visionRequests.waiters.shift();
+  if (!waiter) return;
+  visionRequests.busy = true;
+  clearTimeout(waiter.timer);
+  if (waiter.settled) {
+    // 已经超时/放弃的排队者，直接跳过
+    visionRequests.busy = false;
+    return dispatchVisionSlot();
+  }
+  waiter.settled = true;
+  let released = false;
+  waiter.resolve(() => {
+    if (released) return;
+    released = true;
+    visionRequests.busy = false;
+    dispatchVisionSlot();
+  });
+}
+
+/** 写一块 SSE；客户端断开时别卡在 drain 上 */
+function writeVisionChunk(res, chunk) {
+  return new Promise((resolve) => {
+    if (res.write(chunk)) return resolve();
+    const done = () => {
+      res.removeListener("drain", done);
+      res.removeListener("close", done);
+      resolve();
+    };
+    res.once("drain", done);
+    res.once("close", done);
+  });
+}
+
+/**
+ * 转发前确认 sidecar 真的活着（进程存在 + /health ok）；崩了就自动重新拉起。
+ * 转发瞬间仍可能再崩，由调用方重试一次兜底。
+ */
+async function ensureVisionReadyForChat(afterFailure) {
+  if (visionRunning() && (await visionHealthOk())) return;
+  if (visionRunning()) {
+    log("视觉：sidecar 进程在但 /health 异常" + (afterFailure ? "（上次请求失败）" : "") + "，崩溃重启");
+    await stopVision();
+  } else if (afterFailure) {
+    log("视觉：sidecar 崩溃重启（上次请求失败，进程已退出）");
+  } else {
+    log("视觉：sidecar 未运行（可能已崩溃），启动");
+  }
+  await startVision({});
+}
+
+/**
+ * 带图聊天：确保 sidecar 就绪 → 把 images 拼进最后一条 user 的 content（text 在前、图在后）
+ * → 补 enable_thinking=false → 转发 8101；stream 原样透传（SSE 逐块写回），非流式直接回 JSON。
+ */
+async function handleVisionChat(payload, res) {
+  const messages = (Array.isArray(payload.messages) ? payload.messages : [])
+    .filter((m) => m && typeof m === "object")
+    .map((m) => Object.assign({}, m));
+  if (!messages.length) return sendJson(res, 400, { error: { message: "缺少 messages" } });
+  const { images } = collectVisionImages(payload);
+
+  const userIdx = messages.map((m, i) => (m.role === "user" ? i : -1)).filter((i) => i >= 0).pop();
+  if (userIdx === undefined) return sendJson(res, 400, { error: { message: "缺少 user 消息" } });
+  const last = messages[userIdx];
+  const parts = [];
+  const addText = (t) => {
+    const s = t == null ? "" : String(t);
+    if (s.trim()) parts.push({ type: "text", text: s });
+  };
+  const addImage = (url) => {
+    if (typeof url === "string" && url) parts.push({ type: "image_url", image_url: { url } });
+  };
+  if (typeof last.content === "string") {
+    addText(last.content);
+  } else if (Array.isArray(last.content)) {
+    const texts = [];
+    for (const p of last.content) {
+      if (typeof p === "string") texts.push(p);
+      else if (p && p.type === "text" && p.text != null) texts.push(String(p.text));
+      else if (p && (p.type === "image_url" || p.type === "image")) addImage(typeof p.image_url === "string" ? p.image_url : p.image_url && p.image_url.url);
+    }
+    if (texts.length) addText(texts.join("\n"));
+  }
+  for (const url of images) addImage(url);
+  last.content = parts;
+  const imageCount = parts.filter((p) => p.type === "image_url").length;
+
+  const fwd = Object.assign({}, payload, { messages });
+  delete fwd.images;
+  delete fwd.web;
+  delete fwd.thinking;
+  if (fwd.tools === true) delete fwd.tools; // 应用级开关（boolean），llama-server 只认工具数组
+  if (!fwd.chat_template_kwargs || typeof fwd.chat_template_kwargs !== "object") fwd.chat_template_kwargs = {};
+  // Qwen3.5 不带这个会把 token 全烧在思考上、content 为空（Lead 实测）
+  if (fwd.chat_template_kwargs.enable_thinking === undefined) fwd.chat_template_kwargs.enable_thinking = false;
+  if (fwd.max_tokens == null) fwd.max_tokens = 1024;
+  const stream = Boolean(fwd.stream);
+
+  const t0 = Date.now();
+  // 串行锁：sidecar 的图像编码后端并发跑两个 mtmd 请求会崩（实测 Vulkan device lost / 0xC0000005），
+  // 所以同一时刻只放一个请求进 sidecar；后来的排队（上限 180s）。
+  vision.active++; // 排队中也算「有视觉请求」：这期间不允许加载文本模型
+  const controller = new AbortController();
+  let clientGone = false;
+  res.on("close", () => {
+    if (!res.writableEnded) {
+      clientGone = true;
+      controller.abort();
+    }
+  });
+  let release = null;
+  try {
+    const queuedAt = Date.now();
+    try {
+      release = await acquireVisionSlot();
+    } catch (err) {
+      if (clientGone) return;
+      return sendJson(res, err?.status || 503, { error: { message: String(err?.message ?? err) } });
+    }
+    const waited = Date.now() - queuedAt;
+    if (waited >= 500) log("视觉：排队 " + waited + "ms 后开始转发（同一时刻只允许一个视觉请求）");
+    if (clientGone) {
+      log("视觉：客户端在排队时断开，放弃本次请求");
+      return;
+    }
+
+    // 转发失败（多半是 sidecar 崩了）自动重启一次再重试；只允许在响应头/首块发出前重试
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await ensureVisionReadyForChat(attempt > 1);
+      } catch (err) {
+        if (clientGone) return;
+        return sendJson(res, err?.status || 500, { error: { message: String(err?.message ?? err) } });
+      }
+      if (clientGone) return;
+
+      let upstream = null;
+      try {
+        upstream = await fetch("http://" + VISION_HOST + ":" + VISION_PORT + "/v1/chat/completions", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(fwd),
+          signal: AbortSignal.any([controller.signal, AbortSignal.timeout(VISION_REQUEST_TIMEOUT_MS)]),
+        });
+      } catch (err) {
+        if (clientGone) return;
+        if (attempt === 1) {
+          log("视觉：转发失败（" + String(err?.message ?? err) + "），sidecar 崩溃重启后重试一次");
+          continue;
+        }
+        log("视觉请求失败：" + String(err?.message ?? err));
+        return sendJson(res, 502, { error: { message: "视觉 sidecar 请求失败：" + String(err?.message ?? err) + "（详见 " + VISION_LOG + "）" } });
+      }
+
+      if (!upstream.ok) {
+        // sidecar 自己的 4xx/5xx（参数错、上下文不足……）：不管 stream 与否都按 JSON 原样回，别硬套 SSE
+        let text = "";
+        try {
+          text = await upstream.text();
+        } catch (err) {
+          if (clientGone) return;
+          if (attempt === 1) {
+            log("视觉：读取错误响应失败（" + String(err?.message ?? err) + "），sidecar 崩溃重启后重试一次");
+            continue;
+          }
+          return sendJson(res, 502, { error: { message: "视觉 sidecar 响应读取失败：" + String(err?.message ?? err) + "（详见 " + VISION_LOG + "）" } });
+        }
+        res.writeHead(upstream.status, {
+          "content-type": upstream.headers.get("content-type") || "application/json; charset=utf-8",
+          "x-local-vision": "1",
+        });
+        res.end(text);
+        log("视觉请求失败 " + upstream.status + "（" + imageCount + " 张图）" + (Date.now() - t0) + "ms");
+        return;
+      }
+
+      if (!stream) {
+        let text;
+        try {
+          text = await upstream.text();
+        } catch (err) {
+          if (clientGone) return;
+          if (attempt === 1) {
+            log("视觉：非流式响应中断（" + String(err?.message ?? err) + "），sidecar 崩溃重启后重试一次");
+            continue;
+          }
+          log("视觉请求失败：" + String(err?.message ?? err));
+          return sendJson(res, 502, { error: { message: "视觉 sidecar 响应中断：" + String(err?.message ?? err) + "（详见 " + VISION_LOG + "）" } });
+        }
+        res.writeHead(upstream.status, {
+          "content-type": upstream.headers.get("content-type") || "application/json; charset=utf-8",
+          "x-local-vision": "1",
+        });
+        res.end(text);
+        log("视觉请求 " + imageCount + " 张图 json " + upstream.status + " " + (Date.now() - t0) + "ms");
+        return;
+      }
+
+      // 流式：先读到第一块再发响应头，这样「开头还没发出去」时崩了仍可重试一次
+      const reader = upstream.body.getReader();
+      let first;
+      try {
+        first = await reader.read();
+      } catch (err) {
+        if (clientGone) return;
+        if (attempt === 1) {
+          log("视觉：流式响应开头中断（" + String(err?.message ?? err) + "），sidecar 崩溃重启后重试一次");
+          continue;
+        }
+        log("视觉请求失败：" + String(err?.message ?? err));
+        return sendJson(res, 502, { error: { message: "视觉 sidecar 流式响应中断：" + String(err?.message ?? err) + "（详见 " + VISION_LOG + "）" } });
+      }
+      const sseHeaders = {
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-cache",
+        "x-accel-buffering": "no",
+        "x-local-vision": "1",
+      };
+      if (first.done) {
+        res.writeHead(200, sseHeaders);
+        res.end();
+        log("视觉请求 " + imageCount + " 张图 stream " + upstream.status + " " + (Date.now() - t0) + "ms（空流）");
+        return;
+      }
+      res.writeHead(200, sseHeaders);
+      try {
+        await writeVisionChunk(res, first.value);
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          await writeVisionChunk(res, value);
+        }
+      } catch (err) {
+        if (!clientGone) log("视觉流中断：" + String(err?.message ?? err));
+      }
+      try { res.end(); } catch {}
+      log("视觉请求 " + imageCount + " 张图 stream " + upstream.status + " " + (Date.now() - t0) + "ms");
+      return;
+    }
+  } catch (err) {
+    log("视觉请求异常：" + String(err?.message ?? err));
+    if (!res.headersSent && !clientGone) sendJson(res, 500, { error: { message: "视觉请求异常：" + String(err?.message ?? err) } });
+    else {
+      try { res.end(); } catch {}
+    }
+  } finally {
+    if (release) release();
+    vision.active = Math.max(0, vision.active - 1);
+  }
 }
 
 /** 估算一段文本的 token 数，带兜底 */
@@ -4954,6 +5700,35 @@ async function handle(req, res) {
     return sendJson(res, 200, versionInfo());
   }
 
+  // ---- 视觉 sidecar（图片入口）：状态 + 启停 ----
+  if (req.method === "GET" && url === "/api/vision/state") {
+    return sendJson(res, 200, await visionState());
+  }
+
+  if (req.method === "POST" && url === "/api/vision/start") {
+    let body = {};
+    try {
+      body = await readBody(req);
+    } catch (e) {
+      const code = e?.code === "BODY_TOO_LARGE" ? 413 : 400;
+      return sendJson(res, code, { error: { message: e?.message ?? "JSON 解析失败" } });
+    }
+    try {
+      const st = await startVision({ model: body.model, mmproj: body.mmproj });
+      return sendJson(res, 200, st);
+    } catch (err) {
+      return sendJson(res, err?.status || 500, { error: { message: String(err?.message ?? err) } });
+    }
+  }
+
+  if (req.method === "POST" && url === "/api/vision/stop") {
+    try {
+      return sendJson(res, 200, await stopVision());
+    } catch (err) {
+      return sendJson(res, 500, { error: { message: String(err?.message ?? err) } });
+    }
+  }
+
   if (req.method === "GET" && url === "/api/state") {
     return sendJson(res, 200, {
       models: await scanModels(),
@@ -5006,6 +5781,17 @@ async function handle(req, res) {
     // 防目录穿越：只允许模型目录内的文件名
     if (body.file.includes("/") || body.file.includes("\\") || body.file.includes("..")) {
       return sendJson(res, 400, { error: { message: "非法的文件名" } });
+    }
+    // 内存互斥：文本模型与视觉 sidecar 不同时驻留
+    if (vision.active > 0) {
+      return sendJson(res, 409, { error: { message: "有视觉请求正在进行，先等它结束再加载文本模型" } });
+    }
+    if (vision.starting) {
+      return sendJson(res, 409, { error: { message: "视觉模型正在启动，请稍后再加载文本模型" } });
+    }
+    if (visionRunning()) {
+      log("加载文本模型前先停视觉 sidecar（内存互斥）");
+      await stopVision();
     }
     try {
       const r = await loadModel(body.file, Number(body.contextSize ?? DEFAULT_CONTEXT));
@@ -5814,6 +6600,9 @@ async function handle(req, res) {
       const code = e?.code === "BODY_TOO_LARGE" ? 413 : 400;
       return sendJson(res, code, { error: { message: e?.message ?? "JSON 解析失败" } });
     }
+    // 带图请求（images 数组 或 content 里的 image_url）走视觉 sidecar，无图保持原来的 nlc 路径
+    const visionHit = collectVisionImages(payload);
+    if (visionHit.images.length || visionHit.hasContentImage) return handleVisionChat(payload, res);
     return handleChat(payload, res);
   }
 
@@ -6162,6 +6951,7 @@ server.listen(PORT, "127.0.0.1", () => {
       : "";
   log(`${APP_NAME} v${APP_VERSION}${tag} 已启动（${APP_SUB}）`);
   log(`界面 http://127.0.0.1:${PORT}/   API http://127.0.0.1:${PORT}/v1`);
+  if (!existsSync(LLAMA_SERVER)) log("视觉组件缺失：找不到 " + LLAMA_SERVER + "（图片入口不可用；发布包应带 app/llama/llama-server.exe）");
   writeFile(PID_FILE, String(process.pid)).catch(() => {});
   // 启动时清一次过期快照；之后每次写盘顺带跑，成本只有几次 readdir
   pruneOldSnapshotDirs().catch(() => {});
@@ -6171,6 +6961,10 @@ server.listen(PORT, "127.0.0.1", () => {
   loadPlugins().then(() => watchPlugins()).catch(() => {});
 });
 process.on("exit", () => {
+  // 别把视觉 sidecar 留成孤儿：退出时连进程树一起杀掉
+  try {
+    if (vision.pid) killPidTree(vision.pid);
+  } catch {}
   try {
     unlinkSync(PID_FILE);
   } catch {}

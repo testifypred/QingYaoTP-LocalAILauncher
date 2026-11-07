@@ -168,6 +168,19 @@ $rc2 = @($modSrc, $modDst, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/R:1', '/W:1',
 & robocopy @rc2 | Out-Null
 if ($LASTEXITCODE -ge 8) { Die "复制 TTS 依赖失败，退出码 $LASTEXITCODE" }
 
+Step '复制视觉 sidecar（llama-server.exe）'
+# 看图能力走独立进程：llama-server + --mmproj（nlc 3.22.x 没有视觉 API）
+$llamaSrc = Join-Path $Server '..\tools\llama.cpp'
+$llamaExe = Join-Path $llamaSrc 'llama-server.exe'
+if (-not (Test-Path $llamaExe)) { Die "缺少视觉 sidecar：$llamaExe（先把它放到 tools\llama.cpp）" }
+$llamaDst = Join-Path $AppDir 'llama'
+New-Item -ItemType Directory -Force -Path $llamaDst | Out-Null
+$rc3 = @($llamaSrc, $llamaDst, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/R:1', '/W:1')
+& robocopy @rc3 | Out-Null
+if ($LASTEXITCODE -ge 8) { Die "复制 llama-server 失败，退出码 $LASTEXITCODE" }
+$llamaMB = [math]::Round(((Get-ChildItem $llamaDst -Recurse -File | Measure-Object Length -Sum).Sum / 1MB), 1)
+Write-Host ('   已附带 llama-server（' + $llamaMB + ' MB）')
+
 Step '复制 Node 运行时'
 Copy-Item 'D:\Node.js\node.exe' (Join-Path $RuntimeDir 'node.exe') -Force
 
@@ -201,6 +214,8 @@ $cfg = @"
 # kvReuse     1 = 多轮对话复用 KV 缓存（推荐）；0 = 每轮全量重算（仅用于对照）
 # gpu         后端：auto（先试 Vulkan 再退 CPU）/ vulkan / cpu
 # vkDevices   Vulkan 设备号（逗号分隔，空 = 全部设备）；核显+独显的机器填独显那一项
+# visionModel 看图用的模型（留空 = 自动：modelDir\mmproj\*.gguf 按名字配对各模型）
+# visionMmproj 看图用的视觉投影文件（留空 = 自动）
 # 说明        首次启动会自动检查本机（CPU/内存/显卡/运行库/磁盘），给出模型与上下文建议，
 #             点「按建议配置并应用」即可写回本文件（下一次启动生效）。
 port=$Port
@@ -210,6 +225,8 @@ contextSize=$ContextSize
 kvReuse=1
 gpu=auto
 vkDevices=
+visionModel=
+visionMmproj=
 "@
 Set-Content -Path (Join-Path $resolved 'config.ini') -Value $cfg -Encoding UTF8
 
@@ -284,6 +301,15 @@ QingYaoTP AILauncher（本地 AI）便携版
   kvReuse=1 时，多轮对话只解码「新增部分」，已评估的前缀直接从 KV 缓存复用。
   实测（qwen2.5-7b，1300 token 系统提示）：第二轮首字 16.7s → 0.97s。
   界面每轮会显示「预填充 x.xxs，复用 NN%」。
+
+九、看图（视觉 sidecar）
+  输入区的 🖼 按钮（也支持粘贴 / 拖拽）可以把图片发给本地模型看。
+  需要一个视觉模型：把视觉模型 .gguf 放进模型目录，把配套的 mmproj-*.gguf 放进 <modelDir>\mmproj\。
+  应用按文件名自动配对；也可以在 config.ini 用 visionModel= / visionMmproj= 直接指定。
+  首次看图会启动独立进程 app\llama\llama-server.exe（约 6-12 秒），之后单张图约 10-20 秒。
+  注意：同一时间只加载一个重模型——看图时文本模型会被卸载，看完再选回文本模型即可。
+  若提示「没有可用的视觉模型」，先检查 mmproj 是否放在了 <modelDir>\mmproj\ 下。
+  默认走 CPU 后端（稳定）；想对比 GPU 可设环境变量 VISION_NGL=99 再启动（部分核显驱动会 device lost）。
 
 八、排错
   1. 双击没反应：看 logs\app.log 与 logs\launcher.log；端口被占时启动器会弹提示。

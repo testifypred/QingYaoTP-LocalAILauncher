@@ -1,0 +1,23 @@
+﻿live vision test 2026-11-07 21:57:42
+image = D:\LocalModels\tools\vision-test.png  bytes=5955
+pre state: {"ok":true,"running":true,"port":8101,"pid":8788,"model":"","mmproj":"","startedAt":0,"logPath":"D:\\LocalModels\\dist\\QingYaoTP AILauncher\\logs\\vision.log","pairs":[{"model":"Qwen3.5-9B-Q4_K_M.gguf","mmproj":"mmproj\\Qwen3.5-9B-mmproj-F16.gguf","expect":"9B"}],"selected":{"model":"Qwen3.5-9B-Q4_K_M.gguf","mmproj":"mmproj\\Qwen3.5-9B-mmproj-F16.gguf"},"note":"按文件名族自动配对：Qwen3.5-9B-Q4_K_M.gguf + mmproj\\Qwen3.5-9B-mmproj-F16.gguf","starting":true,"error":""}
+pre /api/state len=1825 ; has model loaded = False
+
+=== 1) POST /api/vision/start ===
+start response (7.9s): {"ok":true,"running":true,"port":8101,"pid":8788,"model":"D:\\LocalModels\\Qwen3.5-9B-Q4_K_M.gguf","mmproj":"D:\\LocalModels\\mmproj\\Qwen3.5-9B-mmproj-F16.gguf","startedAt":1794059871106,"logPath":"D:\\LocalModels\\dist\\QingYaoTP AILauncher\\logs\\vision.log","pairs":[{"model":"Qwen3.5-9B-Q4_K_M.gguf","mmproj":"mmproj\\Qwen3.5-9B-mmproj-F16.gguf","expect":"9B"}],"selected":{"model":"Qwen3.5-9B-Q4_K_M.gguf","mmproj":"mmproj\\Qwen3.5-9B-mmproj-F16.gguf"},"note":"按文件名族自动配对：Qwen3.5-9B-Q4_K_M.gguf + mmproj\\Qwen3.5-9B-mmproj-F16.gguf","starting":false,"error":""}
+start ok=True running=True pid=8788 model=D:\LocalModels\Qwen3.5-9B-Q4_K_M.gguf
+state running=true pid=8788 model=D:\LocalModels\Qwen3.5-9B-Q4_K_M.gguf mmproj=D:\LocalModels\mmproj\Qwen3.5-9B-mmproj-F16.gguf after 8.6s
+8101 listeners = 1
+
+=== 2) POST /v1/chat/completions (image) ===
+chat seconds = 6.0 ; raw len = 0
+answer: 
+contains QWEN = False ; contains 42 = False
+
+=== 3) POST /api/vision/stop ===
+stop response (0.1s): {"ok":true,"running":false}
+post state: {"ok":true,"running":false,"port":8101,"pid":null,"model":"","mmproj":"","startedAt":0,"logPath":"D:\\LocalModels\\dist\\QingYaoTP AILauncher\\logs\\vision.log","pairs":[{"model":"Qwen3.5-9B-Q4_K_M.gguf","mmproj":"mmproj\\Qwen3.5-9B-mmproj-F16.gguf","expect":"9B"}],"selected":{"model":"Qwen3.5-9B-Q4_K_M.gguf","mmproj":"mmproj\\Qwen3.5-9B-mmproj-F16.gguf"},"note":"按文件名族自动配对：Qwen3.5-9B-Q4_K_M.gguf + mmproj\\Qwen3.5-9B-mmproj-F16.gguf","starting":false,"error":""}
+8101 listeners after stop = 0 ; llama-server processes = 0
+freeMB after stop = 19226
+
+=== vision.log tail 12 ===

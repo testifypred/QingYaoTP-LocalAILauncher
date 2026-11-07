@@ -1,0 +1,82 @@
+﻿===== EXTRACT SMOKE =====
+dir = C:\Users\lenovo\AppData\Local\Temp\qytp-verify-v130-20261107-220144
+extract OK 26.7s
+root=QingYaoTP AILauncher-v1.3.0 ; files=3496 ; dirs=500 ; bytes=376829832 (359.4 MiB)
+  OK   QingYaoTP AILauncher.exe                                  57856
+  OK   DebugTool.exe                                             42496
+  OK   localai.ico                                               31308
+  OK   config.ini                                                 1165
+  OK   使用说明.txt                                                   4939
+  OK   Microsoft.Web.WebView2.Core.dll                          698208
+  OK   Microsoft.Web.WebView2.WinForms.dll                       38752
+  OK   WebView2Loader.dll                                       194912
+  OK   vc_redist.x64.exe                                      25635768
+  OK   runtime\node.exe                                       92825416
+  OK   app\app.mjs                                              289073
+  OK   app\app.html                                             322530
+  OK   app\doc-extract.mjs                                       10750
+  OK   app\config-recommend.mjs                                   6063
+  OK   app\debug.html                                            19774
+  OK   app\localai-debug.mjs                                      8365
+  OK   app\localai-debug.cmd                                       237
+  OK   app\debug-icon-64.png                                      3371
+  OK   app\debug.ico                                             33273
+  OK   app\vendor\katex\katex.min.js                            272868
+  OK   app\node_modules\node-llama-cpp\package.json               7829
+  OK   app\llama\llama-server.exe                                 9728
+  OK   app\llama\mtmd.dll                                      2531840
+  OK   app\llama\ggml-vulkan.dll                              41999360
+  OK   app\llama\llama-server-impl.dll                        10104320
+  OK   app\llama\llama-common.dll                              8354816
+  OK   app\llama\ggml-base.dll                                  833024
+  OK   plugins\disk.mjs                                           1128
+  OK   plugins\hello.mjs                                          1059
+  OK   plugins\notes.mjs                                          1517
+  missing = 0
+  extracted app\llama entries = 53
+  dir data: exists=True children=0
+  dir logs: exists=True children=0
+  dir models: exists=True children=0
+  unwanted: app\server.pid=False ; gguf=0 ; mmproj-path=0
+
+===== hash compare (extracted vs server) =====
+  app.mjs                DIFF   server=644D118AAD26EAE7 extracted=CE5044954611357E
+  app.html               DIFF   server=345CB2E5A78ED6D7 extracted=4B7A179E51001893
+  doc-extract.mjs        MATCH  server=9E08B87B04751950 extracted=9E08B87B04751950
+  config-recommend.mjs   MATCH  server=FD2BD97860688F6D extracted=FD2BD97860688F6D
+  launcher exe MATCH=True size=57856
+  llama-server.exe MATCH=True size=9728
+
+===== extracted config.ini =====
+  | port=8099
+  | modelDir=
+  | autoLoad=
+  | contextSize=16384
+  | kvReuse=1
+  | gpu=auto
+  | vkDevices=
+  | visionModel=
+  | visionMmproj=
+  modelDir empty = True ; has vision lines = True ; contains D:\LocalModels = False
+
+===== node --check (extracted node) =====
+  node -v = v24.19.0
+  --check app.mjs                exit=0 
+  --check config-recommend.mjs   exit=0 
+  --check doc-extract.mjs        exit=0 
+  --check localai-debug.mjs      exit=0 
+  --check localai.mjs            exit=0 
+  --check localai-tui.mjs        exit=0 
+
+===== extracted llama-server.exe --version =====
+  exit within 60s=True ; stderr: version: 0.9.0-dev (build 12144, commit 69ee2ecc0) | built with Clang 20.1.8 for Windows x86_64
+
+===== ZIP DIFF v1.2.0 -> v1.3.0 =====
+old entries=3943 new entries=3997
+removed = 0 -> 
+added = 54
+  added dirs = 1 ; added files = 53 ; added under app/llama/ = 54
+changed = 3
+  ~ app/app.html  298897 -> 322530
+  ~ app/app.mjs  262620 -> 289073
+  ~ config.ini  963 -> 1165

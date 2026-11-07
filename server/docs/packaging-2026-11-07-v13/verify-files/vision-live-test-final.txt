@@ -1,0 +1,43 @@
+﻿final single-request vision test 2026-11-07 22:00:50
+image=D:\LocalModels\tools\vision-test.png bytes=5955
+pre state running=False
+freeMB before=18124
+start (12.0s) ok/running: {"ok":true,"running":true,"port":8101,"pid":568,"model":"D:\\LocalModels\\Qwen3.5-9B-Q4_K_M.gguf","mmproj":"D:\\LocalModels\\mmproj\\Qwen3.5-9B-mmproj-F16.gguf","startedAt":1794060063890,"logPath":"D:\\LocalModels\\dist\\QingYaoTP AILauncher\\logs\\vision.log","pairs":[{"model":"Qwen3.5-9B-Q4_K_M.gguf","mmproj":"mmproj\\Qwen3.5-9B-mmproj-F16.gguf","expect":"9B"}],"selected":{"model":"Qwen3.5-9B-Q4_K_M.gguf","mmproj":"mmproj\\Qwen3.5-9B-mmproj-F16.gguf"},"note":"按文件名族自动配对：Qwen3.5-9B-Q4_K_M.gguf + mmproj\\Qwen3.5-9B-mmproj-F16.gguf","starting":false,"error":""}
+pid=568 ; 8101 listeners=1
+freeMB with sidecar=10728
+chat 11.7s rawLen=679
+finish_reason=stop
+content: 图中文字和数字为：QWEN 42 hello。图形颜色为：红色。
+reasoning tail: 
+HIT: QWEN=True ; 42=True ; hello=True
+freeMB during=10768
+stop: {"ok":true,"running":false}
+after stop: running=False starting=False
+8101 listeners after = 0
+llama-server procs after = 0
+8101 released check (2s later) = 0
+freeMB after=18131
+=== vision.log tail 16 ===
+0.11.269.415 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 8192, kv_unified = 'false'
+0.11.307.790 I srv  server_run_i: model loaded
+0.11.307.828 I srv  server_on_li: listening on http://127.0.0.1:8101
+0.14.451.489 I slot get_availabl: id  0 | task -1 | selected slot by LRU, n_tokens = 0, t_last = -1
+0.14.451.650 I slot launch_slot_: id  0 | task 0 | processing task, is_child = 0
+0.18.081.778 W find_slot: non-consecutive token position 23 after 22 for sequence 0 with 220 new tokens
+0.18.082.432 W find_slot: non-consecutive token position 23 after 22 for sequence 0 with 220 new tokens
+0.18.205.132 W find_slot: non-consecutive token position 48 after 23 for sequence 0 with 6 new tokens
+0.18.205.264 W find_slot: non-consecutive token position 48 after 23 for sequence 0 with 6 new tokens
+0.21.726.082 I slot print_timing: id  0 | task 0 | prompt processing, n_tokens =    249, progress = 0.98, t =   7.27 s / 34.23 tokens per second
+0.26.050.256 I slot print_timing: id  0 | task 0 | prompt eval time =    8577.05 ms /   253 tokens (   33.90 ms per token,    29.50 tokens per second)
+0.26.050.279 I slot print_timing: id  0 | task 0 |        eval time =    3021.48 ms /    21 tokens (  151.07 ms per token,     6.62 tokens per second)
+0.26.050.282 I slot print_timing: id  0 | task 0 |       total time =   11598.53 ms /   274 tokens
+0.26.050.285 I slot print_timing: id  0 | task 0 |    graphs reused =         19
+0.26.050.287 I slot print_timing: id  0 | task 0 |   graph reallocs =          0    /     0        (same size) / (changed size)
+0.26.050.433 I slot      release: id  0 | task 0 | stop processing: n_tokens = 273, truncated = 0
+=== app.log tail 6 ===
+14:00:23 瑙嗚锛氬仠姝?sidecar锛坧id 15176锛?
+14:00:26 瑙嗚 sidecar 閫€鍑猴紙code=1锛?
+14:00:52 瑙嗚锛氬惎鍔?Qwen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf锛坧id 568锛夛紝绛夊緟 /health ...
+14:01:03 瑙嗚 sidecar 灏辩华锛圦wen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf锛?1.9s锛宲id 568锛?
+14:01:18 瑙嗚锛氬仠姝?sidecar锛坧id 568锛?
+14:01:21 瑙嗚 sidecar 閫€鍑猴紙code=1锛?

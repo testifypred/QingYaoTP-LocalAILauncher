@@ -1,0 +1,97 @@
+视觉 sidecar 后端自测（vision-backend / task-7 修复轮）
+==================================================
+日期：2026-11-07（Asia/Shanghai）
+对象：server/app.mjs（APP_VERSION 1.3.0），契约 CONTRACT.md 第二、三节 + Lead 追加修复要求
+环境：Windows / node v24.17.0 / llama-server.exe b12144（D:\LocalModels\tools\llama.cpp）
+方式：临时实例 PORT=8102（不动 8099），sidecar 固定 8101，图片 D:\LocalModels\tools\vision-test.png
+脚本：selftest.mjs（全链路）、selftest-concurrency.mjs（串行/并发/崩溃自愈）
+日志：D:\LocalModels\logs\vision.log（sidecar）、backend-selftest-raw.log（8102 应用日志）、backend-selftest-concurrency.log（本轮实测输出）
+
+〇、本轮修复（Lead 证据：单条视觉请求也会让 sidecar 崩）
+  修复前：Vulkan 侧车（-ngl 99）每完成一次 mtmd 图像编码就 device lost：
+    ggml_vulkan: device lost on Vulkan0 -> mtmd_batch_encode: ErrorDeviceLost -> sidecar 退出 code=3221226505 (0xC0000005)
+  修复：
+  1) sidecar 默认改 CPU 后端：-ngl 0；环境变量 VISION_NGL 可覆盖（默认 0，设 99 才上 GPU 对比）
+  2) /v1/chat/completions 视觉转发加串行锁：FIFO 队列，同一时刻只允许一个请求进 sidecar，排队上限 180s
+     （排队超时回 503「视觉请求排队超时（180s）」；排队期间也算有视觉请求，/api/load 会 409）
+  3) 崩溃自愈：转发前检查 sidecar 进程存活 + /health；进程已退出/无响应 -> 自动重启；
+     转发失败（非流式、或流式首块发出前）最多自动重启重试 1 次；仍失败回 502 并带 vision.log 路径。
+     非预期退出在应用日志里明确写「视觉：sidecar 崩溃（code=...），下次转发会崩溃重启」。
+  4) 保持 -np 1；契约端口/参数其余不变。
+
+一、改动行段（最终文件行号；git diff --numstat: +795 / -1）
+    37            APP_VERSION 1.3.0
+    44-82         视觉常量：LLAMA_DIR 解析、LLAMA_SERVER、8101、8192、VISION_NGL（默认 0）、
+                  启动/请求/排队超时（120s/600s/180s）、logs/vision.log
+    1234          scanModels 跳过含 mmproj 的 .gguf（不进 /api/state.models）
+    1487-1580     视觉实现区：vision 状态/lock、visionFamily/配对扫描、/health、state、start/stop
+    1581-1918     pair 扫描配对 + 启动（含崩溃日志、-ngl 日志）与停止
+    1920-1993     串行队列（acquire/dispatch/release）、writeVisionChunk、ensureVisionReadyForChat
+    1995-2200     带图转发：排队 -> 健康检查 -> fetch -> 非流式/流式（SSE 首块前可重试）-> 502/日志
+    5704-5731     GET /api/vision/state、POST /api/vision/start|stop
+    5788-5795     /api/load 前：视觉请求中/启动中 409；sidecar running 先 stop
+    6604-6607     /v1/chat/completions 带图分流（images 或 content.image_url）
+    6960           listen 时提示视觉组件缺失
+    6964-6972     进程退出时杀 sidecar 进程树
+
+二、静态检查
+  node --check server/app.mjs -> SYNTAX OK（本轮每次编辑后均执行，最终版 OK）
+  node --check selftest.mjs / selftest-concurrency.mjs -> SYNTAX OK
+
+三、CPU 后端单条基线（21:59，8102）
+  POST /api/vision/start {} -> 200，pid=32832，15.3s 就绪；/health {"status":"ok"}
+  启动参数落盘（vision.log）：
+    llama-server.exe -m ...\Qwen3.5-9B-Q4_K_M.gguf --mmproj ...\Qwen3.5-9B-mmproj-F16.gguf
+      -c 8192 -ngl 0 --host 127.0.0.1 --port 8101 --jinja --no-webui -np 1
+    log: n_slots = 1, n_ctx_slot = 8192, loaded multimodal model, listening on http://127.0.0.1:8101
+  单条请求（max_tokens 48）：34.2s，content 含 "QWEN 42" 与 "hello"，sidecar 存活、/health ok
+    prompt eval ~15.9s / 239 tokens（15 tok/s），eval 2.6 tok/s（纯 CPU）
+  说明：之后相同 prompt+图片的请求约 2.6-2.9s（sidecar slot 复用同一图文 prompt 的 KV），
+        真实用户换图/换问题时会回到 10-35s 量级。
+
+四、串行 3 条 + 并发 2 条 + 崩溃自愈（selftest-concurrency.mjs，最终复测 28/28 PASS）
+  前置：sidecar running pid=8788，/health ok
+  串行 #1 -> 200 11681ms content="QWEN 42\nhello"；sidecar 存活 pid 不变；/health ok
+  串行 #2 -> 200  2689ms content="QWEN 42\nhello"；sidecar 存活 pid 不变；/health ok
+  串行 #3 -> 200  2633ms content="QWEN 42\nhello"；sidecar 存活 pid 不变；/health ok
+  并发 2 条（Node Promise.all，同时发出）：
+    #A -> 200 2589ms "QWEN 42\nhello"
+    #B -> 200 5315ms "QWEN 42\nhello"   （B 排队约 2.6s 后再进 sidecar：A+B 明显串行）
+    两条都成功，sidecar 存活 pid 不变（8788），/health ok —— 并发不再触发崩溃
+  崩溃自愈（外部 taskkill pid 8788）：
+    state.running=false（1.7s 内检测到），8101 无监听
+    下一条请求 -> 200 17833ms，content="QWEN 42\nhello"；自动重启，新 pid=29524，/health ok
+    app 日志证据：
+      视觉：sidecar 崩溃（code=1），下次转发会崩溃重启；详见 D:\LocalModels\logs\vision.log
+      视觉：sidecar 未运行（可能已崩溃），启动
+      视觉：启动 Qwen3.5-9B-Q4_K_M.gguf + mmproj（-ngl 0 CPU，pid 29524），等待 /health ...
+  stop -> 200 {"ok":true,"running":false}；8101 无监听
+  应用日志同时可见串行锁生效：视觉：排队 2584ms / 2843ms 后开始转发（同一时刻只允许一个视觉请求）
+
+五、稳定性证据
+  vision.log 全文件 "device lost / ErrorDeviceLost / failed to process mtmd" 出现次数 = 0（修复后所有请求）
+  三个 pid（32832 / 8788 / 29524）都是主动停止或测试模拟崩溃，服务期间无自崩
+  CPU 后端不占显存；模型权重与 mmproj 仍在内存（约 7GB），测试后 free 内存回到 ~18.4 GB
+
+六、错误语义（本轮仍有效）
+  - 文件缺失 -> 400（"视觉模型文件不存在：..."）
+  - 没有 pair -> 409（信息含「视觉模型」，见上轮空 MODEL_DIR 实例验证）
+  - 组件缺失 -> 500（带 llama-server.exe 路径）
+  - spawn 失败 -> 500（带 vision.log 路径）
+  - 排队超时 -> 503（180s，本轮未构造实测）
+  - 转发失败且重试后仍失败 -> 502（message 带 vision.log 路径）
+  - 无图请求仍走原 nlc 路径（409 未加载模型）
+
+七、清理
+  - 8102 临时实例已 shutdown；8101 无监听；8099 未重启（当前 v1.3.0，loaded 空）
+  - server.pid 恢复为测试前内容（26020）
+  - 未修改 workspace/sessions；测试图片只在 tools/ 与 docs/
+  - 备注：端口 8103 被另一 teammate 的测试实例占用；本轮未使用该端口
+
+八、未覆盖 / 风险
+  - 排队 180s 超时分支未实测（需要人为占住 sidecar 180s）
+  - GPU 后端（VISION_NGL=99）未再回归：已知会 device lost，仅保留开关供以后对比
+  - 504（启动超时）分支未实测；/api/extras/preload 仍未加"先停 sidecar"保护（契约只要求 /api/load）
+  - 4MB 请求体上限未改（3 张压缩图通常够；前端未缩放会 413）
+  - CPU 生成较慢（2.6 tok/s）：视觉回答要短；前端需容忍 10-35s（首次/换图）
+  - 只实测 Qwen3.5-9B + 对应 mmproj 这一组

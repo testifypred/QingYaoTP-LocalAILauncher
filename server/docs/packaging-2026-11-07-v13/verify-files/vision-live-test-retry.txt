@@ -1,0 +1,52 @@
+﻿clean retry 2026-11-07 21:58:56
+image=D:\LocalModels\tools\vision-test.png bytes=5955
+other procs before: 0 llama-server ; node=1
+api/state model loaded = False
+
+===== ATTEMPT 1 =====
+idle check streak=2
+start (8.9s): {"ok":true,"running":true,"port":8101,"pid":23228,"model":"D:\\LocalModels\\Qwen3.5-9B-Q4_K_M.gguf","mmproj":"D:\\LocalModels\\mmproj\\Qwen3.5-9B-mmproj-F16.gguf","startedAt":1794059951536,"logPath":"D:\\LocalModels\\dist\\QingYaoTP AILauncher\\logs\\vision.log","pairs":[{"model":"Qwen3.5-9B-Q4_K_M.
+running pid=23228 ; 8101 listeners=1
+chat at 21:59:12
+chat 24.6s rawLen=903
+answer: 
+contains QWEN = False ; contains 42 = False
+attempt failed; vision.log tail:
+    0.34.605.120 I slot print_timing: id  0 | task 0 | prompt eval time =    6180.00 ms /   251 tokens (   24.62 ms per token,    40.61 tokens per second)
+    0.34.605.152 I slot print_timing: id  0 | task 0 |        eval time =   18325.36 ms /   120 tokens (  153.99 ms per token,     6.49 tokens per second)
+    0.34.605.175 I slot print_timing: id  0 | task 0 |       total time =   24505.37 ms /   371 tokens
+    0.34.605.185 I slot print_timing: id  0 | task 0 |    graphs reused =        118
+    0.34.605.187 I slot print_timing: id  0 | task 0 |   graph reallocs =          0    /     0        (same size) / (changed size)
+    0.34.605.429 I slot      release: id  0 | task 0 | stop processing: n_tokens = 370, truncated = 0
+
+===== ATTEMPT 2 =====
+idle check streak=2
+start (9.9s): {"ok":true,"running":true,"port":8101,"pid":15176,"model":"D:\\LocalModels\\Qwen3.5-9B-Q4_K_M.gguf","mmproj":"D:\\LocalModels\\mmproj\\Qwen3.5-9B-mmproj-F16.gguf","startedAt":1794059996907,"logPath":"D:\\LocalModels\\dist\\QingYaoTP AILauncher\\logs\\vision.log","pairs":[{"model":"Qwen3.5-9B-Q4_K_M.
+running pid=15176 ; 8101 listeners=1
+chat at 21:59:58
+chat 25.2s rawLen=903
+answer: 
+contains QWEN = False ; contains 42 = False
+attempt failed; vision.log tail:
+    0.36.091.611 I slot print_timing: id  0 | task 0 | prompt eval time =    6381.80 ms /   251 tokens (   25.43 ms per token,    39.33 tokens per second)
+    0.36.091.641 I slot print_timing: id  0 | task 0 |        eval time =   18789.89 ms /   120 tokens (  157.90 ms per token,     6.33 tokens per second)
+    0.36.091.651 I slot print_timing: id  0 | task 0 |       total time =   25171.69 ms /   371 tokens
+    0.36.091.654 I slot print_timing: id  0 | task 0 |    graphs reused =        118
+    0.36.091.657 I slot print_timing: id  0 | task 0 |   graph reallocs =          0    /     0        (same size) / (changed size)
+    0.36.091.889 I slot      release: id  0 | task 0 | stop processing: n_tokens = 370, truncated = 0
+
+=== stop ===
+stop: {"ok":true,"running":false}
+state after: running=False starting=False
+8101 listeners after = 0
+llama-server procs after = 0
+freeMB after = 18602
+=== app.log tail 8 ===
+13:59:11 瑙嗚 sidecar 灏辩华锛圦wen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf锛?.8s锛宲id 23228锛?
+13:59:31 鎵撳紑璋冭瘯宸ュ叿锛圖ebugTool.exe锛宲id 25888锛?
+13:59:37 瑙嗚锛氬仠姝?sidecar锛坧id 23228锛?
+13:59:40 瑙嗚 sidecar 閫€鍑猴紙code=1锛?
+13:59:47 瑙嗚锛氬惎鍔?Qwen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf锛坧id 15176锛夛紝绛夊緟 /health ...
+13:59:56 瑙嗚 sidecar 灏辩华锛圦wen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf锛?.8s锛宲id 15176锛?
+14:00:23 瑙嗚锛氬仠姝?sidecar锛坧id 15176锛?
+14:00:26 瑙嗚 sidecar 閫€鍑猴紙code=1锛?

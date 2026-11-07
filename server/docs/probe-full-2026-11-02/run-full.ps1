@@ -162,7 +162,10 @@ $probes=@(
   @{n='probe-context-switch'; a=@($cdp); t=300},
   @{n='probe-ui-preload'; a=@($cdp,$base,$shots); t=300},
   @{n='probe-preload'; a=@($base); t=360},
-  @{n='probe-second-opinion'; a=@($base); t=420}
+  @{n='probe-second-opinion'; a=@($base); t=420},
+  # 视觉 sidecar：UI 探针先跑（只动 DOM），API 探针最后跑——start 会卸载 nlc 文本模型（内存互斥）
+  @{n='probe-ui-vision'; a=@($cdp,$base,$shots); t=240},
+  @{n='probe-vision-api'; a=@($base); t=420}
 )
 "# full suite $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')  ($($probes.Count) probes)" | Out-File -Encoding utf8 $summary
 "# 预加载 $M" | Out-File -Append -Encoding utf8 $summary

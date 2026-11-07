@@ -565,6 +565,22 @@ textarea:disabled{opacity:.5}
 #send img[hidden]{display:none}
 #send:disabled{box-shadow:none}
 
+/* ---- 图片入口（视觉 sidecar）：底部按钮 + 预览条 + 气泡缩略图 ---- */
+#imgBtn{height:56px;width:46px;padding:0;font-size:18px;line-height:1;flex:none}
+.imgPreview{display:flex;gap:8px;padding:2px 0 4px;flex-wrap:wrap}
+.imgPreview[hidden]{display:none}
+.imgThumb{position:relative;width:64px;height:64px;border-radius:6px;border:1px solid var(--line-2);overflow:hidden;background:var(--panel-2);flex:none;box-shadow:var(--shadow-sm)}
+.imgThumb img{width:100%;height:100%;object-fit:cover;display:block}
+.imgThumb .imgDel{position:absolute;top:1px;right:1px;width:18px;height:18px;padding:0;border-radius:50%;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.62);border:1px solid rgba(255,255,255,.28);color:#fff;box-shadow:none}
+.imgThumb .imgDel:hover:not(:disabled){background:rgba(251,113,133,.9);border-color:rgba(251,113,133,.9);transform:none;box-shadow:none}
+.msgImgs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.msgImgs img{max-width:180px;max-height:180px;border-radius:6px;border:1px solid var(--line-2);display:block;object-fit:contain;background:var(--panel-2)}
+.visionBadge{margin-left:7px;padding:0 6px;border-radius:4px;border:1px solid rgba(34,211,238,.45);background:rgba(34,211,238,.12);color:var(--cyan);font-size:9.5px;letter-spacing:.08em;font-weight:600}
+.dropZoneHot{outline:2px dashed var(--cyan);outline-offset:-6px;border-radius:10px}
+.heroBox #heroImgBtn{width:44px;padding:0;font-size:18px;line-height:1}
+#heroImgPreview{width:min(720px,88%);justify-content:center;margin-top:10px}
+#setVisionLog{font-family:var(--mono);font-size:11px;word-break:break-all;color:var(--text-2)}
+
 /* ---- 设置选项卡：生成 / 朗读 ---- */
 .settingsTabs{display:flex;gap:4px;padding:10px 18px 0;border-bottom:1px solid var(--line);flex:none}
 .settingsTabs button{
@@ -1005,7 +1021,10 @@ header::before{
 </main>
 
 <footer>
+  <div id="imgPreview" class="imgPreview" hidden></div>
   <div class="footerMain">
+    <button id="imgBtn" class="ghost" type="button" title="添加图片（也支持粘贴 / 拖拽）">🖼</button>
+    <input type="file" id="imgInput" accept="image/*" multiple hidden>
     <textarea id="q" placeholder="输入你的问题…" disabled></textarea>
     <button id="stopBtn" class="ghost" hidden>停止</button>
     <button id="send" disabled><img id="sendIco" alt="" hidden><span>发送</span></button>
@@ -1336,6 +1355,7 @@ header::before{
     <div class="settingsTabs">
       <button type="button" class="stab sel" data-tab="gen">生成</button>
       <button type="button" class="stab" data-tab="gpu">显卡</button>
+      <button type="button" class="stab" data-tab="vision">视觉</button>
       <button type="button" class="stab" data-tab="tts">朗读</button>
       <button type="button" class="stab" data-tab="tools">工具</button>
       <button type="button" class="stab" data-tab="appear">外观</button>
@@ -1398,6 +1418,27 @@ header::before{
       <div class="field">
         <span class="lbl">说明</span>
         <em>这一项写进 config.ini 的 <b>vkDevices</b>（逗号分隔，空 = 全部）。重启 QingYaoTP AILauncher.exe 后才生效。CPU 后端时不可选；独显能不能用还取决于驱动是否暴露 Vulkan 设备（老机器常需要升级驱动）。</em>
+      </div>
+    </div>
+    <div class="settingsBody" id="paneVision" data-pane="vision" hidden>
+      <div class="field">
+        <span class="lbl">视觉模型组合 <i>model + mmproj</i></span>
+        <select id="setVisionPair"></select>
+        <em>发图时由独立的 llama-server 进程识图（端口 8101）。列表来自模型目录扫出来的「模型 + mmproj」配对；如果为空，先把 mmproj 放到模型目录的 mmproj\ 下，或在 config.ini 里指定 visionModel / visionMmproj。选择会记在本机，发图时自动使用。</em>
+      </div>
+      <div class="field">
+        <span class="lbl">运行状态</span>
+        <em id="setVisionState">正在读取…</em>
+        <div class="exportRow">
+          <button id="setVisionStart" class="ghost" type="button">启动</button>
+          <button id="setVisionStop" class="ghost" type="button">停止</button>
+          <span id="setVisionHint" class="hintText">—</span>
+        </div>
+        <em>启动时先卸载文本模型（同一时间只装一个重模型），加载约 10–20 秒。发图时会自动启动当前选择的组合；看完图要继续文字对话，需要重新加载文本模型。</em>
+      </div>
+      <div class="field">
+        <span class="lbl">日志</span>
+        <em id="setVisionLog">—</em>
       </div>
     </div>
     <div class="settingsBody" id="paneTts" data-pane="tts" hidden>
@@ -1650,6 +1691,317 @@ document.addEventListener('keydown', (e) => {
     input.value = '';
     saveDraftNow();
   }
+});
+
+// ---------------------------------------------------------------- 图片入口（视觉 sidecar）
+// 图片只存在浏览器里：发送时把 dataURL 塞进请求体，服务端转给 8101 上的 llama-server。
+// 预览和气泡用 240px 缩略图；真正发出去的是最长边 1024px、JPEG q0.85 的版本。
+const MAX_IMGS = 3;              // 一张提问最多带 3 张
+const MAX_IMG_MB = 20;           // 单张原图上限（MB）：手机照片常见 5–15MB，4MB 会把大图全挡住
+const MAX_IMG_PIXELS = 80e6;     // 解码像素上限（8000 万）：再大容易把浏览器内存打爆
+const IMG_BUDGET_CHARS = 700 * 1024; // 单张发送版 dataURL 预算：3 张 ≈2.1MB，后端 /v1 请求体上限 4MB
+const IMG_MAX_EDGE = 1024;       // 发送版本的最长边
+const IMG_THUMB_EDGE = 240;      // 预览 / 气泡缩略图的最长边
+const VISION_PAIR_KEY = 'localai.visionPair';
+let pendingImgs = [];            // [{src, thumb}]：待发送的图片
+let visionEnsuring = false;      // 正在等 sidecar 启动：期间暂停 3 秒轮询，别把「正在启动视觉模型…」冲掉
+let visionStateCache = null;     // 最近一次 /api/vision/state
+let visionStateLoaded = false;
+let visionPairs = [];            // 服务端扫出来的「模型 + mmproj」组合
+
+/** 读 /api/vision/state；pairs 为空时点图片按钮只给提示，不弹文件选择框 */
+async function ensureVisionState(force) {
+  if (!force && visionStateLoaded) return visionStateCache;
+  const st = await apiJson('/api/vision/state');
+  if (!st || !Array.isArray(st.pairs)) throw new Error('视觉接口返回异常');
+  visionStateCache = st;
+  visionPairs = st.pairs;
+  visionStateLoaded = true;
+  return st;
+}
+
+function loadVisionPairChoice() {
+  try {
+    const p = JSON.parse(localStorage.getItem(VISION_PAIR_KEY) || 'null');
+    if (p && p.model && p.mmproj) return { model: p.model, mmproj: p.mmproj };
+  } catch {}
+  return null;
+}
+function saveVisionPairChoice(p) {
+  try {
+    if (p && p.model && p.mmproj) localStorage.setItem(VISION_PAIR_KEY, JSON.stringify({ model: p.model, mmproj: p.mmproj }));
+    else localStorage.removeItem(VISION_PAIR_KEY);
+  } catch {}
+}
+
+/** 从 DataTransfer / clipboardData 里挑出图片文件 */
+function imageFilesFrom(dt) {
+  const out = [];
+  if (!dt) return out;
+  if (dt.files && dt.files.length) {
+    for (const f of dt.files) if (/^image\//i.test(f.type || '')) out.push(f);
+    return out;
+  }
+  if (dt.items) {
+    for (const it of dt.items) {
+      if (it.kind === 'file' && /^image\//i.test(it.type || '')) {
+        const f = it.getAsFile();
+        if (f) out.push(f);
+      }
+    }
+  }
+  return out;
+}
+
+/** 读文件为 Image 对象（走 objectURL，不占内存里的 base64 大串） */
+function readImageFile(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const im = new Image();
+    im.onload = () => { URL.revokeObjectURL(url); resolve(im); };
+    im.onerror = () => { URL.revokeObjectURL(url); reject(new Error('图片解码失败')); };
+    im.src = url;
+  });
+}
+
+/**
+ * 不解码就尽量读像素数：JPEG 的 SOF / PNG 的 IHDR / GIF 头。
+ * 20MB 的图可能是上亿像素，先挡掉，免得浏览器解码时把内存打爆。
+ */
+async function readImagePixels(file) {
+  try {
+    const buf = await file.slice(0, 256 * 1024).arrayBuffer();
+    const b = new Uint8Array(buf);
+    // PNG：IHDR 宽高在 16/20 字节处，大端
+    if (b.length >= 24 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) {
+      const w = ((b[16] << 24) | (b[17] << 16) | (b[18] << 8) | b[19]) >>> 0;
+      const h = ((b[20] << 24) | (b[21] << 16) | (b[22] << 8) | b[23]) >>> 0;
+      return w * h;
+    }
+    // GIF：宽高在 6/8 字节处，小端
+    if (b.length >= 10 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) {
+      return (b[6] | (b[7] << 8)) * (b[8] | (b[9] << 8));
+    }
+    // JPEG：扫到 SOF0/1/2…（C4/C8/CC 不是帧头）
+    if (b.length > 4 && b[0] === 0xff && b[1] === 0xd8) {
+      let i = 2;
+      while (i + 9 < b.length) {
+        if (b[i] !== 0xff) { i += 1; continue; }
+        const m = b[i + 1];
+        if (m === 0xd8 || m === 0x01 || (m >= 0xd0 && m <= 0xd7) || m === 0xff) { i += m === 0xff ? 1 : 2; continue; }
+        if (m === 0xd9 || m === 0xda) break; // 到扫描数据前还没 SOF 就放弃
+        const len = (b[i + 2] << 8) | b[i + 3];
+        if (len < 2) break;
+        if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) {
+          const h = (b[i + 5] << 8) | b[i + 6];
+          const w = (b[i + 7] << 8) | b[i + 8];
+          return w * h;
+        }
+        i += 2 + len;
+      }
+    }
+  } catch {}
+  return 0; // 认不出的格式（如 WebP）交给解码后的兜底检查
+}
+
+/** 按最长边等比缩放，输出 JPEG dataURL（白底：透明 PNG 转 JPEG 不发黑） */
+function drawScaledDataUrl(im, maxEdge, quality) {
+  const w = im.naturalWidth || im.width;
+  const h = im.naturalHeight || im.height;
+  const scale = Math.min(1, maxEdge / Math.max(w, h));
+  const tw = Math.max(1, Math.round(w * scale));
+  const th = Math.max(1, Math.round(h * scale));
+  const cv = document.createElement('canvas');
+  cv.width = tw;
+  cv.height = th;
+  const cx = cv.getContext('2d');
+  cx.fillStyle = '#fff';
+  cx.fillRect(0, 0, tw, th);
+  cx.drawImage(im, 0, 0, tw, th);
+  return cv.toDataURL('image/jpeg', quality);
+}
+
+/**
+ * 发送版编码：从 q0.85 开始，超过单张预算就逐档降质量，最后再降分辨率。
+ * 后端 /v1/chat/completions 的请求体上限是 4MB，三张原图 base64 不能把它撑爆。
+ */
+function encodeSendingImage(im, budgetChars) {
+  let url = '';
+  for (const q of [0.85, 0.72, 0.62, 0.52]) {
+    url = drawScaledDataUrl(im, IMG_MAX_EDGE, q);
+    if (url.length <= budgetChars) return url;
+  }
+  return drawScaledDataUrl(im, Math.round(IMG_MAX_EDGE * 0.75), 0.6);
+}
+
+/** 一张原图只解码一次，同时产出发送版和预览缩略图 */
+async function fileToImgs(file) {
+  const px = await readImagePixels(file);
+  if (px && px > MAX_IMG_PIXELS) {
+    throw new Error('图片太大（' + Math.round(px / 1e6) + 'MP，上限 ' + Math.round(MAX_IMG_PIXELS / 1e6) + 'MP），请先缩小再发');
+  }
+  const im = await readImageFile(file);
+  const w = im.naturalWidth || im.width;
+  const h = im.naturalHeight || im.height;
+  if (!w || !h) throw new Error('图片尺寸为 0');
+  if (w * h > MAX_IMG_PIXELS) {
+    throw new Error('图片太大（' + Math.round((w * h) / 1e6) + 'MP，上限 ' + Math.round(MAX_IMG_PIXELS / 1e6) + 'MP），请先缩小再发');
+  }
+  const src = encodeSendingImage(im, IMG_BUDGET_CHARS);
+  const thumb = drawScaledDataUrl(im, IMG_THUMB_EDGE, 0.72);
+  return { src, thumb };
+}
+
+/** 加入待发送图片：最多 3 张、单张 ≤20MB、自动缩放到 ≤1024 并控制请求体大小 */
+async function addImageFiles(fileList) {
+  const files = Array.from(fileList || []).filter((f) => /^image\//i.test(f.type || ''));
+  if (!files.length) return;
+  if (busy) { showToast('正在生成回答，等这一轮结束再加图片', 'warn'); return; }
+  for (const f of files) {
+    if (pendingImgs.length >= MAX_IMGS) {
+      showToast('最多只能带 ' + MAX_IMGS + ' 张图片', 'warn');
+      break;
+    }
+    if (f.size > MAX_IMG_MB * 1024 * 1024) {
+      showToast('图片太大（单张上限 ' + MAX_IMG_MB + 'MB）：' + (f.name || '剪贴板图片'), 'warn', 5200);
+      continue;
+    }
+    // 大图解码要一点时间，先告诉用户在处理，别以为没反应
+    if (f.size > 8 * 1024 * 1024) showToast('正在压缩大图（' + (f.size / 1024 / 1024).toFixed(1) + 'MB）…', 'info', 1800);
+    try {
+      const item = await fileToImgs(f);
+      pendingImgs.push(item);
+      renderImgPreview();
+      syncSendState();
+    } catch (e) {
+      showToast('图片读取失败：' + e.message, 'err', 5200);
+    }
+  }
+}
+
+function clearPendingImgs() {
+  if (!pendingImgs.length) return;
+  pendingImgs.length = 0;
+  renderImgPreview();
+  syncSendState();
+}
+
+/** 预览条：底部输入区和开场白各渲染一份，哪份可见就用哪份 */
+function renderImgPreview() {
+  for (const box of [document.getElementById('imgPreview'), document.getElementById('heroImgPreview')]) {
+    if (!box) continue;
+    box.innerHTML = '';
+    pendingImgs.forEach((it, i) => {
+      const t = document.createElement('div');
+      t.className = 'imgThumb';
+      const im = document.createElement('img');
+      im.src = it.thumb;
+      im.alt = '第 ' + (i + 1) + ' 张待发送图片';
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'imgDel';
+      del.title = '移除这张图片';
+      del.textContent = '×';
+      del.onclick = () => { pendingImgs.splice(i, 1); renderImgPreview(); syncSendState(); };
+      t.append(im, del);
+      box.appendChild(t);
+    });
+    box.hidden = pendingImgs.length === 0;
+  }
+}
+
+/** 点图片按钮：没有 pair 就明确告诉用户缺什么，别让人以为点了没反应 */
+async function pickImages() {
+  try {
+    await ensureVisionState(true);
+  } catch (e) {
+    showToast('读不到视觉模型状态：' + e.message, 'err', 6000);
+    return;
+  }
+  if (!visionPairs.length) {
+    showToast('没有可用的视觉模型（需要 mmproj 文件）', 'warn', 5200);
+    return;
+  }
+  const inp = document.getElementById('imgInput');
+  if (inp) inp.click();
+}
+
+/** 发图前确保 sidecar 已经在跑（首次加载 10–20 秒）；用户另选了组合就切过去 */
+async function ensureVisionForSend() {
+  const st = await ensureVisionState(true);
+  const saved = loadVisionPairChoice();
+  let pair = null;
+  if (saved) pair = visionPairs.find((p) => p.model === saved.model && p.mmproj === saved.mmproj) || saved;
+  if (st.running && (!saved || visionPairMatches(saved, st.model, st.mmproj))) return st;
+  if (!pair && st.selected) pair = st.selected;
+  if (!pair && visionPairs.length) pair = visionPairs[0];
+  if (!pair) throw new Error('没有可用的视觉模型（需要 mmproj 文件）');
+  return await apiJson('/api/vision/start', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ model: pair.model, mmproj: pair.mmproj }),
+  });
+}
+
+const imgInputEl = document.getElementById('imgInput');
+if (imgInputEl) {
+  imgInputEl.addEventListener('change', () => {
+    const files = Array.from(imgInputEl.files || []);
+    imgInputEl.value = '';
+    addImageFiles(files);
+  });
+}
+const imgBtnEl = document.getElementById('imgBtn');
+if (imgBtnEl) imgBtnEl.onclick = pickImages;
+
+// 粘贴：焦点在聊天输入框里时接住剪贴板图片
+document.addEventListener('paste', (e) => {
+  const files = imageFilesFrom(e.clipboardData);
+  if (!files.length) return;
+  const t = e.target;
+  const inChat = t && (t.id === 'q' || t.id === 'heroInput' || (t.closest && t.closest('footer, #hero')));
+  if (!inChat) return;
+  e.preventDefault();
+  addImageFiles(files);
+});
+
+// 拖拽：只认底部输入区 / 开场白区，别把页面其它地方的拖放行为抢走
+function imgDropZone(target) {
+  return target && target.closest ? target.closest('footer, #hero') : null;
+}
+document.addEventListener('dragenter', (e) => {
+  const zone = imgDropZone(e.target);
+  if (!zone || !imageFilesFrom(e.dataTransfer).length) return;
+  e.preventDefault();
+  zone.classList.add('dropZoneHot');
+});
+document.addEventListener('dragover', (e) => {
+  const zone = imgDropZone(e.target);
+  if (!zone) return;
+  const dt = e.dataTransfer;
+  // 拖拽途中文件列表可能还没解锁，只看类型
+  if (!dt || !Array.from(dt.types || []).includes('Files')) return;
+  e.preventDefault();
+  dt.dropEffect = 'copy';
+  zone.classList.add('dropZoneHot');
+});
+document.addEventListener('dragleave', (e) => {
+  const zone = imgDropZone(e.target);
+  if (zone) zone.classList.remove('dropZoneHot');
+});
+document.addEventListener('drop', (e) => {
+  const zone = imgDropZone(e.target);
+  if (!zone) return;
+  const files = imageFilesFrom(e.dataTransfer);
+  zone.classList.remove('dropZoneHot');
+  if (!files.length) {
+    // 拖进来的是非图片：别让浏览器把文件当页面打开
+    const any = e.dataTransfer && e.dataTransfer.files ? e.dataTransfer.files.length : 0;
+    if (any) { e.preventDefault(); showToast('只支持图片文件', 'warn', 3600); }
+    return;
+  }
+  e.preventDefault();
+  addImageFiles(files);
 });
 
 // ---------------------------------------------------------------- 回到最新
@@ -1925,11 +2277,23 @@ function setBusy(on, label) {
   busy = on;
   loadBtn.disabled = on;
   unloadBtn.disabled = on || !loaded;
-  sendBtn.disabled = on || !loaded;
-  input.disabled = on || !loaded;
   toolChk.disabled = on || !loaded;
+  syncSendState();
   syncThinkChk();
   if (on && label) setStatus('busy', label);
+}
+
+/**
+ * 发送按钮状态：有文字模型，或者手里有待发送的图片就能发。
+ * 视觉请求走独立 sidecar，不需要（也不允许同时）加载文本模型——
+ * 否则看完图、文本模型被卸载后按钮会一直灰着，第二张图就发不出去。
+ */
+function syncSendState() {
+  const can = !busy && (!!loaded || pendingImgs.length > 0);
+  sendBtn.disabled = !can;
+  input.disabled = busy || (!loaded && pendingImgs.length === 0);
+  const btn = document.getElementById('imgBtn');
+  if (btn) btn.disabled = !!busy;
 }
 
 /** 只有已加载的模型确实支持思考时，才允许勾选「深度思考」。 */
@@ -2963,6 +3327,13 @@ function renderStoredAssistant(entry, idx) {
   const who = document.createElement('div');
   who.className = 'who';
   who.textContent = isSecond ? `第二意见 · ${prettyName(entry.model) || '另一个模型'}` : '模型';
+  // 视觉回答：名字旁边挂一个「视觉」小徽标，刷新/切会话后也认得出来
+  if (entry.vision) {
+    const badge = document.createElement('span');
+    badge.className = 'visionBadge';
+    badge.textContent = '视觉';
+    who.appendChild(badge);
+  }
   row.appendChild(who);
 
   if (entry.reasoning) {
@@ -3017,7 +3388,7 @@ function renderStored() {
     return;
   }
   transcript.forEach((e, i) => {
-    if (e.role === 'user') bubble('user', e.content, e.t);
+    if (e.role === 'user') bubble('user', e.content, e.t, e.images);
     else renderStoredAssistant(e, i);
     // 第二意见要带前缀进上下文，否则主模型分不清哪句是自己说的
     history.push({ role: e.role, content: e.ctx ?? e.content ?? '' });
@@ -3878,9 +4249,11 @@ function showHero() {
         '<button type="button" class="modeBtn reason" data-mode="reason">推理模式</button>' +
       '</div>' +
       '<div class="heroBox">' +
+        '<button id="heroImgBtn" class="ghost" type="button" title="添加图片（也支持粘贴 / 拖拽）">🖼</button>' +
         '<textarea id="heroInput" placeholder="试试问我点什么…" spellcheck="false"></textarea>' +
         '<button id="heroSend" type="button">发送</button>' +
       '</div>' +
+      '<div id="heroImgPreview" class="imgPreview" hidden></div>' +
       '<div class="heroHint" id="heroHint">Agent 模式：先调工具查证再答 · 推理模式：先想清楚再答</div>' +
     '</div>';
   const g = document.getElementById('heroGreet');
@@ -3899,10 +4272,14 @@ function showHero() {
   });
   hi.addEventListener('keydown', inputHistoryKey); // ↑/↓ 在开场白页也能翻历史
   document.getElementById('heroSend').onclick = heroSendNow;
+  const hb = document.getElementById('heroImgBtn');
+  if (hb) hb.onclick = pickImages;
   for (const b of document.querySelectorAll('#hero .modeBtn')) {
     b.onclick = () => applyHeroMode(b.dataset.mode);
   }
   applyHeroMode('agent', true);
+  renderImgPreview();
+  syncSendState();
   setTimeout(() => { try { hi.focus(); } catch {} }, 60);
 }
 
@@ -3910,8 +4287,9 @@ function showHero() {
 function heroSendNow() {
   const hi = document.getElementById('heroInput');
   const text = (hi ? hi.value : input.value).trim();
-  if (!text) return;
-  if (!loaded) { setStatus('err', '先加载一个模型'); return; }
+  if (!text && !pendingImgs.length) return;
+  // 只发图也行：视觉请求走 sidecar，不需要文本模型在内存里
+  if (!loaded && !pendingImgs.length) { setStatus('err', '先加载一个模型'); return; }
   input.value = text;
   send(text);
 }
@@ -4176,6 +4554,7 @@ async function switchSession(id) {
   if (busy || generating) { setStatus('', '生成中，先停下再切换对话'); return; }
   saveDraftNow();
   stopAudio();
+  clearPendingImgs(); // 待发送图片不跨会话，免得发错对话
   const token = ++switchToken;
   await flushTranscript();
   try {
@@ -5094,6 +5473,7 @@ async function newChat() {
   transcript = [];
   transcriptDirty = false;
   history.length = 0;
+  clearPendingImgs(); // 未发送的图片属于上一段输入，不跟着切会话
   resetCtx();
   renderSessions();
   showHero();
@@ -5140,7 +5520,7 @@ function makeMsgTime(ts) {
   return s;
 }
 
-function bubble(role, text, ts) {
+function bubble(role, text, ts, imgs) {
   const row = document.createElement('div');
   row.className = 'row ' + role;
   const who = document.createElement('div');
@@ -5149,6 +5529,19 @@ function bubble(role, text, ts) {
   const b = document.createElement('div');
   b.className = 'bubble';
   b.textContent = text;
+  // 图片放在文字上方；缩略图来自 transcript 里存的小图（原图不落盘）
+  if (Array.isArray(imgs) && imgs.length) {
+    const box = document.createElement('div');
+    box.className = 'msgImgs';
+    for (const src of imgs) {
+      const im = document.createElement('img');
+      im.src = src;
+      im.alt = '图片';
+      im.loading = 'lazy';
+      box.appendChild(im);
+    }
+    b.insertBefore(box, b.firstChild);
+  }
   row.append(who, b);
   const tm = makeMsgTime(ts ?? Date.now());
   if (tm) row.appendChild(tm);
@@ -5164,13 +5557,41 @@ function bubble(role, text, ts) {
 async function send(text) {
   stopRequested = false;
   pushInputHistory(text);
-  const ok = await doSend(text);
-  if (ok && askModels.length && !stopRequested) {
-    await runSecondOpinions(text);
+  // 带图提问：先确保 sidecar 在跑（首次加载约 10–20 秒），状态栏给出明确提示
+  const sendImgs = pendingImgs.slice();
+  if (sendImgs.length) {
+    visionEnsuring = true;
+    setBusy(true, '正在启动视觉模型…');
+    try {
+      await ensureVisionForSend();
+    } catch (e) {
+      visionEnsuring = false;
+      setBusy(false);
+      setStatus('err', '视觉模型不可用：' + e.message.slice(0, 80));
+      showToast('视觉模型不可用：' + e.message, 'err', 7000);
+      return;
+    }
+    visionEnsuring = false;
+  }
+  const ok = await doSend(text, sendImgs);
+  if (!ok) {
+    if (sendImgs.length) setBusy(false);
+    return;
+  }
+  if (askModels.length && !stopRequested) {
+    if (sendImgs.length) {
+      // 视觉走 sidecar 时文本模型已被卸载；再让第二个模型装进内存会违反互斥
+      askModels = [];
+      renderAskChips();
+      showToast('图片提问暂不支持 @ 第二意见（视觉模型与文本模型内存互斥）', 'warn', 5600);
+    } else {
+      await runSecondOpinions(text);
+    }
   }
 }
 
-async function doSend(text) {
+async function doSend(text, sendImgs) {
+  const imgs = Array.isArray(sendImgs) ? sendImgs : [];
   // 开始新一轮：把还没跑的自动标题取消，免得标题抢在生成中间改
   cancelAutoTitle();
   // 开场白和「上次对话」提示在真正开始聊之后就该退场
@@ -5188,11 +5609,21 @@ async function doSend(text) {
     }
   }
   stopAudio(); // 新一轮提问，先掐掉上一段的朗读
+  const hadTextModel = !!loaded; // 视觉请求会把文本模型卸载，收尾时要提示用户
+  // 预览条清空；历史里只留文字 + 小缩略图（原图不落盘，避免会话文件变巨大）
+  pendingImgs.length = 0;
+  renderImgPreview();
+  syncSendState();
   history.push({ role: 'user', content: text });
-  transcript.push({ role: 'user', content: text, t: Date.now() });
+  transcript.push({
+    role: 'user',
+    content: text,
+    images: imgs.length ? imgs.map((it) => it.thumb) : undefined,
+    t: Date.now(),
+  });
   saveTranscript();
   clearHint();
-  bubble('user', text);
+  bubble('user', text, null, imgs.map((it) => it.thumb));
   input.value = '';
   // 发出去了就把草稿清掉；顺手把没发出去的「新对话」草稿也清掉
   try {
@@ -5209,6 +5640,12 @@ stopBtn.hidden = false;
   const who = document.createElement('div');
   who.className = 'who';
   who.textContent = '模型';
+  if (imgs.length) {
+    const badge = document.createElement('span');
+    badge.className = 'visionBadge';
+    badge.textContent = '视觉';
+    who.appendChild(badge);
+  }
   const thinkBox = document.createElement('details');
   thinkBox.className = 'think';
   thinkBox.hidden = true;
@@ -5264,6 +5701,7 @@ stopBtn.hidden = false;
         thinking: thinkChk.checked,
         tools: toolChk.checked,
         web: toolChk.checked && webEnabled,
+        ...(imgs.length ? { images: imgs.map((it) => it.src) } : {}),
       }),
     });
     if (!res.ok) {
@@ -5336,6 +5774,7 @@ stopBtn.hidden = false;
         usage: usage || undefined,
         metrics: metrics || undefined,
         tools: toolList && toolList.length ? toolList : undefined,
+        vision: imgs.length ? true : undefined,
         t: Date.now(),
       });
       saveTranscript();
@@ -5365,6 +5804,11 @@ stopBtn.hidden = false;
     // 自动朗读默认关闭，只有用户在「设置 → 朗读」里手动打开才会念
     if (autoRead && acc && speakBtnEl) speakText(acc, speakBtnEl);
     if (loaded) setStatus('on', `${prettyName(loaded)} · 就绪`);
+    // 视觉请求会把文本模型卸载：立刻同步状态，别让状态栏还挂着旧模型
+    if (imgs.length) {
+      if (hadTextModel) showToast('视觉模型占用了内存，文本模型已卸载；继续文字对话请重新加载模型', 'warn', 6500);
+      try { await refresh(); } catch {}
+    }
     input.focus();
     scroll();
   }
@@ -5467,6 +5911,8 @@ function showSettingsTab(name) {
   if (name === 'tts' && !ttsVoices.length) initTts().catch(() => {});
   // 显卡页每次打开都重新读（选择和当前进程可能不一致，要如实显示）
   if (name === 'gpu') loadGpuTab().catch(() => {});
+  // 视觉页每次打开都重新读一遍：sidecar 可能被发图请求或别的操作启停了
+  if (name === 'vision') loadVisionTab().catch(() => {});
 }
 for (const b of settingsTabs) b.onclick = () => showSettingsTab(b.dataset.tab);
 
@@ -5514,6 +5960,156 @@ $('gpuSave') && ($('gpuSave').onclick = async function () {
   } finally {
     if (btn) btn.disabled = false;
   }
+});
+
+// ---- 视觉页：选「模型 + mmproj」组合，启动/停止 sidecar ----
+// 选择存 localai.visionPair；发图时 ensureVisionForSend 优先用它，
+// 与 /api/vision/state.selected 不同就作为 /api/vision/start 的入参切过去。
+let visionStarting = false;
+let visionStopping = false;
+
+function visionBase(p) {
+  return String(p || '').replace(/\\/g, '/').split('/').pop();
+}
+
+function visionPairLabel(p) {
+  const m = String(p.model || '').replace(/\.gguf$/i, '');
+  const mm = visionBase(p.mmproj).replace(/\.gguf$/i, '');
+  return m + '  +  ' + mm + (p.expect ? '（' + p.expect + '）' : '');
+}
+
+/** 相对路径（pairs）与绝对路径（running 的 model/mmproj）是否指同一组文件 */
+function visionPairMatches(p, modelAbs, mmprojAbs) {
+  const norm = (x) => String(x || '').replace(/\//g, '\\').replace(/^\\+/, '').toLowerCase();
+  const ends = (abs, rel) => {
+    const a = norm(abs);
+    const r = norm(rel);
+    return !!a && !!r && (a === r || a.endsWith('\\' + r));
+  };
+  return !!p && ends(modelAbs, p.model) && ends(mmprojAbs, p.mmproj);
+}
+
+async function loadVisionTab() {
+  const sel = $('setVisionPair'), stEl = $('setVisionState'), hint = $('setVisionHint');
+  const startBtn = $('setVisionStart'), stopBtn = $('setVisionStop'), logEl = $('setVisionLog');
+  if (!sel || !stEl) return;
+  let st;
+  try {
+    st = await ensureVisionState(true);
+  } catch (e) {
+    sel.innerHTML = '';
+    const o = document.createElement('option');
+    o.textContent = '没有可用的视觉模型（需要 mmproj 文件）';
+    sel.appendChild(o);
+    sel.disabled = true;
+    stEl.textContent = '读不到视觉状态：' + e.message;
+    if (startBtn) startBtn.disabled = true;
+    if (stopBtn) stopBtn.disabled = true;
+    if (hint) hint.textContent = '视觉接口不可用';
+    if (logEl) logEl.textContent = '—';
+    return;
+  }
+  const pairs = Array.isArray(st.pairs) ? st.pairs : [];
+  visionPairs = pairs;
+  sel.innerHTML = '';
+  if (!pairs.length) {
+    const o = document.createElement('option');
+    o.textContent = '没有可用的视觉模型（需要 mmproj 文件）';
+    sel.appendChild(o);
+    sel.disabled = true;
+  } else {
+    sel.disabled = false;
+    pairs.forEach((p, i) => {
+      const o = document.createElement('option');
+      o.value = String(i);
+      o.textContent = visionPairLabel(p);
+      sel.appendChild(o);
+    });
+    const saved = loadVisionPairChoice();
+    let idx = -1;
+    if (saved) idx = pairs.findIndex((p) => p.model === saved.model && p.mmproj === saved.mmproj);
+    if (idx < 0 && st.selected) idx = pairs.findIndex((p) => visionPairMatches(p, st.selected.model, st.selected.mmproj));
+    if (idx < 0 && st.running) idx = pairs.findIndex((p) => visionPairMatches(p, st.model, st.mmproj));
+    if (idx < 0) idx = 0;
+    sel.value = String(idx);
+    // 服务端返回的路径分隔符可能和本机不同，存一份规范后的选择
+    saveVisionPairChoice(pairs[idx]);
+  }
+  const running = !!st.running;
+  stEl.textContent = running
+    ? '运行中：' + visionBase(st.model) + ' + ' + visionBase(st.mmproj) +
+      ' · 端口 ' + (st.port || 8101) + (st.pid ? ' · PID ' + st.pid : '') +
+      (st.startedAt ? ' · 启动于 ' + fmtStamp(new Date(st.startedAt).toISOString()) : '')
+    : (pairs.length ? '未启动' : '未启动 · ' + (st.note || '没有可用的视觉模型（需要 mmproj 文件）'));
+  // note 常是「配对来源 / 缺文件」的说明，放 title 里，别把运行状态挤掉
+  stEl.title = st.note || '';
+  const curIdx = running && pairs.length ? pairs.findIndex((p) => visionPairMatches(p, st.model, st.mmproj)) : -1;
+  const selIdx = pairs.length ? Number(sel.value) : -1;
+  if (startBtn) startBtn.disabled = !pairs.length || (running && selIdx >= 0 && selIdx === curIdx) || visionStarting;
+  if (stopBtn) stopBtn.disabled = !running || visionStarting || visionStopping;
+  if (hint) {
+    if (visionStarting) hint.textContent = '正在启动视觉模型…（约 10–20 秒）';
+    else if (!pairs.length) hint.textContent = '把 mmproj 放到模型目录 mmproj\\ 下，或在 config.ini 指定 visionModel / visionMmproj';
+    else if (running) hint.textContent = curIdx === selIdx ? '当前组合正在运行' : '已选另一组，点「启动」切换（会先停掉当前的）';
+    else hint.textContent = '启动后会先卸载文本模型（内存互斥）';
+  }
+  if (logEl) logEl.textContent = st.logPath || '—';
+}
+
+async function startVisionFromTab() {
+  const sel = $('setVisionPair');
+  const pair = sel ? visionPairs[Number(sel.value)] : null;
+  if (!pair) { showToast('没有可用的视觉模型（需要 mmproj 文件）', 'warn', 5200); return; }
+  if (visionStarting) return;
+  visionStarting = true;
+  saveVisionPairChoice(pair);
+  const hint = $('setVisionHint');
+  if (hint) hint.textContent = '正在启动视觉模型…（约 10–20 秒）';
+  setStatus('busy', '正在启动视觉模型…');
+  try {
+    const st = await apiJson('/api/vision/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: pair.model, mmproj: pair.mmproj }),
+    });
+    visionStateCache = st;
+    visionStateLoaded = true;
+    showToast('视觉模型已启动', 'ok', 4200);
+    refresh().catch(() => {}); // 文本模型已被卸载，顶栏状态跟着更新
+  } catch (e) {
+    setStatus('err', '视觉模型启动失败：' + e.message.slice(0, 60));
+    showToast('视觉模型启动失败：' + e.message, 'err', 7000);
+  } finally {
+    visionStarting = false;
+    try { await loadVisionTab(); } catch {}
+  }
+}
+
+async function stopVisionFromTab() {
+  if (visionStopping) return;
+  visionStopping = true;
+  try {
+    await apiJson('/api/vision/stop', { method: 'POST' });
+    showToast('视觉模型已停止', 'ok', 3600);
+    refresh().catch(() => {});
+  } catch (e) {
+    showToast('停止视觉模型失败：' + e.message, 'err', 6500);
+  } finally {
+    visionStopping = false;
+    try { await loadVisionTab(); } catch {}
+  }
+}
+
+$('setVisionStart') && ($('setVisionStart').onclick = startVisionFromTab);
+$('setVisionStop') && ($('setVisionStop').onclick = stopVisionFromTab);
+$('setVisionPair') && ($('setVisionPair').onchange = function () {
+  const sel = $('setVisionPair');
+  const pair = visionPairs[Number(sel.value)];
+  if (pair) {
+    saveVisionPairChoice(pair);
+    if (visionStateCache && visionStateCache.running) showToast('已选择 ' + visionPairLabel(pair) + '，点「启动」切换', 'info', 4200);
+  }
+  loadVisionTab().catch(() => {});
 });
 
 // ---- 关于页：版本 / 构建 / 运行环境 ----
@@ -6412,6 +7008,11 @@ function regenAt(idx) {
   let u = idx - 1;
   while (u >= 0 && transcript[u].role !== 'user') u -= 1;
   if (u < 0) return;
+  // 原图没落盘，只有缩略图；拿缩略图重发会让模型看不清，干脆要求重发
+  if (Array.isArray(transcript[u].images) && transcript[u].images.length) {
+    showToast('带图片的提问不能直接重生成，请重新添加图片再发', 'warn', 5200);
+    return;
+  }
   const text = transcript[u].content;
   transcript = transcript.slice(0, u);
   history.length = 0;
@@ -6436,13 +7037,15 @@ function makeRegenBtn(idx) {
 }
 $('send').onclick = () => {
   const t = input.value.trim();
-  if (t && !busy && loaded) send(t);
+  if (busy || (!loaded && !pendingImgs.length)) return;
+  if (t || pendingImgs.length) send(t);
 };
 input.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     const t = input.value.trim();
-    if (t && !busy && loaded) send(t);
+    if (busy || (!loaded && !pendingImgs.length)) return;
+    if (t || pendingImgs.length) send(t);
   }
 });
 
@@ -6792,7 +7395,8 @@ renderWebState();
 // 注意这里只看 generating（正在生成），不看 busy——busy 也包含「模型正在加载」，
 // 而加载恰恰是需要轮询才能结束的状态；以前用它做闸门会导致启动后一直卡在「正在加载模型…」。
 setInterval(() => {
-  if (generating) return;
+  // 等 sidecar 启动（10–20 秒）也算「正在忙」：此时 refresh 会把状态栏和按钮状态覆盖掉
+  if (generating || visionEnsuring) return;
   refresh().catch(() => {
     // 服务正在重启（例如 Vulkan 设备丢失后自动重启）：把状态说清楚，别让它停在"就绪"
     setStatus('busy', '服务正在重启…');

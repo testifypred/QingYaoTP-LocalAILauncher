@@ -1,0 +1,106 @@
+﻿# 视觉并发碰撞证据（vision.log 片段）
+## 13:56:14 那次（并发/争用下 device lost）
+===== 2026-11-07T13:56:14.342Z 鍚姩瑙嗚 sidecar =====
+D:\LocalModels\dist\QingYaoTP AILauncher\app\llama\llama-server.exe -m D:\LocalModels\Qwen3.5-9B-Q4_K_M.gguf --mmproj D:\LocalModels\mmproj\Qwen3.5-9B-mmproj-F16.gguf -c 8192 -ngl 99 --host 127.0.0.1 --port 8101 --jinja --no-webui -np 1
+0.00.217.886 I srv  llama_server: initializing ...
+0.00.217.903 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.218.089 I srv  init_listene: The UI is disabled
+0.00.218.092 I srv  init_listene: Use --ui/--no-ui (or deprecated --webui/--no-webui) to enable/disable
+0.00.218.218 W srv  server_setup: security: no API key is set and CORS allows all origins (see https://github.com/ggml-org/llama.cpp/pull/25655)
+0.00.237.212 I srv    load_model: loading model 'D:\LocalModels\Qwen3.5-9B-Q4_K_M.gguf'
+0.10.366.688 I cmn          init: llama threadpool init, n_threads = 16
+0.10.657.670 W load_hparams: Qwen-VL models require at minimum 1024 image tokens to function correctly on grounding tasks
+0.10.657.690 W load_hparams: if you encounter problems with accuracy, try adding --image-min-tokens 1024
+0.10.657.691 W load_hparams: more info: https://github.com/ggml-org/llama.cpp/issues/16842
+
+0.22.739.433 I srv    load_model: loaded multimodal model, 'D:\LocalModels\mmproj\Qwen3.5-9B-mmproj-F16.gguf'
+0.23.030.452 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 8192, kv_unified = 'false'
+0.23.054.720 I srv  server_run_i: model loaded
+0.23.054.773 I srv  server_on_li: listening on http://127.0.0.1:8101
+0.23.735.744 I slot get_availabl: id  0 | task -1 | selected slot by LRU, n_tokens = 0, t_last = -1
+0.23.735.972 I slot launch_slot_: id  0 | task 0 | processing task, is_child = 0
+0.34.320.770 I slot print_timing: id  0 | task 0 | prompt processing, n_tokens =     62, progress = 0.08, t =  10.58 s / 5.86 tokens per second
+0.46.626.670 E ggml_vulkan: device lost on Vulkan0
+0.46.626.676 E ggml_vulkan: getFenceStatus at D:\a\llama.cpp\llama.cpp\ggml\src\ggml-vulkan\ggml-vulkan.cpp:355
+0.46.628.505 E mtmd_batch_encode: error: vk::Device::getFenceStatus: ErrorDeviceLost
+0.46.628.512 E slot encode_mtmd_: id  0 | task 0 | failed to encode mtmd batch for chunk idx = 62, res = 1
+0.46.628.705 E slot   operator(): id  0 | task 0 | failed to process mtmd chunk, res = -1
+0.46.628.710 E srv    send_error: task id = 0, error: failed to process mtmd chunk
+0.46.628.717 I slot      release: id  0 | task 0 | stop processing: n_tokens = 62, truncated = 0
+0.46.628.850 W srv          stop: cancel task, id_task = 0
+0.46.630.433 E ggml_vulkan: device lost on Vulkan0
+
+
+## 21:57:32 那次（我按 Lead 要求发图时与另一路并发请求碰撞）
+===== 2026-11-07T13:57:32.991Z 鍚姩瑙嗚 sidecar =====
+D:\LocalModels\dist\QingYaoTP AILauncher\app\llama\llama-server.exe -m D:\LocalModels\Qwen3.5-9B-Q4_K_M.gguf --mmproj D:\LocalModels\mmproj\Qwen3.5-9B-mmproj-F16.gguf -c 8192 -ngl 99 --host 127.0.0.1 --port 8101 --jinja --no-webui -np 1
+0.00.168.971 I srv  llama_server: initializing ...
+0.00.168.990 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.169.180 I srv  init_listene: The UI is disabled
+0.00.169.184 I srv  init_listene: Use --ui/--no-ui (or deprecated --webui/--no-webui) to enable/disable
+0.00.169.303 W srv  server_setup: security: no API key is set and CORS allows all origins (see https://github.com/ggml-org/llama.cpp/pull/25655)
+0.00.180.912 I srv    load_model: loading model 'D:\LocalModels\Qwen3.5-9B-Q4_K_M.gguf'
+0.11.179.513 I cmn          init: llama threadpool init, n_threads = 16
+0.11.377.816 W load_hparams: Qwen-VL models require at minimum 1024 image tokens to function correctly on grounding tasks
+0.11.377.832 W load_hparams: if you encounter problems with accuracy, try adding --image-min-tokens 1024
+0.11.377.833 W load_hparams: more info: https://github.com/ggml-org/llama.cpp/issues/16842
+
+0.17.577.260 I srv    load_model: loaded multimodal model, 'D:\LocalModels\mmproj\Qwen3.5-9B-mmproj-F16.gguf'
+0.17.743.589 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 8192, kv_unified = 'false'
+0.17.759.069 I srv  server_run_i: model loaded
+0.17.759.094 I srv  server_on_li: listening on http://127.0.0.1:8101
+0.18.251.619 I slot get_availabl: id  0 | task -1 | selected slot by LRU, n_tokens = 0, t_last = -1
+0.18.251.879 I slot launch_slot_: id  0 | task 0 | processing task, is_child = 0
+0.26.946.701 E ggml_vulkan: device lost on Vulkan0
+0.26.946.709 E ggml_vulkan: getFenceStatus at D:\a\llama.cpp\llama.cpp\ggml\src\ggml-vulkan\ggml-vulkan.cpp:355
+0.26.949.185 E mtmd_batch_encode: error: vk::Device::getFenceStatus: ErrorDeviceLost
+0.26.949.207 E slot encode_mtmd_: id  0 | task 0 | failed to encode mtmd batch for chunk idx = 67, res = 1
+0.26.949.719 E slot   operator(): id  0 | task 0 | failed to process mtmd chunk, res = -1
+0.26.949.736 E srv    send_error: task id = 0, error: failed to process mtmd chunk
+0.26.949.757 I slot      release: id  0 | task 0 | stop processing: n_tokens = 67, truncated = 0
+0.26.950.123 W srv          stop: cancel task, id_task = 0
+0.26.952.028 I slot get_availabl: id  0 | task -1 | selected slot by LRU, n_tokens = 67, t_last = 26782225
+0.26.953.752 E ggml_vulkan: device lost on Vulkan0
+
+
+## 干净串行成功（22:00:52 启动，含最终回答）
+0.16.216.128 I slot print_timing: id  0 | task 0 | prompt processing, n_tokens =    247, progress = 0.98, t =   5.30 s / 46.64 tokens per second
+0.32.728.548 I slot print_timing: id  0 | task 0 | n_gen =    100, tg =   6.42 t/s, tg_3s =   6.48 t/s
+0.35.935.875 I slot print_timing: id  0 | task 0 | n_gen =    119, tg =   6.33 t/s, tg_3s =   5.92 t/s
+0.36.091.611 I slot print_timing: id  0 | task 0 | prompt eval time =    6381.80 ms /   251 tokens (   25.43 ms per token,    39.33 tokens per second)
+0.36.091.641 I slot print_timing: id  0 | task 0 |        eval time =   18789.89 ms /   120 tokens (  157.90 ms per token,     6.33 tokens per second)
+0.36.091.651 I slot print_timing: id  0 | task 0 |       total time =   25171.69 ms /   371 tokens
+0.36.091.654 I slot print_timing: id  0 | task 0 |    graphs reused =        118
+0.36.091.657 I slot print_timing: id  0 | task 0 |   graph reallocs =          0    /     0        (same size) / (changed size)
+0.36.091.889 I slot      release: id  0 | task 0 | stop processing: n_tokens = 370, truncated = 0
+
+===== 2026-11-07T14:00:52.017Z 鍚姩瑙嗚 sidecar =====
+D:\LocalModels\dist\QingYaoTP AILauncher\app\llama\llama-server.exe -m D:\LocalModels\Qwen3.5-9B-Q4_K_M.gguf --mmproj D:\LocalModels\mmproj\Qwen3.5-9B-mmproj-F16.gguf -c 8192 -ngl 99 --host 127.0.0.1 --port 8101 --jinja --no-webui -np 1
+0.00.182.915 I srv  llama_server: initializing ...
+0.00.182.938 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.183.185 I srv  init_listene: The UI is disabled
+0.00.183.191 I srv  init_listene: Use --ui/--no-ui (or deprecated --webui/--no-webui) to enable/disable
+0.00.183.357 W srv  server_setup: security: no API key is set and CORS allows all origins (see https://github.com/ggml-org/llama.cpp/pull/25655)
+0.00.196.072 I srv    load_model: loading model 'D:\LocalModels\Qwen3.5-9B-Q4_K_M.gguf'
+0.07.142.065 I cmn          init: llama threadpool init, n_threads = 16
+0.07.343.677 W load_hparams: Qwen-VL models require at minimum 1024 image tokens to function correctly on grounding tasks
+0.07.343.695 W load_hparams: if you encounter problems with accuracy, try adding --image-min-tokens 1024
+0.07.343.696 W load_hparams: more info: https://github.com/ggml-org/llama.cpp/issues/16842
+
+0.11.007.498 I srv    load_model: loaded multimodal model, 'D:\LocalModels\mmproj\Qwen3.5-9B-mmproj-F16.gguf'
+0.11.269.415 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 8192, kv_unified = 'false'
+0.11.307.790 I srv  server_run_i: model loaded
+0.11.307.828 I srv  server_on_li: listening on http://127.0.0.1:8101
+0.14.451.489 I slot get_availabl: id  0 | task -1 | selected slot by LRU, n_tokens = 0, t_last = -1
+0.14.451.650 I slot launch_slot_: id  0 | task 0 | processing task, is_child = 0
+0.18.081.778 W find_slot: non-consecutive token position 23 after 22 for sequence 0 with 220 new tokens
+0.18.082.432 W find_slot: non-consecutive token position 23 after 22 for sequence 0 with 220 new tokens
+0.18.205.132 W find_slot: non-consecutive token position 48 after 23 for sequence 0 with 6 new tokens
+0.18.205.264 W find_slot: non-consecutive token position 48 after 23 for sequence 0 with 6 new tokens
+0.21.726.082 I slot print_timing: id  0 | task 0 | prompt processing, n_tokens =    249, progress = 0.98, t =   7.27 s / 34.23 tokens per second
+0.26.050.256 I slot print_timing: id  0 | task 0 | prompt eval time =    8577.05 ms /   253 tokens (   33.90 ms per token,    29.50 tokens per second)
+0.26.050.279 I slot print_timing: id  0 | task 0 |        eval time =    3021.48 ms /    21 tokens (  151.07 ms per token,     6.62 tokens per second)
+0.26.050.282 I slot print_timing: id  0 | task 0 |       total time =   11598.53 ms /   274 tokens
+0.26.050.285 I slot print_timing: id  0 | task 0 |    graphs reused =         19
+0.26.050.287 I slot print_timing: id  0 | task 0 |   graph reallocs =          0    /     0        (same size) / (changed size)
+0.26.050.433 I slot      release: id  0 | task 0 | stop processing: n_tokens = 273, truncated = 0

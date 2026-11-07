@@ -1,0 +1,62 @@
+﻿zip diff v1.2.0 -> v1.3.0
+old entries=3943 new entries=3997
+removed=0: 
+added=54:
+  + app/llama/
+  + app/llama/ggml.dll
+  + app/llama/ggml-base.dll
+  + app/llama/ggml-cpu-alderlake.dll
+  + app/llama/ggml-cpu-cannonlake.dll
+  + app/llama/ggml-cpu-cascadelake.dll
+  + app/llama/ggml-cpu-cooperlake.dll
+  + app/llama/ggml-cpu-haswell.dll
+  + app/llama/ggml-cpu-icelake.dll
+  + app/llama/ggml-cpu-ivybridge.dll
+  + app/llama/ggml-cpu-piledriver.dll
+  + app/llama/ggml-cpu-sandybridge.dll
+  + app/llama/ggml-cpu-sapphirerapids.dll
+  + app/llama/ggml-cpu-skylakex.dll
+  + app/llama/ggml-cpu-sse42.dll
+  + app/llama/ggml-cpu-x64.dll
+  + app/llama/ggml-cpu-zen4.dll
+  + app/llama/ggml-rpc.dll
+  + app/llama/ggml-rpc-server.exe
+  + app/llama/ggml-vulkan.dll
+  + app/llama/libomp.dll
+  + app/llama/LICENSE-LLVM-OpenMP
+  + app/llama/llama.dll
+  + app/llama/llama.exe
+  + app/llama/llama-batched-bench.exe
+  + app/llama/llama-batched-bench-impl.dll
+  + app/llama/llama-bench.exe
+  + app/llama/llama-bench-impl.dll
+  + app/llama/llama-cli.exe
+  + app/llama/llama-cli-impl.dll
+  + app/llama/llama-common.dll
+  + app/llama/llama-completion.exe
+  + app/llama/llama-completion-impl.dll
+  + app/llama/llama-connect.exe
+  + app/llama/llama-fit-params.exe
+  + app/llama/llama-fit-params-impl.dll
+  + app/llama/llama-gemma3-cli.exe
+  + app/llama/llama-gguf-split.exe
+  + app/llama/llama-imatrix.exe
+  + app/llama/llama-llava-cli.exe
+  + app/llama/llama-minicpmv-cli.exe
+  + app/llama/llama-mtmd-cli.exe
+  + app/llama/llama-mtmd-debug.exe
+  + app/llama/llama-perplexity.exe
+  + app/llama/llama-perplexity-impl.dll
+  + app/llama/llama-quantize.exe
+  + app/llama/llama-quantize-impl.dll
+  + app/llama/llama-qwen2vl-cli.exe
+  + app/llama/llama-results.exe
+  + app/llama/llama-server.exe
+  + app/llama/llama-server-impl.dll
+  + app/llama/llama-tokenize.exe
+  + app/llama/llama-tts.exe
+  + app/llama/mtmd.dll
+changed=3:
+  ~ app/app.html  298897 -> 322530
+  ~ app/app.mjs  262620 -> 289073
+  ~ config.ini  963 -> 1165

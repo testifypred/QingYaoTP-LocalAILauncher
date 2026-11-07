@@ -1,0 +1,42 @@
+﻿# app.log 关键行（GBK 原文，已按时间段摘取）
+## 21:57-21:58 并发碰撞 -> sidecar 退出 code=3221226505
+13:57:01 瑙嗚璇锋眰 1 寮犲浘 stream 200 22999ms
+13:57:02 瑙嗚 sidecar 閫€鍑猴紙code=3221226505锛?
+13:57:32 閲婃斁棰勫姞杞?DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf
+13:57:32 瑙嗚锛氶噴鏀鹃鍔犺浇妯″瀷 1 涓紙鍐呭瓨浜掓枼锛?
+13:57:33 瑙嗚锛氬惎鍔?Qwen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf锛坧id 8788锛夛紝绛夊緟 /health ...
+13:57:51 瑙嗚 sidecar 灏辩华锛圦wen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf锛?8.1s锛宲id 8788锛?
+13:58:00 瑙嗚璇锋眰 1 寮犲浘 stream 200 8886ms
+13:58:01 瑙嗚 sidecar 閫€鍑猴紙code=3221226505锛?
+13:58:23 鍒犻櫎浼氳瘽 mw6gvrno-e4b5e782
+13:58:32 瑙嗚锛氬惎鍔?Qwen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf锛坧id 19752锛夛紝绛夊緟 /health ...
+13:58:40 瑙嗚 sidecar 灏辩华锛圦wen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf锛?.3s锛宲id 19752锛?
+13:58:53 瑙嗚璇锋眰 1 寮犲浘 stream 200 12699ms
+13:58:54 瑙嗚 sidecar 閫€鍑猴紙code=3221226505锛?
+13:59:02 瑙嗚锛氬惎鍔?Qwen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf锛坧id 23228锛夛紝绛夊緟 /health ...
+13:59:11 瑙嗚 sidecar 灏辩华锛圦wen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf锛?.8s锛宲id 23228锛?
+13:59:31 鎵撳紑璋冭瘯宸ュ叿锛圖ebugTool.exe锛宲id 25888锛?
+13:59:37 瑙嗚锛氬仠姝?sidecar锛坧id 23228锛?
+13:59:40 瑙嗚 sidecar 閫€鍑猴紙code=1锛?
+13:59:47 瑙嗚锛氬惎鍔?Qwen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf锛坧id 15176锛夛紝绛夊緟 /health ...
+13:59:56 瑙嗚 sidecar 灏辩华锛圦wen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf锛?.8s锛宲id 15176锛?
+14:00:23 瑙嗚锛氬仠姝?sidecar锛坧id 15176锛?
+14:00:26 瑙嗚 sidecar 閫€鍑猴紙code=1锛?
+14:01:03 瑙嗚 sidecar 灏辩华锛圦wen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf锛?1.9s锛宲id 568锛?
+14:01:18 瑙嗚锛氬仠姝?sidecar锛坧id 568锛?
+14:01:21 瑙嗚 sidecar 閫€鍑猴紙code=1锛?
+
+## 22:00-22:01 干净串行成功
+13:59:02 瑙嗚锛氬惎鍔?Qwen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf锛坧id 23228锛夛紝绛夊緟 /health ...
+13:59:11 瑙嗚 sidecar 灏辩华锛圦wen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf锛?.8s锛宲id 23228锛?
+13:59:31 鎵撳紑璋冭瘯宸ュ叿锛圖ebugTool.exe锛宲id 25888锛?
+13:59:37 瑙嗚锛氬仠姝?sidecar锛坧id 23228锛?
+13:59:40 瑙嗚 sidecar 閫€鍑猴紙code=1锛?
+13:59:47 瑙嗚锛氬惎鍔?Qwen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf锛坧id 15176锛夛紝绛夊緟 /health ...
+13:59:56 瑙嗚 sidecar 灏辩华锛圦wen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf锛?.8s锛宲id 15176锛?
+14:00:23 瑙嗚锛氬仠姝?sidecar锛坧id 15176锛?
+14:00:26 瑙嗚 sidecar 閫€鍑猴紙code=1锛?
+14:00:52 瑙嗚锛氬惎鍔?Qwen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf锛坧id 568锛夛紝绛夊緟 /health ...
+14:01:03 瑙嗚 sidecar 灏辩华锛圦wen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf锛?1.9s锛宲id 568锛?
+14:01:18 瑙嗚锛氬仠姝?sidecar锛坧id 568锛?
+14:01:21 瑙嗚 sidecar 閫€鍑猴紙code=1锛?

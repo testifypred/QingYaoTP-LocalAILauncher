@@ -1,0 +1,172 @@
+﻿===== DIST: ITEM 1/2 files =====
+OK   app\app.mjs                              289073
+OK   app\app.html                             322530
+OK   app\doc-extract.mjs                       10750
+OK   app\config-recommend.mjs                   6063
+OK   app\debug.html                            19774
+OK   app\localai-debug.mjs                      8365
+OK   app\localai-debug.cmd                       237
+OK   app\debug-icon-64.png                      3371
+OK   app\debug.ico                             33273
+OK   app\localai.mjs                           16540
+OK   app\localai.cmd                             304
+OK   app\localai-tui.mjs                       22261
+OK   app\localai-tui.cmd                         258
+OK   app\llama\llama-server.exe                 9728
+OK   app\llama\mtmd.dll                      2531840
+OK   app\llama\ggml-vulkan.dll              41999360
+OK   app\llama\llama-server-impl.dll        10104320
+OK   app\llama\llama-common.dll              8354816
+OK   app\llama\llama.dll                     3832320
+OK   app\llama\ggml-base.dll                  833024
+OK   QingYaoTP AILauncher.exe                    57856
+OK   DebugTool.exe                               42496
+OK   localai.ico                                 31308
+OK   config.ini                                   1182
+OK   使用说明.txt                                     4939
+OK   Microsoft.Web.WebView2.Core.dll            698208
+OK   Microsoft.Web.WebView2.WinForms.dll         38752
+OK   WebView2Loader.dll                         194912
+OK   vc_redist.x64.exe                        25635768
+OK   runtime\node.exe                         92825416
+plugins mjs = 3
+
+===== DIST: ITEM 3 hashes =====
+app.mjs                  MATCH  server=CE5044954611357E(289073) dist=CE5044954611357E(289073)
+app.html                 MATCH  server=4B7A179E51001893(322530) dist=4B7A179E51001893(322530)
+doc-extract.mjs          MATCH  server=9E08B87B04751950(10750) dist=9E08B87B04751950(10750)
+config-recommend.mjs     MATCH  server=FD2BD97860688F6D(6063) dist=FD2BD97860688F6D(6063)
+
+===== DIST: ITEM 4 exe =====
+QingYaoTP AILauncher.exe: size=57856 mtime=2026-11-07 21:52:27 head=4D 5A 90 00
+DebugTool.exe: size=42496 mtime=2026-11-07 21:52:28 head=4D 5A 90 00
+
+===== DIST: ITEM 5 config =====
+  | port=8099
+  | modelDir=D:\LocalModels
+  | autoLoad=
+  | contextSize=16384
+  | kvReuse=1
+  | gpu=auto
+  | vkDevices=
+  | visionModel=
+  | visionMmproj=
+dist config mtime = 2026-11-07 21:55:31
+has visionModel line = True ; has visionMmproj line = True
+contains D:\LocalModels = True
+
+===== DIST: ITEM 6 node_modules + node =====
+node_modules top dirs = 41
+runtime node -v = v24.19.0
+
+===== DIST: version + vision markers + state =====
+app.mjs APP_VERSION: const APP_VERSION = "1.3.0";
+server package.json: "version": "1.2.0",
+  dist app.mjs contains /api/vision/start      = True ; app.html = True
+  dist app.mjs contains /api/vision/stop       = True ; app.html = True
+  dist app.mjs contains /api/vision/state      = True ; app.html = True
+  dist app.mjs contains imgInput               = False ; app.html = True
+  dist app.mjs contains imgBtn                 = False ; app.html = True
+  dist app.mjs contains visionModel            = True ; app.html = True
+  dist app.mjs contains visionMmproj           = True ; app.html = True
+dist app.mjs size = 289073 ; app.html = 322530
+readme size = 4939 ; contains vision words = False
+
+===== DIST: llama-server.exe --version =====
+  exit within 30s = True ; exitcode = 
+  stdout: 
+  stderr: version: 0.9.0-dev (build 12144, commit 69ee2ecc0) | built with Clang 20.1.8 for Windows x86_64
+
+===== ZIP: structure (ITEM 7) =====
+zip = 166189978 B (158.5 MiB) mtime=2026-11-07 21:53:42
+zip sha256 = B592FBCC88D50357AB7397F15F09DF8BF9DEA902578558BB248AF97379BC82F0
+entries=3997 dirs=501 files=3496
+root='QingYaoTP AILauncher-v1.3.0' expected=True
+missing prefix = 0
+backslash entries = 0
+drive/abs entries = 0
+dotdot entries = 0
+v1.1.0/v1.2.0 leftovers = 0
+
+===== ZIP: content (ITEM 8 + vision items) =====
+config.ini size=1165
+  | port=8099
+  | modelDir=
+  | autoLoad=
+  | contextSize=16384
+  | kvReuse=1
+  | gpu=auto
+  | vkDevices=
+  | visionModel=
+  | visionMmproj=
+  modelDir empty = True
+  visionModel line = True ; visionMmproj line = True
+  contains D:\LocalModels = False
+  app/app.html                             size=      322530
+  app/app.mjs                              size=      289073
+  app/llama/ggml-base.dll                  size=      833024
+  app/llama/ggml-vulkan.dll                size=    41999360
+  app/llama/llama-common.dll               size=     8354816
+  app/llama/llama-server.exe               size=        9728
+  app/llama/llama-server-impl.dll          size=    10104320
+  app/llama/mtmd.dll                       size=     2531840
+  DebugTool.exe                            size=       42496
+  QingYaoTP AILauncher.exe                 size=       57856
+  使用说明.txt                                 size=        4939
+  zip app.mjs has /api/vision/start    = True ; app.html = True
+  zip app.mjs has /api/vision/stop     = True ; app.html = True
+  zip app.mjs has /api/vision/state    = True ; app.html = True
+  zip app.mjs has imgInput             = False ; app.html = True
+  zip app.mjs has imgBtn               = False ; app.html = True
+  zip app.mjs APP_VERSION 1.3.0 = True
+  zip app.mjs size = 289073 ; app.html = 322530
+  hash app.mjs                MATCH  zip=CE5044954611357E server=CE5044954611357E
+  hash app.html               MATCH  zip=4B7A179E51001893 server=4B7A179E51001893
+  hash doc-extract.mjs        MATCH  zip=9E08B87B04751950 server=9E08B87B04751950
+  hash config-recommend.mjs   MATCH  zip=FD2BD97860688F6D server=FD2BD97860688F6D
+  readme contains 看图 = False ; contains D:\LocalModels = False
+  manual sha zip=652DF809364A09D9 disk=652DF809364A09D9
+
+===== ZIP: hygiene (ITEM 9 + vision) =====
+data real files = 0
+logs real files = 0
+data dir entry = True ; logs dir = True ; models dir = True
+  [(?i)\.gguf$] -> 0
+  [(?i)mmproj] -> 0
+  [(?i)\.pid$] -> 0
+  [(?i)\.log$] -> 0
+  [(?i)\.tmp$] -> 0
+  [workspace] -> 0
+  [discovery\.json] -> 0
+  [qytp-zip-] -> 0
+  [AppData] -> 0
+  [/Temp/] -> 0
+  [LocalModels] -> 0
+  app/llama entries = 53
+  app/llama uncompressed bytes = 106017053 (101.1 MiB)
+
+===== ZIP: chinese filename (ITEM 10) =====
+non-ASCII entries = 1
+  CN: QingYaoTP AILauncher-v1.3.0/使用说明.txt size=4939
+
+===== top-level entries =====
+          1165 QingYaoTP AILauncher-v1.3.0/config.ini
+         42496 QingYaoTP AILauncher-v1.3.0/DebugTool.exe
+         31308 QingYaoTP AILauncher-v1.3.0/localai.ico
+        698208 QingYaoTP AILauncher-v1.3.0/Microsoft.Web.WebView2.Core.dll
+         38752 QingYaoTP AILauncher-v1.3.0/Microsoft.Web.WebView2.WinForms.dll
+         57856 QingYaoTP AILauncher-v1.3.0/QingYaoTP AILauncher.exe
+      25635768 QingYaoTP AILauncher-v1.3.0/vc_redist.x64.exe
+        194912 QingYaoTP AILauncher-v1.3.0/WebView2Loader.dll
+          4939 QingYaoTP AILauncher-v1.3.0/使用说明.txt
+--- app second-level dirs ---
+  QingYaoTP AILauncher-v1.3.0/app/llama/
+  QingYaoTP AILauncher-v1.3.0/app/node_modules/
+  QingYaoTP AILauncher-v1.3.0/app/vendor/
+
+===== RUNTIME =====
+/api/version: {"version":"1.3.0","commit":"","commitAt":"","builtAt":"2026-11-07T13:44:26.752Z","buildSource":"mtime","dirty":false,"startedAt":"2026-11-07T13:54:05.601Z","node":"v24.19.0","dir":"D:\\LocalModels\\dist\\QingYaoTP AILauncher\\app","pid":31404,"port":8099}
+/api/vision/state: {"ok":true,"running":false,"port":8101,"pid":null,"model":"","mmproj":"","startedAt":0,"logPath":"D:\\LocalModels\\dist\\QingYaoTP AILauncher\\logs\\vision.log","pairs":[{"model":"Qwen3.5-9B-Q4_K_M.gguf","mmproj":"mmproj\\Qwen3.5-9B-mmproj-F16.gguf","expect":"9B"}],"selected":{"model":"Qwen3.5-9B-Q4_K_M.gguf","mmproj":"mmproj\\Qwen3.5-9B-mmproj-F16.gguf"},"note":"按文件名族自动配对：Qwen3.5-9B-Q4_K_M.gguf + mmproj\\Qwen3.5-9B-mmproj-F16.gguf","starting":false,"error":""}
+/api/state len = 1888
+  state contains mmproj = False
+  state models count hint: 7
