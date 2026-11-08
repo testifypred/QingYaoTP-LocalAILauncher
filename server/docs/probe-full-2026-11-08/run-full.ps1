@@ -7,7 +7,7 @@ $logs=Join-Path $out 'logs'
 New-Item -ItemType Directory -Force -Path $shots, $logs | Out-Null
 $summary=Join-Path $out 'summary.txt'
 Remove-Item $summary -Force -ErrorAction SilentlyContinue
-$M='Qwen3.5-9B-Q4_K_M.gguf'   # 2026-11-08：原 qwen2.5-7b 已删除，预加载改用保留的主力模型
+$M='qwen3-5-4B-Q4_K_M.gguf'   # 2026-11-08：原 qwen2.5-7b 已删除；预加载改用 4B（2.52GB，比 9B 轻、整跑更快）
 
 # 有两件事不能让环境背锅，驱动自己负责：
 #  1) 一批探针默认「模型已加载」（hero-modes / start-flow / status / ctx-panel / small-features /
