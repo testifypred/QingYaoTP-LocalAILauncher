@@ -2321,3 +2321,40 @@ P4（首启建议 + 1.5B 下载档）改完只跑了 probe-firstrun，按规矩�
 - 断言口径 **762 → 763**（`probe-ui-sessions` +1）；`交接文档` / `新会话启动词` / `technique\06` 已同步。
 - 落点：`app.mjs`（自动装回 / state 字段）、`app.html`（时间戳三处 / 提示）、`probe-timestamps.mjs`、`probe-ui-sessions.mjs`、`build-portable.ps1`（config 模板加 `visionAutoRestore` 两项）、`server\docs\run-full.ps1`（新增）、三份文档。
 - 没做的：版本号仍 v1.3.0；没重打 zip。
+
+
+---
+
+## 五十、2026-11-08 21:45：代码输出直出工作区（开关可切回对话）
+
+需求：用户希望「请求写代码时，AI 的输出完全转成代码工作区的形式；附一个开关，打开=工作区、关着=对话输出；对话输出的代码一律加运行按钮」。
+
+### 一、实现
+
+| 层 | 内容 |
+|---|---|
+| 开关 | 设置 → 生成「代码写入工作区」（**默认开**）；`localStorage` 的 `localai.codeOutWs`，同时镜像进 `localai.settings.codeOutWs` |
+| 工作区模式（默认） | `doSend` 收尾 `captureCodeAndCollapse()` → `POST /api/code/capture` 落 `workspace\code\` → 气泡重渲染成 `.codeWsCard`（文件名 + 打开工作区 + 展开代码）；会话条目记 `codeMode:'workspace'` + `codeFiles:[{name,path}]` |
+| 刷新/切会话 | `renderStoredAssistant` 按 `entry.codeMode` 继续折叠（`renderAssistant(out, text, {hideCode:true, codeFiles})`） |
+| 对话模式（开关关） | 代码块照常展开；**每个代码块一律有「运行 / 复制 / 工作区」**——运行按钮不再只给 RUNNABLE_LANGS，缺工具链时按钮仍在、点了会说明缺什么 |
+| Agent 收录（旧行为） | 只在对话模式下附加「已收录 N 段」，避免和工作区模式重复计一遍 |
+
+关键取舍：**折叠只影响渲染**。会话存档与发给模型的上下文保留完整代码，点卡片上的「展开代码」原地还原（`el.dataset.md` 存原始 Markdown）。
+
+### 二、实测（9B、关工具，真生成）
+
+| 场景 | 结果 |
+|---|---|
+| 工作区模式 | 回答 \`\`\`python print(6*7) \`\`\` → 卡片 **1** 个、对话里 `.codeWrap` **0** 个、文件 `python-213541-1.py` 落盘、条目 `codeMode=workspace` |
+| 刷新后 | 卡片仍在（cards=1 / wraps=0） |
+| 关掉开关 | 代码块展开（wraps=1），运行/复制/工作区三键齐全（run=1 / copy=1 / wsBtn=1） |
+
+### 三、探针
+
+`probe-code-run-ui` **9/9**、`probe-code-panel` **17/17（跳过 1）**、`probe-code-workspace` **21/21（跳过 1）**。探针数未变，断言口径不变。
+
+### 四、收尾
+
+- 测试产生的 3 个会话 + 1 个代码文件已删；真实会话仍是 8 个。
+- 落点：`app.html`（`renderMarkdown`/`renderAssistant` 的 `opts`、卡片 CSS/按钮、点击分发、`doSend` 分流、设置项与持久化）、`交接文档`、`新会话启动词`、`technique\02-接口.md`。
+- 版本仍 v1.3.0；未重打 zip。

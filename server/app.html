@@ -497,6 +497,12 @@ label.chk:has(input:disabled){opacity:.4;cursor:default;background:none}
 .codeHead button{font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid var(--line);background:transparent;color:var(--text-2);font-weight:500}
 .codeHead button:hover:not(:disabled){border-color:var(--line-2);color:var(--text);transform:none;box-shadow:none}
 .codeHead button:disabled{opacity:.5}
+/* 代码写入工作区后对话里留的卡片（2026-11-08） */
+.codeWsCard{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0;padding:8px 10px;border:1px solid var(--line);border-left:2px solid var(--cyan);border-radius:6px;background:var(--panel-2)}
+.codeWsCard .cwTitle{font-size:12px;color:var(--cyan)}
+.codeWsCard .cwFiles{font-family:var(--mono);font-size:11.5px;color:var(--text-2);flex:1;min-width:120px;word-break:break-all}
+.codeWsCard button{font-size:11px;padding:2px 8px;border-radius:4px;border:1px solid var(--line);background:transparent;color:var(--text-2);cursor:pointer}
+.codeWsCard button:hover{border-color:var(--line-2);color:var(--text)}
 body.noCodeRun .codeRun{display:none}
 .codeOut{border-top:1px solid var(--line);padding:8px 12px;font:12px/1.55 var(--mono);white-space:pre-wrap;word-break:break-word;max-height:320px;overflow:auto;background:rgba(0,0,0,.18)}
 .codeOut.err{color:var(--err)}
@@ -1379,8 +1385,9 @@ header::before{
       <div class="field">
         <span class="lbl">代码块</span>
         <label class="chk"><input type="checkbox" id="setCodeRun" checked>显示「运行」按钮</label>
+        <label class="chk"><input type="checkbox" id="setCodeOutWs" checked>代码写入工作区（对话里只留「已写入」卡片，可展开）</label>
         <label class="chk"><input type="checkbox" id="setCodeCapture" checked>Agent 模式代码自动收录到代码工作区</label>
-        <em>在本机执行代码（临时目录 + 10 秒超时 + 64KB 输出上限），不是安全沙箱：只跑自己信得过的代码。支持 JavaScript / Python / C / C++ / Java / Go / Rust，按本机已安装的工具链自动启用；缺工具链时点运行会说明缺什么。</em>
+        <em>打开「代码写入工作区」：模型回答里的围栏代码会直接落到 workspace\code\，对话里只留一张卡片（可展开、可打开工作区），写文件/多文件都走这条路；关掉则代码在对话里展开，每个代码块都带「运行 / 复制 / 工作区」按钮。在本机执行代码（临时目录 + 10 秒超时 + 64KB 输出上限），不是安全沙箱：只跑自己信得过的代码。支持 JavaScript / Python / C / C++ / Java / Go / Rust，按本机已安装的工具链自动启用；缺工具链时点运行会说明缺什么。</em>
       </div>
       <div class="exportRow">
         <button id="exportBtn" class="ghost">导出对话</button>
@@ -2870,7 +2877,7 @@ function mdInline(escaped) {
 
 const RUNNABLE_LANGS = new Set(['js', 'javascript', 'node', 'mjs', 'py', 'python', 'python3', 'c', 'cpp', 'c++', 'cc', 'cxx', 'java', 'go', 'rust', 'rs']);
 
-function renderMarkdown(src) {
+function renderMarkdown(src, opts) {
   const codes = [];
   // 先把围栏代码块抽出来，避免内部内容被当作 Markdown 处理
   let t = String(src ?? '').replace(/```([^\n`]*)\n?([\s\S]*?)```/g, (m, lang, body) => {
@@ -2942,6 +2949,20 @@ function renderMarkdown(src) {
     const codeRef = /^\u0000C(\d+)\u0000$/.exec(line);
     if (codeRef) {
       flushAll();
+      // 代码输出模式 = 工作区：代码不铺在对话里，只留一张「已写入」卡片
+      if (opts && opts.hideCode) {
+        const idx = Number(codeRef[1]);
+        const f = (opts.codeFiles || [])[idx] || {};
+        out.push(
+          '<div class="codeWsCard" data-ws-path="' + escapeHtml(f.path || '') + '">' +
+            '<span class="cwTitle">已写入代码工作区</span>' +
+            '<span class="cwFiles">' + escapeHtml(f.name || ('代码 ' + (idx + 1))) + '</span>' +
+            '<button type="button" class="codeWsOpen">打开工作区</button>' +
+            '<button type="button" class="codeWsShow">展开代码</button>' +
+          '</div>',
+        );
+        continue;
+      }
       const c = codes[Number(codeRef[1])];
       const rawLang = String(c.lang || '').trim();
       const canRun = RUNNABLE_LANGS.has(rawLang.toLowerCase());
@@ -2949,7 +2970,8 @@ function renderMarkdown(src) {
         '<div class="codeWrap" data-lang="' + escapeHtml(rawLang) + '">' +
           '<div class="codeHead"><span class="codeLang">' + escapeHtml(rawLang || 'code') + '</span><span class="codeSp"></span>' +
           '<button type="button" data-copy="1">复制</button>' +
-          (canRun ? '<button type="button" class="codeRun">运行</button>' : '') +
+          // 对话输出的代码一律给「运行」按钮：本机没装该语言工具链时，点运行会说明缺什么
+          '<button type="button" class="codeRun"' + (canRun ? '' : ' title="本机没有该语言的工具链，点「运行」会说明缺什么"') + '>运行</button>' +
           '<button type="button" class="codeToWs" title="在代码工作区打开">工作区</button>' +
           '</div><pre><code>' + escapeHtml(c.body.replace(/\n$/, '')) + '</code></pre>' +
           '<div class="codeOut" hidden></div>' +
@@ -3068,8 +3090,11 @@ function decorateFormulas(root) {
   }
 }
 
-function renderAssistant(el, text) {
-  el.innerHTML = renderMarkdown(text);
+function renderAssistant(el, text, opts) {
+  el.innerHTML = renderMarkdown(text, opts);
+  // 折叠成卡片时记下原始 Markdown，「展开代码」按钮据此还原
+  if (opts && opts.hideCode) el.dataset.md = text;
+  else delete el.dataset.md;
   if (typeof window.renderMathInElement !== 'function') return;
   if (!/\$|\\\(|\\\[/.test(text)) return; // 没有公式就跳过，省掉每帧扫描
   try {
@@ -3175,6 +3200,19 @@ async function runCodeBlock(wrap, btn) {
 }
 
 msgsEl.addEventListener('click', (e) => {
+  const wsOpen = e.target.closest('.codeWsOpen');
+  if (wsOpen) {
+    const card = wsOpen.closest('.codeWsCard');
+    const p = (card && card.dataset.wsPath) || '';
+    openCodePanel(p || undefined).catch(() => {});
+    return;
+  }
+  const wsShow = e.target.closest('.codeWsShow');
+  if (wsShow) {
+    const bub = wsShow.closest('.bubble');
+    if (bub && bub.dataset.md) renderAssistant(bub, bub.dataset.md);
+    return;
+  }
   const btn = e.target.closest('.codeHead button');
   if (!btn) return;
   const wrap = btn.closest('.codeWrap');
@@ -3409,7 +3447,8 @@ function renderStoredAssistant(entry, idx) {
 
   const out = document.createElement('div');
   out.className = 'bubble';
-  renderAssistant(out, entry.content || '');
+  const wsCollapsed = entry.codeMode === 'workspace' && Array.isArray(entry.codeFiles) && entry.codeFiles.length;
+  renderAssistant(out, entry.content || '', wsCollapsed ? { hideCode: true, codeFiles: entry.codeFiles } : undefined);
   row.appendChild(out);
 
   const stats = document.createElement('div');
@@ -4218,6 +4257,39 @@ async function captureAgentCode(text, outEl) {
     if (!codeModal.hidden) cwLoadList().catch(() => {});
   } catch (e) {
     showToast('代码收录失败：' + e.message, 'err', 5000);
+  }
+}
+
+/**
+ * 代码输出模式 = 工作区（默认）：把这一轮的围栏代码写进 workspace\code\，
+ * 再把气泡重新渲染成「已写入」卡片（代码不铺在对话里，点「展开代码」可还原）。
+ * 失败就保持对话里展开并 toast——宁可多显示，也不吞代码。
+ */
+async function captureCodeAndCollapse(text, outEl, entry) {
+  const blocks = cwExtractBlocks(text);
+  if (!blocks.length) return false;
+  const stamp = cwStamp();
+  const files = blocks.map((b, i) => ({ name: cwCaptureName(b.lang, stamp, i + 1), content: b.code }));
+  try {
+    const r = await apiJson('/api/code/capture', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ files }),
+    });
+    const saved = (r.saved || []).filter((x) => x && x.path);
+    if (!saved.length) return false;
+    renderAssistant(outEl, text, { hideCode: true, codeFiles: saved });
+    if (entry) {
+      entry.codeMode = 'workspace';
+      entry.codeFiles = saved.map((s) => ({ name: s.name, path: s.path }));
+      saveTranscript();
+    }
+    if (!codeModal.hidden) cwLoadList().catch(() => {});
+    showToast('代码已写入工作区：' + saved.map((s) => s.name).join('、') + '（对话里只留卡片，可展开）', 'ok', 5200);
+    return true;
+  } catch (e) {
+    showToast('代码写入工作区失败，已在对话里展开：' + e.message, 'err', 6000);
+    return false;
   }
 }
 
@@ -5841,8 +5913,13 @@ stopBtn.hidden = false;
       });
       saveTranscript();
     }
-    // Agent 模式：把本轮回复里的代码自动收进代码工作区（失败只 toast，不影响对话）
-    if (acc && toolChk.checked && codeCaptureOn) captureAgentCode(acc, out);
+    // 代码输出：工作区模式（默认）把代码收进 workspace\code\ 并在对话里折叠成卡片；
+    // 对话模式下保持原样，Agent 模式里的「自动收录」仍然可用
+    if (acc && codeOutWs) {
+      try { await captureCodeAndCollapse(acc, out, latestEntry); } catch {}
+    } else if (acc && toolChk.checked && codeCaptureOn) {
+      captureAgentCode(acc, out);
+    }
     if (latestEntry) stats.appendChild(makeRegenBtn(transcript.length - 1));
     const statsText = document.createElement('span');
     statsText.textContent = formatStats(usage, metrics);
@@ -5889,7 +5966,7 @@ stopBtn.hidden = false;
 // ---------------------------------------------------------------- 设置 / 停止 / 重生成 / 导出
 const stopBtn = $('stopBtn'), settingsBtn = $('settingsBtn'), settingsModal = $('settingsModal');
 const setMaxTokens = $('setMaxTokens'), setTemp = $('setTemp'), setTempVal = $('setTempVal');
-const setAutoRead = $('setAutoRead'), setCodeRun = $('setCodeRun'), setCodeCapture = $('setCodeCapture'), exportBtn = $('exportBtn'), exportHint = $('exportHint');
+const setAutoRead = $('setAutoRead'), setCodeRun = $('setCodeRun'), setCodeCapture = $('setCodeCapture'), setCodeOutWs = $('setCodeOutWs'), exportBtn = $('exportBtn'), exportHint = $('exportHint');
 
 let genAC = null;          // 当前生成的中止器
 let latestEntry = null;    // 刚写入 transcript 的那条助手消息
@@ -5905,6 +5982,7 @@ let webEnabled = false;    // 联网工具开关（默认关）
 let toolEnabled = false;   // 「调用工具」开关（持久化，否则刷新后联网开着却发不出 web 标记）
 let codeRunOn = true;      // 代码块默认显示「运行」按钮
 let codeCaptureOn = true;  // Agent 模式代码自动收录到代码工作区（默认开）
+let codeOutWs = true;      // 代码输出到工作区（对话里只留卡片；默认开，2026-11-08）
 let webMuted = false;      // 联网须知「不再提示」
 
 /**
@@ -5937,6 +6015,13 @@ function loadSettings() {
       if (cap === 'false' || cap === '0') codeCaptureOn = false;
       else if (cap === 'true' || cap === '1') codeCaptureOn = true;
     } catch {}
+    // 代码输出模式：默认写工作区
+    codeOutWs = s.codeOutWs !== false;
+    try {
+      const ws = localStorage.getItem('localai.codeOutWs');
+      if (ws === 'false' || ws === '0') codeOutWs = false;
+      else if (ws === 'true' || ws === '1') codeOutWs = true;
+    } catch {}
     // 兼容旧版单独存放的朗读 key
     if (!genTtsVoice) {
       try { genTtsVoice = localStorage.getItem('localai.ttsVoice') || ''; } catch {}
@@ -5963,9 +6048,11 @@ function saveSettings() {
       tools: toolChk.checked,
       codeRun: codeRunOn,
       codeCapture: codeCaptureOn,
+      codeOutWs,
     }));
     // 契约 4.3 按 localai.codeCapture 判断：顺手镜像一份，别处读也一致
     localStorage.setItem('localai.codeCapture', codeCaptureOn ? 'true' : 'false');
+    localStorage.setItem('localai.codeOutWs', codeOutWs ? 'true' : 'false');
   } catch {}
 }
 loadSettings();
@@ -6292,6 +6379,7 @@ settingsBtn.onclick = () => {
   if (genTtsVoice && ttsVoices.some((v) => v.id === genTtsVoice)) ttsVoice.value = genTtsVoice;
   setCodeRun.checked = codeRunOn;
   setCodeCapture.checked = codeCaptureOn;
+  setCodeOutWs.checked = codeOutWs;
   $('setPromptInfo').textContent = sysPrompt.trim()
     ? sysPrompt.trim().replace(/\s+/g, ' ').slice(0, 40) + (sysPrompt.trim().length > 40 ? '…' : '')
     : '未设置，使用内置默认';
@@ -6313,6 +6401,7 @@ $('settingsSave').onclick = () => {
   autoRead = setAutoRead.checked;
   codeRunOn = setCodeRun.checked;
   codeCaptureOn = setCodeCapture.checked;
+  codeOutWs = setCodeOutWs.checked;
   applyCodeRunSetting();
   if (ttsVoice.value) genTtsVoice = ttsVoice.value;
   genTtsSpeed = Math.max(0.7, Math.min(1.5, Number(ttsSpeed.value) || 1));
