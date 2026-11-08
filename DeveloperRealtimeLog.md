@@ -2102,3 +2102,11 @@ P4（首启建议 + 1.5B 下载档）改完只跑了 probe-firstrun，按规矩�
 ### 七、教训
 
 **「底层库有符号」不等于「上层 API 能用」**——先查绑定层，再决定架构。另外，核显上的 Vulkan 图像编码不可靠，默认 CPU 是理性选择：慢一点，但不会每次请求后进程暴毙。
+
+### 八、收尾（2026-11-08 交接）
+
+- **交付**：v1.3.0 发布包 **359.4MB / 3496 文件**；交付 zip **158.5MB / 3997 条目 / sha256 `103D6777…`**；git `2701b19`；应用交接时在跑（8099，v1.3.0，Qwen3.5-9B 已加载），视觉 sidecar 已停。
+- **不入库的东西**：模型 `*.gguf`、`mmproj\`、`tools\llama.cpp`（101MB sidecar）、`dist\`。新机器重装视觉：`winget download --id ggml.llamacpp`（b12144）解压到 `tools\llama.cpp`；mmproj 从 ModelScope `unsloth/Qwen3.5-9B-GGUF` 下 `mmproj-F16.gguf`。
+- **全量回归状态**：驱动已扩到 53 条，但本轮整跑因应用中途重启（无模型）作废——`probe-debug` / `probe-func` / `probe-start-flow` / `probe-status` / `probe-code-panel` 的红是环境连锁；受影响 8 条已逐条复跑全绿（vision-api 25/25、ui-vision 19/19、version 14/14、debug 35/35、func 9/9、start-flow 8/8、status 6/6、code-panel 17/17+跳过 1）。**下一轮第一件事：跑一次干净的 53 条全量。**
+- **下一轮建议顺序**：① 干净全量 53；② 视觉闲置自动退出 + 「视觉增强包」拆分（主包回 122MB）；③ 老笔记本 1.5B / 7B 分片下载；④ 需要更强 OCR 再加 Qwen2.5-VL-7B（5.15GB）。
+- **已知遗留**：sidecar 不自动闲置退出；CPU 首图 10–35s、生成 ~2.6 tok/s（GPU `VISION_NGL=99` 在这台核显会 device lost）；4MB 请求体上限；HEIC 不支持；只实测 Qwen3.5-9B 一组。
