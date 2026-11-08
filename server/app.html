@@ -567,6 +567,10 @@ textarea:disabled{opacity:.5}
 
 /* ---- 图片入口（视觉 sidecar）：底部按钮 + 预览条 + 气泡缩略图 ---- */
 #imgBtn{height:56px;width:46px;padding:0;font-size:18px;line-height:1;flex:none}
+  /* 图片按钮的 Σ：照 LaTeX 排版的大写希腊字母——直立衬线，不是斜体数学变量 */
+  .sigmaIcon{font-family:"KaTeX_Main","Cambria Math","Latin Modern Math","Times New Roman",serif;font-weight:400;font-size:23px;line-height:1;display:inline-block;transform:translateY(1px);letter-spacing:0}
+  #imgBtn,#heroImgBtn{color:var(--cyan)}
+  #imgBtn:hover,#heroImgBtn:hover{color:var(--accent)}
 .imgPreview{display:flex;gap:8px;padding:2px 0 4px;flex-wrap:wrap}
 .imgPreview[hidden]{display:none}
 .imgThumb{position:relative;width:64px;height:64px;border-radius:6px;border:1px solid var(--line-2);overflow:hidden;background:var(--panel-2);flex:none;box-shadow:var(--shadow-sm)}
@@ -1023,7 +1027,7 @@ header::before{
 <footer>
   <div id="imgPreview" class="imgPreview" hidden></div>
   <div class="footerMain">
-    <button id="imgBtn" class="ghost" type="button" title="添加图片（也支持粘贴 / 拖拽）">🖼</button>
+    <button id="imgBtn" class="ghost" type="button" title="添加图片（也支持粘贴 / 拖拽）"><span class="sigmaIcon">Σ</span></button>
     <input type="file" id="imgInput" accept="image/*" multiple hidden>
     <textarea id="q" placeholder="输入你的问题…" disabled></textarea>
     <button id="stopBtn" class="ghost" hidden>停止</button>
@@ -1437,6 +1441,20 @@ header::before{
         <em>启动时先卸载文本模型（同一时间只装一个重模型），加载约 10–20 秒。发图时会自动启动当前选择的组合；看完图要继续文字对话，需要重新加载文本模型。</em>
       </div>
       <div class="field">
+        <span class="lbl">发图质量 <i>图像 token 越少越快</i></span>
+        <select id="setVisionEdge">
+          <option value="768">快 · 768px（识图快，细节少）</option>
+          <option value="1024">标准 · 1024px</option>
+          <option value="1280">精细 · 1280px（更慢）</option>
+        </select>
+        <em>图片越大 → 图像 token 越多 → CPU 编码越慢（实测 1440×900 截图 ≈1036 token ≈41s 预填充）。只影响发送给模型的版本，预览缩略图不变。</em>
+      </div>
+      <div class="field">
+        <span class="lbl">视觉模式参数 <i>config.ini 可改</i></span>
+        <em id="setVisionParams">正在读取…</em>
+        <em>上下文 <b>visionContext</b>（默认 32768）、闲置自动退出 <b>visionIdleSec</b>（默认 300 秒，0 = 不停）、编码线程 <b>visionThreads</b>。图像编码固定走 CPU（<b>-mmdev none</b>）：核显跑图像编码会 device lost，大图必 500。</em>
+      </div>
+      <div class="field">
         <span class="lbl">日志</span>
         <em id="setVisionLog">—</em>
       </div>
@@ -1700,7 +1718,21 @@ const MAX_IMGS = 3;              // 一张提问最多带 3 张
 const MAX_IMG_MB = 20;           // 单张原图上限（MB）：手机照片常见 5–15MB，4MB 会把大图全挡住
 const MAX_IMG_PIXELS = 80e6;     // 解码像素上限（8000 万）：再大容易把浏览器内存打爆
 const IMG_BUDGET_CHARS = 700 * 1024; // 单张发送版 dataURL 预算：3 张 ≈2.1MB，后端 /v1 请求体上限 4MB
-const IMG_MAX_EDGE = 1024;       // 发送版本的最长边
+const IMG_EDGE_KEY = 'localai.visionEdge';
+const IMG_EDGE_CHOICES = [768, 1024, 1280];
+const IMG_EDGE_DEFAULT = 1024;
+/**
+ * 发送版本的最长边（设置 → 视觉「发图质量」）。
+ * 图像 token 数随像素涨，CPU 编码耗时也随它涨：实测 1440×900 截图 ≈1036 image token ≈41s 预填充。
+ * 768 快、1024 标准、1280 细节多但更慢。
+ */
+function imgMaxEdge() {
+  try {
+    const n = Number(localStorage.getItem(IMG_EDGE_KEY));
+    if (IMG_EDGE_CHOICES.includes(n)) return n;
+  } catch {}
+  return IMG_EDGE_DEFAULT;
+}
 const IMG_THUMB_EDGE = 240;      // 预览 / 气泡缩略图的最长边
 const VISION_PAIR_KEY = 'localai.visionPair';
 let pendingImgs = [];            // [{src, thumb}]：待发送的图片
@@ -1828,10 +1860,10 @@ function drawScaledDataUrl(im, maxEdge, quality) {
 function encodeSendingImage(im, budgetChars) {
   let url = '';
   for (const q of [0.85, 0.72, 0.62, 0.52]) {
-    url = drawScaledDataUrl(im, IMG_MAX_EDGE, q);
+    url = drawScaledDataUrl(im, imgMaxEdge(), q);
     if (url.length <= budgetChars) return url;
   }
-  return drawScaledDataUrl(im, Math.round(IMG_MAX_EDGE * 0.75), 0.6);
+  return drawScaledDataUrl(im, Math.round(imgMaxEdge() * 0.75), 0.6);
 }
 
 /** 一张原图只解码一次，同时产出发送版和预览缩略图 */
@@ -1941,6 +1973,25 @@ async function ensureVisionForSend() {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ model: pair.model, mmproj: pair.mmproj }),
   });
+}
+
+/**
+ * 视觉等待计时器：sidecar 启动 10–20s、CPU 图像编码 20–50s，状态栏不给秒数用户会以为卡死。
+ * 只在视觉相关的两段等待里开，结束就清。
+ */
+let visionWaitTimer = null;
+function startVisionWait(text) {
+  stopVisionWait();
+  const t0 = Date.now();
+  const tick = () => setStatus('busy', text + ' ' + Math.round((Date.now() - t0) / 1000) + 's');
+  tick();
+  visionWaitTimer = setInterval(tick, 1000);
+}
+function stopVisionWait() {
+  if (visionWaitTimer) {
+    clearInterval(visionWaitTimer);
+    visionWaitTimer = null;
+  }
 }
 
 const imgInputEl = document.getElementById('imgInput');
@@ -4249,7 +4300,7 @@ function showHero() {
         '<button type="button" class="modeBtn reason" data-mode="reason">推理模式</button>' +
       '</div>' +
       '<div class="heroBox">' +
-        '<button id="heroImgBtn" class="ghost" type="button" title="添加图片（也支持粘贴 / 拖拽）">🖼</button>' +
+        '<button id="heroImgBtn" class="ghost" type="button" title="添加图片（也支持粘贴 / 拖拽）"><span class="sigmaIcon">Σ</span></button>' +
         '<textarea id="heroInput" placeholder="试试问我点什么…" spellcheck="false"></textarea>' +
         '<button id="heroSend" type="button">发送</button>' +
       '</div>' +
@@ -5562,15 +5613,18 @@ async function send(text) {
   if (sendImgs.length) {
     visionEnsuring = true;
     setBusy(true, '正在启动视觉模型…');
+    startVisionWait('正在启动视觉模型…');
     try {
       await ensureVisionForSend();
     } catch (e) {
+      stopVisionWait();
       visionEnsuring = false;
       setBusy(false);
       setStatus('err', '视觉模型不可用：' + e.message.slice(0, 80));
       showToast('视觉模型不可用：' + e.message, 'err', 7000);
       return;
     }
+    stopVisionWait();
     visionEnsuring = false;
   }
   const ok = await doSend(text, sendImgs);
@@ -5689,6 +5743,7 @@ stopBtn.hidden = false;
     const outMessages = sysPrompt.trim()
       ? [{ role: 'system', content: sysPrompt.trim() }, ...history]
       : history;
+    if (imgs.length) startVisionWait('视觉识图中…（CPU 编码，通常 20–50s）');
     const res = await fetch('/v1/chat/completions', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -5704,6 +5759,7 @@ stopBtn.hidden = false;
         ...(imgs.length ? { images: imgs.map((it) => it.src) } : {}),
       }),
     });
+    stopVisionWait();
     if (!res.ok) {
       const t = await res.text();
       throw new Error('HTTP ' + res.status + ' ' + t.slice(0, 160));
@@ -5755,6 +5811,7 @@ stopBtn.hidden = false;
       out.textContent = '请求失败：' + e.message;
     }
   } finally {
+    stopVisionWait();
     stopBtn.hidden = true;
     genAC = null;
     if (acc) { paint(); history.push({ role: 'assistant', content: acc }); }
@@ -6043,6 +6100,13 @@ async function loadVisionTab() {
     : (pairs.length ? '未启动' : '未启动 · ' + (st.note || '没有可用的视觉模型（需要 mmproj 文件）'));
   // note 常是「配对来源 / 缺文件」的说明，放 title 里，别把运行状态挤掉
   stEl.title = st.note || '';
+  const paramsEl = $('setVisionParams');
+  if (paramsEl) {
+    const ctxK = st.context ? (st.context >= 1024 ? Math.round(st.context / 1024) + 'K' : String(st.context)) : '—';
+    const dev = st.mmprojDevice === 'none' ? 'CPU（稳，慢）' : (st.mmprojDevice || '—');
+    const idle = st.idleExitSec ? st.idleExitSec + 's 无请求后自动停止' : '不自动停止';
+    paramsEl.textContent = '上下文 ' + ctxK + ' · 图像编码 ' + dev + ' · ' + idle;
+  }
   const curIdx = running && pairs.length ? pairs.findIndex((p) => visionPairMatches(p, st.model, st.mmproj)) : -1;
   const selIdx = pairs.length ? Number(sel.value) : -1;
   if (startBtn) startBtn.disabled = !pairs.length || (running && selIdx >= 0 && selIdx === curIdx) || visionStarting;
@@ -6098,6 +6162,17 @@ async function stopVisionFromTab() {
     visionStopping = false;
     try { await loadVisionTab(); } catch {}
   }
+}
+
+const setVisionEdgeEl = $('setVisionEdge');
+if (setVisionEdgeEl) {
+  setVisionEdgeEl.value = String(imgMaxEdge());
+  setVisionEdgeEl.onchange = function () {
+    const n = Number(setVisionEdgeEl.value);
+    if (!IMG_EDGE_CHOICES.includes(n)) return;
+    try { localStorage.setItem(IMG_EDGE_KEY, String(n)); } catch {}
+    showToast('发图质量：' + n + 'px（下一张图生效）', 'info', 3200);
+  };
 }
 
 $('setVisionStart') && ($('setVisionStart').onclick = startVisionFromTab);

@@ -58,14 +58,71 @@ const LLAMA_SERVER = path.join(LLAMA_DIR, "llama-server.exe");
 /** 视觉 sidecar 监听端口：固定 8101（契约定死，状态接口也按这个显示） */
 const VISION_PORT = Number(process.env.VISION_PORT ?? 8101);
 const VISION_HOST = "127.0.0.1";
-/** sidecar 参数：上下文 8192（契约） */
-const VISION_CONTEXT = 8192;
+/**
+ * sidecar 上下文：默认 32K（2026-11-08 起；8K 装不下「多图 / 长对话 + 图」）。
+ * config.ini 的 visionContext 或环境变量 VISION_CTX 可改，范围 2048–131072。
+ */
+const VISION_CONTEXT_DEFAULT = 32768;
+const VISION_CONTEXT_MIN = 2048;
+const VISION_CONTEXT_MAX = 131072;
+
+/** 实际使用的视觉上下文：环境变量 > config.ini > 默认（每次启动 sidecar 时读一遍） */
+async function visionContextSize() {
+  const fromEnv = Math.floor(Number(process.env.VISION_CTX));
+  if (Number.isFinite(fromEnv) && fromEnv >= VISION_CONTEXT_MIN) return Math.min(VISION_CONTEXT_MAX, fromEnv);
+  try {
+    const cfg = await readConfigIni();
+    const n = Math.floor(Number(cfg.visionContext));
+    if (Number.isFinite(n) && n >= VISION_CONTEXT_MIN) return Math.min(VISION_CONTEXT_MAX, n);
+  } catch {}
+  return VISION_CONTEXT_DEFAULT;
+}
+
+/**
+ * 闲置自动退出：sidecar 空闲这么久就停掉，把内存还回去（下一张图再自动拉起）。
+ * config.ini 的 visionIdleSec / 环境变量 VISION_IDLE_SEC 可改；0 = 永不自动退出。
+ */
+const VISION_IDLE_DEFAULT_SEC = 300;
+
+async function visionIdleSec() {
+  const fromEnv = Number(process.env.VISION_IDLE_SEC);
+  if (Number.isFinite(fromEnv) && fromEnv >= 0) return Math.min(3600, Math.floor(fromEnv));
+  try {
+    const cfg = await readConfigIni();
+    const n = Number(cfg.visionIdleSec);
+    if (Number.isFinite(n) && n >= 0) return Math.min(3600, Math.floor(n));
+  } catch {}
+  return VISION_IDLE_DEFAULT_SEC;
+}
+
+/**
+ * 视觉编码线程数：config.ini 的 visionThreads 显式指定时才传 -t，否则 0 = 交给 llama.cpp 自己选。
+ * 2026-11-08 实测（Qwen3.5-9B + 1036 image token，同机同图）：
+ *   默认（程序自选 16 线程）25.2 tok/s ≈ 41s；强行 -t 20 → 18.7 tok/s ≈ 56s（慢 35%）。
+ * 这台机器上多塞线程会抢核反而变慢，所以默认不传。
+ */
+async function visionThreads() {
+  try {
+    const cfg = await readConfigIni();
+    const n = Math.floor(Number(cfg.visionThreads));
+    if (Number.isFinite(n) && n >= 1) return Math.min(64, n);
+  } catch {}
+  return 0;
+}
 /**
  * offload 到 GPU 的层数：默认 0 = CPU。
  * 实测 Vulkan 后端在 mtmd 图像编码时会 device lost（0xC0000005，ggml_vulkan: device lost on Vulkan0），
  * 先默认 CPU 保全稳定；想开 GPU 对比用环境变量 VISION_NGL=99。
  */
 const VISION_NGL = Math.max(0, Math.min(999, Math.floor(Number(process.env.VISION_NGL ?? 0)) || 0));
+/**
+ * mmproj（图像编码）用哪个设备：默认 "none" = 强制 CPU。
+ * 关键：-ngl 只影响文本层，mmproj 不受它管；不显式给 -mmdev none 时图像编码会走 Vulkan。
+ * 2026-11-08 实测：1440×900 截图（约 1036 image token）在核显上 ggml_vulkan: device lost
+ * → mtmd_batch_encode 失败 → HTTP 500「failed to process mtmd chunk」。320×180 小图能糊过去，
+ * 所以之前的小图探针一直没暴露。想再试 GPU 用 VISION_MMPROJ_DEVICE=vulkan0。
+ */
+const VISION_MMPROJ_DEVICE = String(process.env.VISION_MMPROJ_DEVICE ?? "none").trim() || "none";
 /** 启动等待上限：模型加载约 16s，留足余量；超时杀进程回 504 */
 const VISION_START_TIMEOUT_MS = 120000;
 /** 单次视觉请求最长等 10 分钟（流式大回答兜底） */
@@ -1493,6 +1550,10 @@ const vision = {
   starting: false,
   error: "",
   active: 0, // 正在转发的视觉请求数（>0 时不允许加载文本模型）
+  contextUsed: 0, // 本次 sidecar 实际启动时用的上下文（0 = 还没起过）
+  idleSec: 0, // 本次 sidecar 的闲置退出秒数（0 = 不自动退出）
+  idleAt: 0, // 最近一次视觉活动时刻
+  idleTimer: null, // 闲置退出定时器
   lock: Promise.resolve(),
 };
 
@@ -1519,12 +1580,44 @@ function visionRunning() {
 }
 
 function resetVisionState() {
+  clearVisionIdle();
   vision.proc = null;
   vision.pid = null;
   vision.model = "";
   vision.mmproj = "";
   vision.startedAt = 0;
   vision.starting = false;
+  vision.contextUsed = 0;
+}
+
+/** 取消闲置计时（停止 / 崩溃 / 重新启动时都要取消，否则会对着空进程发 stop） */
+function clearVisionIdle() {
+  if (vision.idleTimer) {
+    clearTimeout(vision.idleTimer);
+    vision.idleTimer = null;
+  }
+  vision.idleAt = 0;
+}
+
+/**
+ * 重新开始闲置计时：启动成功、每次转发结束都调用。
+ * 计时到期时若还有请求在跑（排队 / 转发中）就顺延，不打断正在识图的那一张。
+ */
+function touchVisionIdle() {
+  clearVisionIdle();
+  if (!visionRunning() || !vision.idleSec) return;
+  vision.idleAt = Date.now();
+  vision.idleTimer = setTimeout(() => {
+    vision.idleTimer = null;
+    if (!visionRunning()) return;
+    if (vision.active > 0 || visionRequests.busy) {
+      touchVisionIdle();
+      return;
+    }
+    log("视觉：闲置 " + vision.idleSec + "s，自动停止 sidecar 释放内存（下一张图会自动再拉起）");
+    stopVision().catch((e) => log("视觉：闲置自动停止失败 " + String(e?.message ?? e)));
+  }, vision.idleSec * 1000);
+  if (vision.idleTimer.unref) vision.idleTimer.unref();
 }
 
 /** 杀进程树：llama-server 可能拉子进程；Windows 用 taskkill /T /F */
@@ -1697,7 +1790,7 @@ async function visionPortInUse() {
   }
 }
 
-function visionPublicState(scan) {
+function visionPublicState(scan, ctx = VISION_CONTEXT_DEFAULT, idleSec = VISION_IDLE_DEFAULT_SEC) {
   const running = visionRunning();
   let note = scan.note || "";
   if (!existsSync(LLAMA_SERVER)) {
@@ -1717,11 +1810,16 @@ function visionPublicState(scan) {
     note,
     starting: vision.starting,
     error: vision.error,
+    // 视觉模式的可观测参数（设置页直接显示，用户不用翻 config.ini）
+    context: running ? (vision.contextUsed || ctx) : ctx,
+    idleExitSec: running ? (vision.idleSec || 0) : (idleSec || 0),
+    idleAt: running ? vision.idleAt : 0,
+    mmprojDevice: VISION_MMPROJ_DEVICE,
   };
 }
 
 async function visionState() {
-  return visionPublicState(await scanVisionPairs());
+  return visionPublicState(await scanVisionPairs(), await visionContextSize(), await visionIdleSec());
 }
 
 /**
@@ -1787,7 +1885,15 @@ async function startVision(opts) {
     }
 
     await mkdir(VISION_LOG_DIR, { recursive: true }).catch(() => {});
-    const args = ["-m", want.model, "--mmproj", want.mmproj, "-c", String(VISION_CONTEXT), "-ngl", String(VISION_NGL), "--host", VISION_HOST, "--port", String(VISION_PORT), "--jinja", "--no-webui", "-np", "1"];
+    // 参数要点：
+    //  -c      上下文（默认 32K，可配）
+    //  -ngl    文本层 offload 数（默认 0 = CPU）
+    //  -mmdev  mmproj 图像编码设备（默认 none = CPU；不写就跟着 Vulkan 走，大图会 device lost）
+    //  -t      编码线程数（默认核数-2，封顶 20）
+    const ctx = await visionContextSize();
+    const threads = await visionThreads();
+    const args = ["-m", want.model, "--mmproj", want.mmproj, "-c", String(ctx), "-ngl", String(VISION_NGL), "-mmdev", VISION_MMPROJ_DEVICE, "--host", VISION_HOST, "--port", String(VISION_PORT), "--jinja", "--no-webui", "-np", "1"];
+    if (threads > 0) args.push("-t", String(threads));
     let out = null;
     try {
       out = createWriteStream(VISION_LOG, { flags: "a" });
@@ -1867,8 +1973,11 @@ async function startVision(opts) {
     vision.model = want.model;
     vision.mmproj = want.mmproj;
     vision.startedAt = Date.now();
-    log("视觉 sidecar 就绪（" + path.basename(want.model) + " + " + path.basename(want.mmproj) + "，" + ((Date.now() - t0) / 1000).toFixed(1) + "s，pid " + vision.pid + "）");
-    return visionPublicState(await scanVisionPairs());
+    vision.contextUsed = ctx;
+    vision.idleSec = await visionIdleSec();
+    touchVisionIdle();
+    log("视觉 sidecar 就绪（" + path.basename(want.model) + " + " + path.basename(want.mmproj) + "，ctx " + ctx + " / " + (threads > 0 ? threads + " 线程" : "线程自动") + " / mmproj " + VISION_MMPROJ_DEVICE + "，" + ((Date.now() - t0) / 1000).toFixed(1) + "s，pid " + vision.pid + "）");
+    return visionPublicState(await scanVisionPairs(), ctx, vision.idleSec);
   });
 }
 
@@ -1884,6 +1993,7 @@ async function stopVisionLocked() {
     resetVisionState();
     return { ok: true, running: false };
   }
+  clearVisionIdle();
   log("视觉：停止 sidecar（pid " + pid + "）");
   killPidTree(pid);
   try {
@@ -2186,6 +2296,7 @@ async function handleVisionChat(payload, res) {
   } finally {
     if (release) release();
     vision.active = Math.max(0, vision.active - 1);
+    touchVisionIdle(); // 每次请求结束重新计时：还在用就不停
   }
 }
 

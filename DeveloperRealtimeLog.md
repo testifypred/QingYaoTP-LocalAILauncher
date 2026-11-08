@@ -2231,3 +2231,47 @@ P4（首启建议 + 1.5B 下载档）改完只跑了 probe-firstrun，按规矩�
 - `server\docs\probe-full-2026-11-08\run-full.ps1`：`$M` = `qwen3-5-4B-Q4_K_M.gguf`（BOM 保持 `EF BB BF`、PS 5.1 Parser 0 错误）。
 - `technique\04-模型与后端.md`：同步这条口径与实测数字。
 - 未动：`run-server.cmd`（开发启动默认 9B）、`app.mjs` 下载目录（Qwen2.5 档位仍可下）。
+
+
+---
+
+## 四十八、2026-11-08 21:00：视觉功能修复（大图必 500 / 32K / 闲置退出 / Σ 图标）
+
+用户要求「把图片功能修一修，上下文设到 32K（如果可行），图形按钮改成 LaTeX 那个大写 Σ」。
+
+### 一、修掉的三个真问题
+
+| # | 问题 | 根因 | 修法 |
+|---|---|---|---|
+| 1 | **大图必 500**（用户说的「发图报错」） | `-ngl 0` **只管文本层**，mmproj 的图像编码默认仍走 Vulkan。1440×900 截图 ≈1036 image token 时 `ggml_vulkan: device lost` → `mtmd_batch_encode` 失败 → `failed to process mtmd chunk` → HTTP 500。320×180 小图能糊过去，所以此前的小图探针一直绿、没暴露 | sidecar 参数加 **`-mmdev none`**（强制图像编码走 CPU）；`VISION_MMPROJ_DEVICE=vulkan0` 可改回 GPU 对比 |
+| 2 | 上下文 8K 不够 | `VISION_CONTEXT` 写死 8192 | 默认 **32768**，可配 `visionContext`（2048–131072） |
+| 3 | 闲置不退出（内存不还） | 设计上要手动停 | **闲置 300s 自动退出**（`visionIdleSec`，0 = 不停）；到点若还有请求在跑就顺延 |
+
+### 二、性能实测（Qwen3.5-9B + 1440×900 截图，CPU 编码）
+
+| 配置 | 预填充 | 结论 |
+|---|---|---|
+| 线程默认（程序自选 16） | 41s / 1036 token = **25.2 tok/s** | 保留默认 |
+| 强行 `-t 20` | 55.7s = 18.7 tok/s | **慢 35%** → 不传 `-t`，交给 llama.cpp |
+| 端到端（app 转发，32K，`-mmdev none`） | **200 / 56.5s，答案「中午好」正确** | 原来必 500 |
+
+32K 内存代价：sidecar RSS 7.7–8.0GB、启动 5–9s（这台 31.4GB 机器可行；和 8K 相比启动/耗时几乎不变）。
+
+### 三、界面
+
+- 图片按钮 **🖼 → Σ**：`KaTeX_Main` / `Cambria Math` 直立衬线、青色 23px，就是 LaTeX 排版里的大写 Σ（输入区 + 开场白两处）。截图确认过不是豆腐块。
+- 设置 → 视觉新增：**发图质量**（768 快 / 1024 标准 / 1280 精细，localStorage `localai.visionEdge`）、**视觉模式参数**（上下文 / 图像编码设备 / 闲置退出，来自 `/api/vision/state` 的新字段）。
+- 等待有秒数了：启动「正在启动视觉模型… Ns」、识图「视觉识图中…（CPU 编码，通常 20–50s）Ns」——CPU 40–60s 的等待不再像卡死。
+
+### 四、验证
+
+- `probe-vision-api` **25/25**（start 9.4s、小图 8.4s、stop 释放 8101）
+- `probe-ui-vision` **19/19**（#imgBtn 仍在、预览/删除/设置页/自复位）
+- `probe-ui-new` **30/30**、`probe-start-screen` **12/12**、`probe-hero-modes` **11/11**（首次 9/11 是视觉测试卸了文本模型，装回 9B 后全绿）
+- 闲置退出实测：临时 `visionIdleSec=8` → 启动 + 请求后等 14s，`running=false`、8101 无监听；测完还原 300。
+
+### 五、落点
+
+`server\app.mjs`（上下文 / 闲置 / mmproj 设备 / state 字段）、`server\app.html`（Σ、发图质量、参数显示、等待计时）、`server\build-portable.ps1`（config 模板 + 使用说明模板，BOM 保持、PS5.1 Parser 0 错误）、`dist\QingYaoTP AILauncher\config.ini`（`visionContext=32768` / `visionIdleSec=300` / `visionThreads=`）、`dist\...\使用说明.txt`、`technique\02-接口.md`、`交接文档.md`、`新会话启动词.md`。
+
+**没做的**：没升版本号（仍 v1.3.0，下次发布再 bump）、没重打 zip（下次打包生效）；`app.mjs`/`app.html` 已同步 dist 并重启验过。

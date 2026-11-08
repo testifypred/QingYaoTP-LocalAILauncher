@@ -216,6 +216,9 @@ $cfg = @"
 # vkDevices   Vulkan 设备号（逗号分隔，空 = 全部设备）；核显+独显的机器填独显那一项
 # visionModel 看图用的模型（留空 = 自动：modelDir\mmproj\*.gguf 按名字配对各模型）
 # visionMmproj 看图用的视觉投影文件（留空 = 自动）
+# visionContext 视觉模式上下文（默认 32768；8K 装不下多图/长对话）
+# visionIdleSec 视觉模型闲置多少秒后自动停止（0 = 不停；默认 300）
+# visionThreads 图像编码线程数（留空 = 核数-2，封顶 20）
 # 说明        首次启动会自动检查本机（CPU/内存/显卡/运行库/磁盘），给出模型与上下文建议，
 #             点「按建议配置并应用」即可写回本文件（下一次启动生效）。
 port=$Port
@@ -227,6 +230,9 @@ gpu=auto
 vkDevices=
 visionModel=
 visionMmproj=
+visionContext=32768
+visionIdleSec=300
+visionThreads=
 "@
 Set-Content -Path (Join-Path $resolved 'config.ini') -Value $cfg -Encoding UTF8
 
@@ -303,13 +309,16 @@ QingYaoTP AILauncher（本地 AI）便携版
   界面每轮会显示「预填充 x.xxs，复用 NN%」。
 
 九、看图（视觉 sidecar）
-  输入区的 🖼 按钮（也支持粘贴 / 拖拽）可以把图片发给本地模型看。
+  输入区的 Σ 按钮（也支持粘贴 / 拖拽）可以把图片发给本地模型看。
   需要一个视觉模型：把视觉模型 .gguf 放进模型目录，把配套的 mmproj-*.gguf 放进 <modelDir>\mmproj\。
   应用按文件名自动配对；也可以在 config.ini 用 visionModel= / visionMmproj= 直接指定。
-  首次看图会启动独立进程 app\llama\llama-server.exe（约 6-12 秒），之后单张图约 10-20 秒。
+  首次看图会启动独立进程 app\llama\llama-server.exe（约 6-12 秒）；单张 1440×900 截图约 40-60 秒
+  （图像编码走 CPU：-ngl 0 只管文本层，必须 -mmdev none 才强制 CPU，否则核显会 device lost → 500）。
+  上下文默认 32K（config.ini 的 visionContext 可改）；闲置 300 秒自动退出（visionIdleSec，0 = 不停）。
+  设置 → 视觉 里可以调「发图质量」（768 快 / 1024 标准 / 1280 精细），越小越快。
   注意：同一时间只加载一个重模型——看图时文本模型会被卸载，看完再选回文本模型即可。
   若提示「没有可用的视觉模型」，先检查 mmproj 是否放在了 <modelDir>\mmproj\ 下。
-  默认走 CPU 后端（稳定）；想对比 GPU 可设环境变量 VISION_NGL=99 再启动（部分核显驱动会 device lost）。
+  默认走 CPU（稳定）；想对比 GPU 可设 VISION_NGL=99 与 VISION_MMPROJ_DEVICE=vulkan0 再启动（部分核显驱动会 device lost）。
 
 八、排错
   1. 双击没反应：看 logs\app.log 与 logs\launcher.log；端口被占时启动器会弹提示。
