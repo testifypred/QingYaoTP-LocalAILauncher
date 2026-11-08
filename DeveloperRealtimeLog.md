@@ -2169,3 +2169,38 @@ P4（首启建议 + 1.5B 下载档）改完只跑了 probe-firstrun，按规矩�
 - **探针参数是契约**：探针改签名必须同步驱动，否则整跑会「静默少跑一条」——0 断言也算 FAIL，但看 summary 很容易当成环境问题。
 - **探针不能依赖上一轮的残留**：本轮 #28 吃了 #43 的夹具，跨轮传染，而且越查越像产品 bug。
 - `summary.txt` 是 **UTF-8 BOM 头 + UTF-16LE 追加段**的混合编码，统计必须双解码；证据产物一律 UTF-8（无 BOM）落盘。
+
+
+---
+
+## 四十六、2026-11-08 20:30：按要求删除两个 Qwen2.5 本地模型（释放 4.82GB）
+
+用户要求「把所有 Qwen2.5 删了」。先盘点再动手：
+
+| 文件 | 体积 | 原用途 |
+|---|---|---|
+| `qwen2.5-7b-instruct-1m-q4_k_m.gguf` | 4466MB（4.36GB） | 交接文档里的「默认/主力」，也是全量驱动的预加载目标 |
+| `qwen2.5-0.5b-instruct-q4_k_m.gguf` | 469MB | 首启兜底小模型 |
+
+- 无硬链接副本（`dist\QingYaoTP AILauncher\models` 是空的）、无下载在途、当前加载的是 `Qwen3.5-9B`（**不受影响**）。
+- `llama-qwen2vl-cli.exe`（`tools\llama.cpp\` 与 `dist\...\app\llama\`）是 llama.cpp 的**程序文件**，不是模型，**未动**。
+- 其它常见位置（Downloads / Desktop / Documents / `D:\Models` / `D:\AI`）没有别的 Qwen2.5 gguf。
+
+用户确认「彻底删除两个」后执行：删前逐个核对**绝对路径 + 普通文件 + 无 LinkType/Target**，再 `Remove-Item -LiteralPath`（不用通配符）。结果：**释放 4.82GB**（D 盘剩 288.9GB），模型目录从 7 个变 5 个。
+
+### 连带处理
+
+| 落点 | 改动 |
+|---|---|
+| `server\docs\probe-full-2026-11-08\run-full.ps1` | 预加载 `$M` 从 `qwen2.5-7b…` 改为 **`Qwen3.5-9B-Q4_K_M.gguf`**（BOM 保持 `EF BB BF`、PS 5.1 Parser 0 错误）。⚠️ `probe-tools-agent` / `probe-web-tools` 依赖模型愿按 `<tool_call>` 协议输出，换模型后**下一轮需复验这两条** |
+| `server\run-server.cmd` | 开发脚本的 `AUTO_LOAD` 同样改指 `Qwen3.5-9B-Q4_K_M.gguf`（原来指向已删文件） |
+| `交接文档.md` | 模型清单 7 个 → 5 个，并注明两个 Qwen2.5 已删、下载档位仍保留 |
+| `technique\04-模型与后端.md` | 「当前这台机器上有什么」表格改成现有 5 个（补 `gpt-oss-20b`、`Qwen3.5-9B`），加删除说明 |
+
+**没动的**：`app.mjs` / `config-recommend.mjs` 的下载目录与推荐逻辑（界面里仍可下载 Qwen2.5-0.5B / 1.5B，要再下随时可下）；历史证据目录（`packaging-*` / `probe-full-*`）里的旧记录；本日志之前的所有条目。
+
+### 验证
+
+- `/api/state`：models = **5**（DeepSeek-R1 / gpt-oss-20b / Phi-4-mini / qwen3-5-4B / Qwen3.5-9B），loaded 仍是 `Qwen3.5-9B`。
+- `probe-firstrun` **22/22**：推荐逻辑在本机模型变少后仍自洽——live `/api/sysinfo` 的 large 档已从 `qwen2.5-7b` 自动改成 `qwen3-5-4B`（推荐顺序里 qwen2.5 名字命中不到就往下走）。
+- 教训照旧：**删模型前先确认没有硬链接副本**（本机刚好没有），否则删了链接源文件会连带失效。
