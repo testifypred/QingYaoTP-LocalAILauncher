@@ -31,7 +31,12 @@ const j = async (method, p, body) => {
 const errors = [];
 ws.on("message", (raw) => {
   const m = JSON.parse(raw.toString());
-  if (m.method === "Runtime.exceptionThrown") errors.push(String(m.params?.exceptionDetails?.exception?.description || "").slice(0, 120));
+  if (m.method === "Runtime.exceptionThrown") {
+    const d = String(m.params?.exceptionDetails?.exception?.description || "");
+    // headless profile 里预置扩展的隔离世界会抛 "Could not establish connection. Receiving end does not exist."，
+    // 偶尔在 probe-reload 前后冒出来，不是页面错误（2026-11-08 整跑被它误红过一次），过滤掉
+    if (!/Could not establish connection|Receiving end does not exist/i.test(d)) errors.push(d.slice(0, 120));
+  }
   if (m.method === "Runtime.consoleAPICalled" && m.params?.type === "error") errors.push((m.params.args || []).map((a) => a.value).join(" ").slice(0, 120));
 });
 await send("Page.enable"); await send("Runtime.enable");

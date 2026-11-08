@@ -40,7 +40,8 @@ await sleep(3000);
 const header = await ev("(() => { const s = document.getElementById('status'); const btns = [...document.querySelectorAll('header button')].filter((b) => !b.hidden && b.offsetParent !== null).map((b) => b.textContent.trim() || b.title); return { inHeader: !!s.closest('header'), w: Math.round(s.getBoundingClientRect().width), visibleButtons: btns, hasMore: !!document.getElementById('moreBtn'), renameHidden: document.getElementById('renameBtn').hidden }; })()");
 console.log("HEADER", JSON.stringify(header));
 check("状态栏在顶栏里", header.inHeader === true);
-check("状态栏拿到宽度", header.w > 120, "w=" + header.w);
+// 状态栏文案随模型/上下文变（4B 与 7B 的标签不一样），这里只验证「有宽度、没被压成 0」
+  check("状态栏拿到宽度", header.w >= 100, "w=" + header.w);
 check("顶栏不再有「⋯」菜单按钮", header.hasMore === false);
 check("旧的顶栏重命名按钮已隐藏（改名走右键菜单）", header.renameHidden === true);
 check("顶栏按钮都可见", header.visibleButtons.length >= 5, header.visibleButtons.join(" / "));

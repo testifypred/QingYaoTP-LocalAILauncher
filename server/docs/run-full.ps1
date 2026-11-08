@@ -139,7 +139,7 @@ $probes=@(
   @{n='probe-input-extras'; a=@($cdp); t=150},
   @{n='probe-formula-panel'; a=@($cdp); t=150},
   @{n='probe-formula-find'; a=@($cdp); t=150},
-  @{n='probe-timestamps'; a=@($cdp); t=180},
+  @{n='probe-timestamps'; a=@($base,$cdp); t=180},
   @{n='probe-small-features'; a=@($cdp); t=220},
   @{n='probe-title-ui'; a=@($cdp,$base,$shots); t=180},
   @{n='probe-session-jump'; a=@($cdp); t=180},

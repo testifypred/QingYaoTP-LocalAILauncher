@@ -9,9 +9,10 @@
  *  4) 结束后主模型被换回来（这一条最关键，错了下次提问会打到别人的权重上）
  *  5) 换回来之后主模型仍能正常对话
  */
-const BASE = process.argv[2] || 'http://127.0.0.1:8098';
-const MAIN = 'qwen2.5-7b-instruct-1m-q4_k_m.gguf';
-const SECOND = 'Phi-4-mini-instruct-Q4_K_M.gguf';
+const BASE = process.argv[2] || 'http://127.0.0.1:8099';
+// 2026-11-08：不写死模型名（qwen2.5-7b 已删）。优先用 argv 指定，否则按本机已有模型挑。
+let MAIN = process.argv[3] || '';
+let SECOND = process.argv[4] || '';
 
 let pass = 0;
 let fail = 0;
@@ -23,6 +24,19 @@ const t = () => new Date().toISOString().slice(11, 19);
 
 async function state() {
   return (await (await fetch(BASE + '/api/state')).json());
+}
+
+// 没显式指定就按本机现有模型挑：主模型优先 4B 级（快），第二意见优先 Phi-4-mini
+{
+  const st = await state();
+  const files = (Array.isArray(st.models) ? st.models : []).map((m) => m.file).filter((f) => f && !/mmproj/i.test(f));
+  if (!MAIN) MAIN = files.find((f) => /qwen3-5-4B/i.test(f)) || files.find((f) => /qwen3\.5-9B/i.test(f)) || files[0] || '';
+  if (!SECOND) SECOND = files.find((f) => /phi-4-mini/i.test(f)) || files.find((f) => f !== MAIN) || '';
+  if (!MAIN || !SECOND) {
+    console.log('本机模型不足两个，无法验证第二意见：' + JSON.stringify(files));
+    process.exit(2);
+  }
+  console.log('主模型 ' + MAIN + ' · 第二意见 ' + SECOND);
 }
 
 console.log(`\n== 目标 ${BASE} ==\n`);

@@ -2358,3 +2358,38 @@ P4（首启建议 + 1.5B 下载档）改完只跑了 probe-firstrun，按规矩�
 - 测试产生的 3 个会话 + 1 个代码文件已删；真实会话仍是 8 个。
 - 落点：`app.html`（`renderMarkdown`/`renderAssistant` 的 `opts`、卡片 CSS/按钮、点击分发、`doSend` 分流、设置项与持久化）、`交接文档`、`新会话启动词`、`technique\02-接口.md`。
 - 版本仍 v1.3.0；未重打 zip。
+
+
+---
+
+## 五十一、2026-11-08 22:30：v1.3.1 打包（回归 49/53 首跑 + 4 条复跑全绿 + 补 package.json 清单）
+
+### 一、这一版含什么（v1.3.0 → v1.3.1）
+
+- 视觉：大图 500 修复（`-mmdev none`）、上下文 32K、闲置 300s 自动退出、看完图 15s 自动装回文本模型、图片按钮 Σ、发图质量档位、等待计时
+- 时间戳一致化（迁移补 `t`、二意见行有时间、去掉假时间兜底）
+- 代码输出默认直出工作区（开关可回对话，对话代码块一律带运行按钮）
+- 全量驱动固定入口 `server\docs\run-full.ps1`
+
+### 二、发布前回归（53 条整跑 49 绿 / 4 红，0 重启 / 0 device lost）
+
+| 红项 | 真因 | 修法 | 复跑 |
+|---|---|---|---|
+| `probe-timestamps` exit 2 | 我把签名改成 `[base] [cdp]`，驱动仍只传 cdp → BASE 被当成 9333 | 探针兼容单 cdp 参数 + 驱动补 `$base` | **4/4** |
+| `probe-title-ui` 12/13 | 「状态栏宽度 > 120」正好量到 120（4B 文案更短） | 阈值改 ≥ 100 | **13/13** |
+| `probe-second-opinion` 起不来 | 探针写死 `qwen2.5-7b`（已删） | 按本机现有模型自适应（qwen3-5-4B + Phi-4-mini） | **11/11**（25.3s，主模型恢复后仍能答） |
+| `probe-ui-gpu` 7/8 | Edge 预置扩展隔离世界抛 `Could not establish connection...`，不是页面错误 | 探针过滤该噪声 | **8/8** |
+
+### 三、打包
+
+- 版本 1.3.0 → **1.3.1**：`app.mjs` 的 `APP_VERSION`、`package.json`、`localai.mjs`（顺手把 CLI 里滞后的 1.1.0 对齐）、`make-zip.ps1` 的 zip 名 / 根目录名。
+- **发现并修掉一个打包清单漏项**：`build-portable.ps1` 从来没复制 `package.json` → 包内 `app\package.json` 是 0 字节，在发布包上跑 `probe-version` 会「版本号对不上」。补进清单后重打，包内 9 个源码 SHA256 全 MATCH。
+- 产物：**359.4MB / 3497 文件**（+1 = package.json）；交付 zip `dist\QingYaoTP-AILauncher-v1.3.1.zip` = **166,200,554 B / 158.5MB / 3998 条目 / SHA256 `FE3B69F4515C1713C32DDB095A1DDD676733CD40607B788652EE29AE5367E663`**。
+- zip 校验：全部条目带 `QingYaoTP AILauncher-v1.3.1/` 前缀、无反斜杠 / `..`、无 `.pid`/`.log`/`.tmp`、无 gguf/mmproj；包内 `package.json` = 1.3.1；`config.ini` 已消毒（`modelDir=`/`autoLoad=`/`vkDevices=` 空，vision 三项保留）。
+- 包冒烟：`/api/version` 1.3.1、`/health` `/debug` `/api/gpus` `/api/plugins` 全 200、无令牌 `POST /api/debug/open` **403**；包内跑 `probe-version` **14/14**（包内 package.json 对账通过）。
+- 打包后本机运行目录的 `config.ini` 被重置成便携默认（`modelDir=` 空）→ 已改回 `modelDir=D:\LocalModels` 并重启：5 模型 / 1 组视觉配对 / 8 会话恢复。交付 zip 里仍是消毒版，两者不冲突。
+
+### 四、收尾
+
+- 真实会话从备份恢复：8/8 哈希一致；应用在跑（v1.3.1、Qwen3.5-9B 已加载）。
+- 本轮**没改产品功能**（只版本号 + 打包清单 + 4 条探针），所以没有额外功能回归面。

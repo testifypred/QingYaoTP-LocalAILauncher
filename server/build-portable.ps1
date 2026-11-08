@@ -99,6 +99,7 @@ Step '复制服务端与界面'
 Copy-Item (Join-Path $Server 'app.mjs') $AppDir -Force
 Copy-Item (Join-Path $Server 'app.html') $AppDir -Force
 Copy-Item (Join-Path $Server 'doc-extract.mjs') $AppDir -Force
+Copy-Item (Join-Path $Server 'package.json') $AppDir -Force  # 版本对账：probe-version 读包内 package.json，缺它版本号对不上
 # 首启配置推荐（app.mjs import）；和 doc-extract.mjs 一样必须进包
 Copy-Item (Join-Path $Server 'config-recommend.mjs') $AppDir -Force
 # 命令行客户端：跟着 app 一起进包，npm 那套东西它一样不依赖

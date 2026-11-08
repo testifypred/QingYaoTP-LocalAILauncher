@@ -34,7 +34,7 @@ const DEBUG_UI = path.join(HERE, "debug.html");
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 /** 版本号：发版只改这一处；server\package.json 的 version 必须与它一致（probe-version 会查） */
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.3.1";
 /** 产品正式名（2026-11-01 起）：QingYaoTP AILauncher；QingYaoTP = QingYaoTestifypred */
 const APP_NAME = "QingYaoTP AILauncher";
 const APP_SUB = "本地 AI";

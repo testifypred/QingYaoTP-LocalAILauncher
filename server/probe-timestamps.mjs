@@ -11,8 +11,13 @@
  */
 import WebSocket from "ws";
 
-const BASE = process.argv[2] || "http://127.0.0.1:8099";
-const CDP = process.argv[3] || "http://127.0.0.1:9333";
+let BASE = process.argv[2] || "http://127.0.0.1:8099";
+let CDP = process.argv[3] || "http://127.0.0.1:9333";
+// 兼容「驱动只传了一个 cdp 参数」的调用：那个不是 base，别拿它当应用地址
+if (!process.argv[3] && /:(93\d\d|9222)\b/.test(BASE)) {
+  CDP = BASE;
+  BASE = "http://127.0.0.1:8099";
+}
 const PORT = new URL(BASE).port || "8099";
 
 let pass = 0, fail = 0;
@@ -36,9 +41,10 @@ try {
       ],
     }),
   });
-  const j = await r.json();
+  let j = null;
+  try { j = await r.json(); } catch { j = null; } // 非 JSON（比如把 cdp 当 base 打过去）时别抛
   fixtureId = j?.session?.id || j?.id || null;
-  if (!r.ok) console.log("  夹具会话创建失败: HTTP " + r.status + " " + JSON.stringify(j).slice(0, 120));
+  if (!r.ok) console.log("  夹具会话创建失败: HTTP " + r.status + " " + String(r.headers.get("content-type") || ""));
 } catch (e) {
   console.log("  夹具会话创建异常: " + e.message);
 }
