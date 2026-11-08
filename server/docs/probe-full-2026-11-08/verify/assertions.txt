@@ -1,0 +1,59 @@
+start=2026-11-08 17:55:44 done=2026-11-08 18:08:45
+wall_s=781
+sum_probe_s=770.0
+total_assertions=745
+total_fail=1
+observational=probe-ui-metric,probe-code-panel,probe-kv-long
+probe-sessions	PASS	结果 33/33 fail=0	secs=0.9
+probe-workspace-api	PASS	RESULT 9/9 fail=0	secs=0.6
+probe-code-run	PASS	RESULT 13/13 fail=0	secs=24.9
+probe-code-workspace	PASS	RESULT 21/21 fail=0	secs=0.8
+probe-gpu	PASS	结果 14/14 fail=0	secs=1.4
+probe-ui-gpu	FAIL(exit 1)	结果 6/7 fail=1	secs=8
+probe-ui-metric	PASS	NO-COUNT	secs=9.3
+probe-backup	PASS	结果 38/38 fail=0	secs=18
+probe-rag	PASS	结果 16/16 fail=0	secs=0.9
+probe-plugins	PASS	结果 11/11 fail=0	secs=0.8
+probe-version	PASS	RESULT 14/14 fail=0	secs=0.6
+probe-firstrun	PASS	RESULT 22/22 fail=0	secs=0.6
+probe-debug	PASS	RESULT 35/35 fail=0	secs=3.3
+probe-func	PASS	通过项 9/9 fail=0	secs=29
+probe-ui-new	PASS	结果 30/30 fail=0	secs=9.1
+probe-start-screen	PASS	RESULT 12/12 fail=0	secs=5.7
+probe-start-flow	PASS	RESULT 8/8 fail=0	secs=18.3
+probe-model-add	PASS	RESULT 4/4 fail=0	secs=8.8
+probe-menu-stacking	PASS	RESULT 2/2 fail=0	secs=3.8
+probe-status	PASS	RESULT 6/6 fail=0	secs=3.8
+probe-code-panel	FAIL(exit 2)	NO-COUNT	secs=1.2
+probe-settings-tools	PASS	RESULT 9/9 fail=0	secs=5.5
+probe-workspace-ui	PASS	RESULT 7/7 fail=0	secs=8.2
+probe-hero-modes	PASS	RESULT 11/11 fail=0	secs=6.1
+probe-input-extras	PASS	RESULT 8/8 fail=0	secs=8.3
+probe-formula-panel	PASS	RESULT 7/7 fail=0	secs=7.6
+probe-formula-find	PASS	RESULT 8/8 fail=0	secs=7.3
+probe-timestamps	PASS	RESULT 4/4 fail=0	secs=5.5
+probe-small-features	PASS	RESULT 6/6 fail=0	secs=10.2
+probe-title-ui	PASS	RESULT 13/13 fail=0	secs=8.3
+probe-session-jump	PASS	RESULT 4/4 fail=0	secs=7.6
+probe-session-race	PASS	RESULT 3/3 fail=0	secs=5.7
+probe-ctx-panel	PASS	RESULT 25/25 fail=0	secs=13.2
+probe-code-run-ui	PASS	RESULT 9/9 fail=0	secs=4.4
+probe-ui-tools	PASS	结果 12/12 fail=0	secs=19.3
+probe-ui-web	PASS	结果 39/39 fail=0	secs=36.5
+probe-ui-rag	PASS	结果 6/6 fail=0	secs=5.1
+probe-ui-version	PASS	RESULT 9/9 fail=0	secs=5.4
+probe-ui-debug	PASS	RESULT 25/25 fail=0	secs=15.9
+probe-ui-backup	PASS	结果 20/20 fail=0	secs=10.3
+probe-sidebar-search	PASS	结果 11/11 fail=0	secs=11.8
+probe-auto-title	PASS	RESULT 5/5 fail=0	secs=26.3
+probe-ui-sessions	PASS	结果 27/27 fail=0	secs=14.2
+probe-chat-plain	PASS	结果 11/11 fail=0	secs=6.9
+probe-tools-agent	PASS	结果 24/24 fail=0	secs=114.1
+probe-web-tools	PASS	结果 19/19 fail=0	secs=85.4
+probe-kv-long	PASS	NO-COUNT	secs=24.7
+probe-context-switch	PASS	RESULT 3/3 fail=0	secs=28.8
+probe-ui-preload	PASS	结果 35/35 fail=0	secs=27.3
+probe-preload	PASS	结果 26/26 fail=0	secs=22.6
+probe-second-opinion	PASS	结果 11/11 fail=0	secs=38.1
+probe-ui-vision	PASS	结果 19/19 fail=0	secs=6.4
+probe-vision-api	PASS	结果 25/25 fail=0	secs=23.2

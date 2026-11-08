@@ -1,0 +1,28 @@
+# post-r2 snapshot 2026-11-08T10:30:23.087Z
+baseline r1 sha=4EECD199A234E1D14E43500D53CE19C0601B3B165323D451E750C012F4D80D17 mtime=2026-11-08T09:52:53.553Z
+baseline r2 sha=4EECD199A234E1D14E43500D53CE19C0601B3B165323D451E750C012F4D80D17 mtime=2026-11-08T09:52:53.553Z same=true
+MATCH server\config-recommend.mjs
+MATCH server\debug.html
+MATCH server\app.mjs
+MATCH dist\QingYaoTP AILauncher\config.ini
+MATCH server\doc-extract.mjs
+MATCH server\app.html
+MATCH server\package.json
+MATCH dist\QingYaoTP AILauncher\app\app.mjs
+MATCH dist\QingYaoTP AILauncher\app\app.html
+driver 11-02 sha=FF1D348045ACDA814276D67F72BB245A580E586624818A9632B380202C69287C mtime=2026-11-07T13:40:08.300Z
+driver copy sha=A13281AC8519086BFB86D5B24171AA62F0A1D2DC14F8AF8CC1F636185DE19A7B mtime=2026-11-08T10:14:21.913Z bytes=11128
+driver diff lines=135 (total 1), linecounts 195/195
+copy BOM=EF BB BF
+sessions count=1 :: mw7onerg-059c24f2.json
+workspace\code entries=1 :: snippet.js
+workspace\rag entries=1 :: index.json
+backup.json size=74 mtime=2026-11-08T10:21:15.544Z
+plugins.json size=20 mtime=2026-11-08T10:16:46.045Z
+session-backups dirs=21 :: 2026-11-08T10-21-50,2026-11-08_17-52-52,pre-full-20261031-213715,pre-version-20261030-234227
+Lead backup workspace-full: 441 files 516291B
+vulkan-crash.log content="\n1793456112516\n1793458351093\n1793458387770" mtime=2026-11-08T10:16:49.592Z
+server.pid=35420 mtime=2026-11-08T09:55:02.662Z
+r2 summary header: ﻿# full suite 2026-11-08 18:15:32  (53 probes)
+r2 shots=19 restarts=0
+repo files touched in r2 window: 1 :: server\vulkan-crash.log 2026-11-08T10:16:49.592Z

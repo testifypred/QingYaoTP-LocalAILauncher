@@ -1,0 +1,10 @@
+# r1 probe-timestamps 口径重数（2026-11-08 18:4x，更正用）
+# 数据源: verify\r1-summary.decoded.txt（混合编码正确解码，含 # done）
+total=53
+PASS=51
+nonPASS=2
+nonPASS_list=probe-ui-gpu[FAIL(exit 1)], probe-code-panel[FAIL(exit 2)]
+check: PASS + nonPASS = 53
+
+# 更正前的错误口径：把 r2 的 52 PASS 抄进 r1，未用 53-2 重算。
+# 正确口径：summary 的 FLAG 只有 PASS / FAIL(exit n) / TIMEOUT 三种；probe-code-panel 虽 0 断言但标 FAIL(exit 2)，仍是非 PASS。

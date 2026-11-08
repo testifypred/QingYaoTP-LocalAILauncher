@@ -1,0 +1,54 @@
+name	flag	exit	secs	summary_fails	assert_total	assert_fail	ok_lines	fail_lines	out_bytes	err_bytes	result_line	issues
+probe-sessions	PASS	0	0.9	0	33	0	0	0	771	0	结果 33/33+0	
+probe-workspace-api	PASS	0	0.6	0	18	9	9	0	197	0	RESULT 9/9+9	PASS-but-result-fail>0
+probe-code-run	PASS	0	24.9	0	26	13	13	0	840	0	RESULT 13/13+13	PASS-but-result-fail>0
+probe-code-workspace	PASS	0	0.8	0	42	21	21	0	1123	0	RESULT 21/21+21	PASS-but-result-fail>0
+probe-gpu	PASS	0	1.4	0	14	0	14	0	669	0	结果 14/14+0	
+probe-ui-gpu	FAIL(exit 1)	1	8	1	7	1	6	1	433	0	结果 6/6+1	
+probe-ui-metric	PASS	0	9.3	0	0	?	0	0	347	0		PASS-NO-ASSERTIONS(possible-fake-green);PASS-no-result-line;no-result-in-summary-and-log
+probe-backup	PASS	0	18	0	38	0	38	0	1755	0	结果 38/38+0	
+probe-rag	PASS	0	0.9	0	16	0	16	0	1468	0	结果 16/16+0	
+probe-plugins	PASS	0	0.8	0	11	0	11	0	557	0	结果 11/11+0	
+probe-version	PASS	0	0.6	0	28	14	14	0	602	0	RESULT 14/14+14	PASS-but-result-fail>0
+probe-firstrun	PASS	0	0.6	0	44	22	22	0	1204	0	RESULT 22/22+22	PASS-but-result-fail>0
+probe-debug	PASS	0	3.3	0	70	35	35	0	1506	0	RESULT 35/35+35	PASS-but-result-fail>0
+probe-func	PASS	0	29	0	0	?	0	0	329	0		PASS-NO-ASSERTIONS(possible-fake-green);PASS-no-result-line;no-result-in-summary-and-log
+probe-ui-new	PASS	0	9.1	0	30	0	0	0	1619	0	结果 30/30+0	
+probe-start-screen	PASS	0	5.7	0	24	12	12	0	527	0	RESULT 12/12+12	PASS-but-result-fail>0
+probe-start-flow	PASS	0	18.3	0	16	8	8	0	129	0	RESULT 8/8+8	PASS-but-result-fail>0
+probe-model-add	PASS	0	8.8	0	8	4	4	0	94	0	RESULT 4/4+4	PASS-but-result-fail>0
+probe-menu-stacking	PASS	0	3.8	0	4	2	2	0	109	0	RESULT 2/2+2	PASS-but-result-fail>0
+probe-status	PASS	0	3.8	0	12	6	6	0	404	0	RESULT 6/6+6	PASS-but-result-fail>0
+probe-code-panel	FAIL(exit 2)	2	1.2	0	0	?	0	0	8	0		FAIL-with-fails=0;no-result-in-summary-and-log;tiny-out(8B)
+probe-settings-tools	PASS	0	5.5	0	18	9	9	0	173	0	RESULT 9/9+9	PASS-but-result-fail>0
+probe-workspace-ui	PASS	0	8.2	0	14	7	7	0	172	0	RESULT 7/7+7	PASS-but-result-fail>0
+probe-hero-modes	PASS	0	6.1	0	22	11	11	0	642	0	RESULT 11/11+11	PASS-but-result-fail>0
+probe-input-extras	PASS	0	8.3	0	16	8	8	0	176	0	RESULT 8/8+8	PASS-but-result-fail>0
+probe-formula-panel	PASS	0	7.6	0	14	7	7	0	214	0	RESULT 7/7+7	PASS-but-result-fail>0
+probe-formula-find	PASS	0	7.3	0	16	8	8	0	171	0	RESULT 8/8+8	PASS-but-result-fail>0
+probe-timestamps	PASS	0	5.5	0	8	4	4	0	223	0	RESULT 4/4+4	PASS-but-result-fail>0
+probe-small-features	PASS	0	10.2	0	12	6	6	0	174	0	RESULT 6/6+6	PASS-but-result-fail>0
+probe-title-ui	PASS	0	8.3	0	26	13	13	0	658	0	RESULT 13/13+13	PASS-but-result-fail>0
+probe-session-jump	PASS	0	7.6	0	8	4	4	0	209	0	RESULT 4/4+4	PASS-but-result-fail>0
+probe-session-race	PASS	0	5.7	0	6	3	3	0	120	0	RESULT 3/3+3	PASS-but-result-fail>0
+probe-ctx-panel	PASS	0	13.2	0	50	25	25	0	800	0	RESULT 25/25+25	PASS-but-result-fail>0
+probe-code-run-ui	PASS	0	4.4	0	18	9	9	0	216	0	RESULT 9/9+9	PASS-but-result-fail>0
+probe-ui-tools	PASS	0	19.3	0	12	0	0	0	683	0	结果 12/12+0	
+probe-ui-web	PASS	0	36.5	0	39	0	0	0	1522	0	结果 39/39+0	
+probe-ui-rag	PASS	0	5.1	0	6	0	6	0	209	0	结果 6/6+0	
+probe-ui-version	PASS	0	5.4	0	18	9	9	0	545	0	RESULT 9/9+9	PASS-but-result-fail>0
+probe-ui-debug	PASS	0	15.9	0	50	25	25	0	1077	0	RESULT 25/25+25	PASS-but-result-fail>0
+probe-ui-backup	PASS	0	10.3	0	20	0	20	0	854	0	结果 20/20+0	
+probe-sidebar-search	PASS	0	11.8	0	11	0	11	0	447	0	结果 11/11+0	
+probe-auto-title	PASS	0	26.3	0	10	5	5	0	166	0	RESULT 5/5+5	PASS-but-result-fail>0
+probe-ui-sessions	PASS	0	14.2	0	27	0	0	0	943	0	结果 27/27+0	
+probe-chat-plain	PASS	0	6.9	0	11	0	0	0	414	0	结果 11/11+0	
+probe-tools-agent	PASS	0	114.1	0	24	0	0	0	1257	0	结果 24/24+0	
+probe-web-tools	PASS	0	85.4	0	19	0	0	0	998	0	结果 19/19+0	
+probe-kv-long	PASS	0	24.7	0	0	?	0	0	604	0		PASS-NO-ASSERTIONS(possible-fake-green);PASS-no-result-line;no-result-in-summary-and-log
+probe-context-switch	PASS	0	28.8	0	6	3	3	0	116	0	RESULT 3/3+3	PASS-but-result-fail>0
+probe-ui-preload	PASS	0	27.3	0	35	0	0	0	1421	0	结果 35/35+0	
+probe-preload	PASS	0	22.6	0	26	0	0	0	1272	0	结果 26/26+0	
+probe-second-opinion	PASS	0	38.1	0	11	0	0	0	598	0	结果 11/11+0	
+probe-ui-vision	PASS	0	6.4	0	19	0	19	0	1215	0	结果 19/19+0	
+probe-vision-api	PASS	0	23.2	0	25	0	25	0	1804	0	结果 25/25+0	

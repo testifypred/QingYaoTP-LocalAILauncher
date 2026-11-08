@@ -2110,3 +2110,62 @@ P4（首启建议 + 1.5B 下载档）改完只跑了 probe-firstrun，按规矩�
 - **全量回归状态**：驱动已扩到 53 条，但本轮整跑因应用中途重启（无模型）作废——`probe-debug` / `probe-func` / `probe-start-flow` / `probe-status` / `probe-code-panel` 的红是环境连锁；受影响 8 条已逐条复跑全绿（vision-api 25/25、ui-vision 19/19、version 14/14、debug 35/35、func 9/9、start-flow 8/8、status 6/6、code-panel 17/17+跳过 1）。**下一轮第一件事：跑一次干净的 53 条全量。**
 - **下一轮建议顺序**：① 干净全量 53；② 视觉闲置自动退出 + 「视觉增强包」拆分（主包回 122MB）；③ 老笔记本 1.5B / 7B 分片下载；④ 需要更强 OCR 再加 Qwen2.5-VL-7B（5.15GB）。
 - **已知遗留**：sidecar 不自动闲置退出；CPU 首图 10–35s、生成 ~2.6 tok/s（GPU `VISION_NGL=99` 在这台核显会 device lost）；4MB 请求体上限；HEIC 不支持；只实测 Qwen3.5-9B 一组。
+
+---
+
+## 四十五、2026-11-08：干净 53 条全量（两轮）—— 驱动传参缺陷 + 时间戳定性
+
+11-07 交接留下的唯一一笔账是「干净的 53 条全量还没跑」。这一轮补齐了，而且**跑了两轮**：r1 把驱动/探针里潜伏的两个假红全暴露出来，r2 用修正后的驱动拿到 53 条干净结果。**v1.3.0 无功能回归。**
+
+### 一、怎么组织的（Lead + 三个队友）
+
+| 角色 | 干什么 |
+|---|---|
+| Lead | 预检：备份 workspace（441 文件 / 8 个真实会话 → `session-backups\2026-11-08_17-52-52\workspace-full`）、记 `baseline.json`（9 个文件 SHA256 + 会话逐个哈希）、停 dist 启动器与服务、腾空 8099/9333；收口恢复 |
+| probe-runner | 起服务 + headless Edge、跑驱动、单条复跑、DOM/存档取证（task-1/4/5） |
+| env-verifier | 独立验收：不跑探针，只查完整性 / 哈希 / 自洽 / 假绿（task-2） |
+| result-analyst | 两轮逐条表 + 红项归因 + 断言口径（task-3） |
+
+环境：**源码模式** `node app.mjs`（工作区 `D:\LocalModels\workspace`）、headless Edge 9333、驱动预加载 qwen2.5-7b 16K。
+⚠️ 新发现：PATH 上的 `node` 是 DSH 垫片（`…\harness\.desktop-bin\node.cmd`），服务进程在任务管理器里显示成 `DSH Desktop.exe … app.mjs` —— **杀进程只能按 PID / 命令行精确匹配，按进程名一刀切会误杀 DSH 本体**。
+
+### 二、结果
+
+| 轮 | 探针 | 断言 | 结果 | 墙钟 | 服务重启 | device lost |
+|---|---|---|---|---|---|---|
+| r1 | 53 | 745 | **51 绿 / 2 红 / 0 超时** | 781s | 0 | 0 |
+| r2（权威） | 53 | **762** | **52 绿 / 1 红 / 0 超时** | 778s | 0 | 0 |
+
+口径：**762 = 718（11-07 的 51 条）+ 44**（`probe-ui-vision` 19 + `probe-vision-api` 25）。r1 的 745 = 762 − 17（`probe-code-panel` 一条断言都没跑到）。
+
+### 三、三条红项（都不是 v1.3.0 功能回归）
+
+1. **`probe-code-panel`（r1，exit 2，0 断言）＝ 驱动传参缺陷**。探针在 `6544f3f`（11-07）把签名改成 `[base] [cdp]`，而 11-02 版驱动仍只传 `@($cdp)` → `BASE` 变成 9333、`PORT=9333`，去找 `127.0.0.1:9333` 的页面 → 必 `no page`。**不是瞬时**：单跑同样 exit 2。
+   修法：**另存本轮驱动副本** `probe-full-2026-11-08\run-full.ps1`，只改第 135 行 `a=@($base,$cdp)`（+行尾注释）。BOM `EF BB BF` 完好、PS 5.1 Parser 0 错误、与 11-02 版 diff 只有这一行（195→195 行）；**11-02 历史文件未动**。r2 整跑 `17/17（跳过 1）`，闭合。
+2. **`probe-ui-gpu`（r1，6/7）＝ Edge 扩展噪声**。第 7 条「没有未捕获的 JS 错误」抓到 2 次 `Could not establish connection. Receiving end does not exist.`；`app.html` 全文无 `chrome.runtime`（grep=0），是 headless profile 里预置扩展的隔离世界异常。单跑复跑 **7/7**、r2 整跑 **7/7**。
+3. **`probe-timestamps`（r2，3/4）＝ 跨轮残留夹具 + 探针依赖 `#recentOpen`**。r1 的 `probe-ui-sessions`（#43，18:02）`wipe()` 后用「旧版 localStorage 迁移」fixture 造了会话，两条消息只有 `{role,content}`、**没有 `t`**；r2 的 `probe-timestamps`（#28）点 `#recentOpen` 打开的正是它 → `rows=2 / times=1`。三连跑 **3/3 确定性复现**，**不是 flaky**；现有序列下**每轮必红**（#28 在 #43 之前）。
+
+### 四、顺带确认的两处产品侧不一致（低严重度，本轮没改）
+
+- **P1 缺 `t` 时两条渲染路径不一致**：用户行走 `bubble()` 的 `ts ?? Date.now()`（`app.html:5546`）→ 显示**运行时刻的假时间**；助手行走 `makeMsgTime(entry.t)`（`3373-3374`）无兜底 → 不显示。上游是「localStorage → 服务端」迁移不补 `t`。
+- **P2 live 第二意见行没有时间戳**：`oneSecondOpinion()`（`6824`）只装朗读按钮与指标（`6947-6950`），没有 `makeMsgTime`；刷新后 `renderStoredAssistant`（`3374`）又有 → 「live 无时间、刷新后有」。本轮探针没走到这条分支。
+
+### 五、下一轮动作（按性价比）
+
+1. **探针侧最稳**（~10min）：`probe-timestamps` 只对「存档里有 `t` 的行」计数——缺 `t` 是合法旧数据形态，不该判红。
+2. **更根治**（~5min）：`probe-ui-sessions.mjs:72-75` 给两条迁移 fixture 补 `t`。
+3. **产品侧**（一行级，可选）：缺 `t` 统一兜底（用户行别显示假时间）/ 迁移补 `t`；顺手补 live 二意见行的 `msgTime`。
+4. **驱动上游化**：把 `probe-full-2026-11-08\run-full.ps1` 的第 135 行修正作为下一轮基准（11-02 留作历史）。
+5. **界面探针**：过滤隔离世界 / 扩展异常（或换干净 profile），别让 `probe-ui-gpu` 这类断言吃浏览器噪声。
+
+### 六、收口
+
+- 恢复：`workspace` 从 `session-backups\2026-11-08_17-52-52\workspace-full` 镜像恢复（441 文件），**8 个真实会话 SHA256 逐个 MATCH**；发布包重启（v1.3.0，Qwen3.5-9B 已加载，8099）。
+- **产品代码零改动**：`server\app.mjs` / `app.html` / `probe-*.mjs` / `dist\` 全部未动（9/9 哈希 MATCH，`git diff` 空）。
+- 证据：`RESULT.md`（两轮 53 条逐条表）、`verify\verify.md`（独立验收：0 重启、0 假绿）、`analysis\flaky-baseline.md`（18 项判红手册）、`-r2\logs\rerun-4-findings.md`（timestamps 取证）。
+
+### 七、教训
+
+- **探针参数是契约**：探针改签名必须同步驱动，否则整跑会「静默少跑一条」——0 断言也算 FAIL，但看 summary 很容易当成环境问题。
+- **探针不能依赖上一轮的残留**：本轮 #28 吃了 #43 的夹具，跨轮传染，而且越查越像产品 bug。
+- `summary.txt` 是 **UTF-8 BOM 头 + UTF-16LE 追加段**的混合编码，统计必须双解码；证据产物一律 UTF-8（无 BOM）落盘。

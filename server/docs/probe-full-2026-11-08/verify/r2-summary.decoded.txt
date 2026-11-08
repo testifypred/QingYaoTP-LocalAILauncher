@@ -1,0 +1,58 @@
+﻿# full suite 2026-11-08 18:15:32  (53 probes)
+# 预加载 qwen2.5-7b-instruct-1m-q4_k_m.gguf
+  已加载: qwen2.5-7b-instruct-1m-q4_k_m.gguf
+  [driver] 环境预置完成：D:\LocalModels\workspace
+probe-sessions           PASS              0.9s fails=0 == 结果: 33 通过 / 0 失败 ==
+probe-workspace-api      PASS              0.7s fails=0 RESULT 9/9
+probe-code-run           PASS             23.1s fails=0 RESULT 13/13
+probe-code-workspace     PASS              0.9s fails=0 RESULT 21/21（跳过 1 条）
+probe-gpu                PASS              0.6s fails=0 == 结果: 14 通过 / 0 失败 ==
+probe-ui-gpu             PASS              8.1s fails=0 == 结果: 7 通过 / 0 失败 ==
+probe-ui-metric          PASS              9.1s fails=0 
+probe-backup             PASS             16.8s fails=0 == 结果: 38 通过 / 0 失败 ==
+probe-rag                PASS              0.8s fails=0 == 结果: 16 通过 / 0 失败 ==
+probe-plugins            PASS              0.7s fails=0 == 结果: 11 通过 / 0 失败 ==
+probe-version            PASS              0.6s fails=0 RESULT 14/14
+probe-firstrun           PASS              0.7s fails=0 RESULT 22/22
+probe-debug              PASS              3.1s fails=0 RESULT 35/35
+probe-func               PASS             23.7s fails=0 
+probe-ui-new             PASS              9.1s fails=0 == 结果: 30 通过 / 0 失败 ==
+probe-start-screen       PASS                5s fails=0 RESULT 12/12
+probe-start-flow         PASS             16.4s fails=0 RESULT 8/8
+probe-model-add          PASS              9.4s fails=0 RESULT 4/4
+probe-menu-stacking      PASS              4.3s fails=0 RESULT 2/2
+probe-status             PASS              4.1s fails=0 RESULT 6/6
+probe-code-panel         PASS                7s fails=0 RESULT 17/17（跳过 1 条）
+probe-settings-tools     PASS              5.7s fails=0 RESULT 9/9
+probe-workspace-ui       PASS              8.1s fails=0 RESULT 7/7
+probe-hero-modes         PASS              6.1s fails=0 RESULT 11/11
+probe-input-extras       PASS              8.5s fails=0 RESULT 8/8
+probe-formula-panel      PASS              7.5s fails=0 RESULT 7/7
+probe-formula-find       PASS              7.2s fails=0 RESULT 8/8
+probe-timestamps         FAIL(exit 1)      5.5s fails=1 RESULT 3/4
+probe-small-features     PASS              9.2s fails=0 RESULT 6/6
+probe-title-ui           PASS              7.1s fails=0 RESULT 13/13
+probe-session-jump       PASS              7.6s fails=0 RESULT 4/4
+probe-session-race       PASS              5.7s fails=0 RESULT 3/3
+probe-ctx-panel          PASS               13s fails=0 RESULT 25/25 passed
+probe-code-run-ui        PASS              4.9s fails=0 RESULT 9/9
+probe-ui-tools           PASS             20.4s fails=0 == 结果: 12 通过 / 0 失败 ==
+probe-ui-web             PASS             34.1s fails=0 == 结果: 39 通过 / 0 失败 ==
+probe-ui-rag             PASS              5.1s fails=0 == 结果: 6 通过 / 0 失败 ==
+probe-ui-version         PASS                5s fails=0 RESULT 9/9
+probe-ui-debug           PASS             15.8s fails=0 RESULT 25/25
+probe-ui-backup          PASS              9.3s fails=0 == 结果: 20 通过 / 0 失败 ==
+probe-sidebar-search     PASS             11.1s fails=0 == 结果: 11 通过 / 0 失败 ==
+probe-auto-title         PASS             23.8s fails=0 RESULT 5/5
+probe-ui-sessions        PASS             13.9s fails=0 == 结果: 27 通过 / 0 失败 ==
+probe-chat-plain         PASS              5.7s fails=0 == 结果: 11 通过 / 0 失败 ==
+probe-tools-agent        PASS            102.7s fails=0 == 结果: 24 通过 / 0 失败 ==
+probe-web-tools          PASS             90.7s fails=0 == 结果: 19 通过 / 0 失败 ==
+probe-kv-long            PASS             40.8s fails=0 
+probe-context-switch     PASS             30.2s fails=0 RESULT 3/3
+probe-ui-preload         PASS             27.9s fails=0 == 结果: 35 通过 / 0 失败 ==
+probe-preload            PASS             25.2s fails=0 == 结果: 26 通过 / 0 失败 ==
+probe-second-opinion     PASS             33.7s fails=0 == 结果: 11 通过 / 0 失败 ==
+probe-ui-vision          PASS              6.4s fails=0 == 结果: 19 通过 / 0 失败 ==
+probe-vision-api         PASS             22.3s fails=0 == 结果: 25 通过 / 0 失败 ==
+# done 2026-11-08 18:28:30

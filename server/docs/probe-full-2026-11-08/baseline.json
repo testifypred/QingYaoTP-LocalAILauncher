@@ -1,0 +1,72 @@
+﻿{
+    "capturedAt":  "2026-11-08T17:52:53",
+    "gitHead":  "4052e63a18737cc53be8c3ad9fe7bf279a91071c",
+    "gitDirty":  [
+
+                 ],
+    "backupDir":  "D:\\LocalModels\\server\\docs\\session-backups\\2026-11-08_17-52-52\\workspace-full",
+    "backupFiles":  441,
+    "hashes":  {
+                   "server\\config-recommend.mjs":  "FD2BD97860688F6D2C1DDC0B87FED92DA877D8517325788EDA5E2111188C7AE1",
+                   "server\\debug.html":  "78E40D6033183843AC4A6D13CDC531BC1187BAA91D02EDBB2A3583B80DCCE46C",
+                   "server\\app.mjs":  "644D118AAD26EAE76D826191B09FD085C551F6D381820F7A972847E55EA1B7D8",
+                   "dist\\QingYaoTP AILauncher\\config.ini":  "B62E9A8855CD4A5A435D3EC621FBAEB3FA3161F879F9BB50B75A7F3F9A47A078",
+                   "server\\doc-extract.mjs":  "9E08B87B04751950A8628F78C97D6AB940BD15F8AA80E2BD2DD76FF7C72F7196",
+                   "server\\app.html":  "345CB2E5A78ED6D71FB81847D3069D705C0A23D48F82E3B6A70BFBAC75B23513",
+                   "server\\package.json":  "01FAD8618D7319AEFD49F3812A99D472F200BE5B6834DF14C914A58FBD2425A2",
+                   "dist\\QingYaoTP AILauncher\\app\\app.mjs":  "644D118AAD26EAE76D826191B09FD085C551F6D381820F7A972847E55EA1B7D8",
+                   "dist\\QingYaoTP AILauncher\\app\\app.html":  "345CB2E5A78ED6D71FB81847D3069D705C0A23D48F82E3B6A70BFBAC75B23513"
+               },
+    "sessions":  [
+                     {
+                         "name":  "mvn7m7kl-0d9fe764.json",
+                         "size":  10842,
+                         "sha":  "CE034BDCE7758FDA995BC3956E53660A86F112E3E4DBDC764AFA71430FF4F368",
+                         "mtime":  "2026-10-25T10:29:38"
+                     },
+                     {
+                         "name":  "mw0uqw42-48286baa.json",
+                         "size":  3555,
+                         "sha":  "6BD51414E423F5DE820A9173F538B4E297113B138C8C4918E2E0F8A2AB227ADE",
+                         "mtime":  "2026-11-03T23:41:26"
+                     },
+                     {
+                         "name":  "mw3p7y2n-d09f8d43.json",
+                         "size":  9923,
+                         "sha":  "B55A0556E4D9D227B6DD7CC35E0682EBCA7D086AA986E63698D4E51A403C0C48",
+                         "mtime":  "2026-11-05T23:38:25"
+                     },
+                     {
+                         "name":  "mw5uo61c-fd79c6ac.json",
+                         "size":  7697,
+                         "sha":  "1E04B9A535A59FA4A86C9A2179B6CF4B92CD8024605869CB93BC5BE423F554C5",
+                         "mtime":  "2026-11-07T11:55:34"
+                     },
+                     {
+                         "name":  "mw61zewv-cfc46c84.json",
+                         "size":  2093,
+                         "sha":  "8F8366B7F56B481A43B5FAED50B83A3A8D7003AA6ACC24C4936B0D74DDA9C09F",
+                         "mtime":  "2026-11-07T15:00:25"
+                     },
+                     {
+                         "name":  "mw6d86wn-b1749049.json",
+                         "size":  5706,
+                         "sha":  "08A22077CEAD71AE4527DB34CF301CB6A8D095242299D86141EE8789BB0CC3A8",
+                         "mtime":  "2026-11-07T20:17:01"
+                     },
+                     {
+                         "name":  "mw6gpaj0-96fc0773.json",
+                         "size":  15890,
+                         "sha":  "B9451ABDF1C972B01CB6260E86B6C03AD64F8976A08E49461FAA8225F936D5F9",
+                         "mtime":  "2026-11-07T22:05:49"
+                     },
+                     {
+                         "name":  "mw6hhdy0-618944eb.json",
+                         "size":  4989,
+                         "sha":  "3E89A02668699A35B96FF3A6D90127E4F3D96A01FBFCEC07B1034BEFB4299EB2",
+                         "mtime":  "2026-11-07T22:14:02"
+                     }
+                 ],
+    "probeCount":  73,
+    "freeGB":  284.1
+}
