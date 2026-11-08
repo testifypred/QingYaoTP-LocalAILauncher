@@ -2393,3 +2393,68 @@ P4（首启建议 + 1.5B 下载档）改完只跑了 probe-firstrun，按规矩�
 
 - 真实会话从备份恢复：8/8 哈希一致；应用在跑（v1.3.1、Qwen3.5-9B 已加载）。
 - 本轮**没改产品功能**（只版本号 + 打包清单 + 4 条探针），所以没有额外功能回归面。
+
+
+---
+
+## 五十二、2026-11-08 深夜：本场会话总收尾（17:48 → 23:25）
+
+> 这一节是给「下一个会话」的总入口：把本场从头到尾做了什么、现在是什么状态、下一步接哪里，一次写清。细节在第四十五 ~ 五十一节。
+
+### 一、这一场做了 7 个提交
+
+| 提交 | 做了什么 | 见哪节 |
+|---|---|---|
+| `dc3d762` | 干净 53 条全量：r1 51 绿/2 红（驱动传参缺陷 + Edge 扩展噪声）→ 修正驱动后 r2 **52 绿/1 红、762 断言**；把 `probe-code-panel` 的驱动传参 bug 修掉；`probe-timestamps` 定性为跨轮夹具（非 flaky） | 四十五 |
+| `7d0be91` | 按要求删掉两个 Qwen2.5 本地模型（4.82GB）；模型清单 7→5；驱动/开发脚本预加载改指 | 四十六 |
+| `d5d2aef` | 用户反馈 9B 太重 → 全量驱动预加载改 **qwen3-5-4B**（2.52GB）；4B 工具/联网探针实测 24/24、19/19 | 四十七 |
+| `f7c0927` | **视觉大修复**：大图必 500 的真因是 `-ngl 0` 只管文本层、mmproj 仍走 Vulkan → 加 **`-mmdev none`**；上下文默认 **32K**；闲置 **300s 自动退出**；图片按钮 🖼 → **Σ**（LaTeX 直立衬线）；发图质量档位；等待带秒数 | 四十八 |
+| `9c63dc0` | 四个 bug 收口：时间戳一致化（迁移补 `t`、二意见行补时间、去掉假时间兜底）、看完图 **15s 自动装回文本模型**、全量驱动固定入口 `server\docs\run-full.ps1`、探针夹具自建 | 四十九 |
+| `78b843c` | **代码默认直出工作区**（对话里只留「已写入」卡片，可展开/打开；设置→生成 有开关，关掉回对话输出）；对话代码块**一律**带运行按钮 | 五十 |
+| `a997a49` | **v1.3.1 打包**：版本三处对齐、补 `package.json` 进打包清单（原来漏了 → 包内 0 字节，probe-version 会对不上）、4 条探针修复后复跑全绿、发布包 + 交付 zip | 五十一 |
+
+### 二、当前状态（2026-11-08 23:25 交接）
+
+```
+版本      v1.3.1（APP_VERSION / package.json / localai.mjs 三处对齐）
+仓库      HEAD a997a49，工作区干净
+服务      在跑：8099，v1.3.1，Qwen3.5-9B 已加载；5 个模型、8 个真实会话、1 组视觉配对
+交付      dist\QingYaoTP-AILauncher-v1.3.1.zip
+          166,200,554 B / 158.5 MB / 3998 条目
+          SHA256 FE3B69F4515C1713C32DDB095A1DDD676733CD40607B788652EE29AE5367E663
+发布包    359.4 MB / 3497 文件（+1 = app\package.json）
+探针      53 条 / 断言口径 763；全量驱动固定入口 server\docs\run-full.ps1
+最新全量  2026-11-08 晚：整跑 49 绿 / 4 红 → 4 条修好后复跑全绿（4/4、13/13、8/8、11/11）
+          → server\docs\probe-full-2026-11-08-v131\（r1/r2 的旧证据在 probe-full-2026-11-08\ 与 -r2\）
+```
+
+### 三、下一会话接手清单（按性价比）
+
+1. **视觉增强包拆分**（~1d）：主包把 `app\llama\`（101MB）拆成可选增强包，主包回到 ~122MB；顺带做 sidecar 预热/首图提示优化。
+2. **图片落盘**（~半天）：现在只存 240px 缩略图，刷新/切会话后原图看不到、导出不含图；改成会话目录存原图 + 导出带引用。
+3. **老笔记本 1.5B / 7B 分片下载**（~半天）：下载器只吃单文件，ModelScope 的 7B 是 `-00001-of-00002` 两片。
+4. **视觉请求体 4MB 上限**（~1h）：长历史 + 3 图可能 413。
+5. **可选：定时任务**（用户这次明确「先不设」）：若要，建议每天 09:00 跑一次全量并修红。
+
+### 四、接手命令（抄了就能跑）
+
+```powershell
+# 起服务（重启用：先结束启动器，再启动）
+Get-Process 'QingYaoTP AILauncher' | Stop-Process -Force; Start-Sleep 2
+Start-Process 'D:\LocalModels\dist\QingYaoTP AILauncher\QingYaoTP AILauncher.exe'
+
+# 全量回归（53 条，会自己预加载 qwen3-5-4B、服务挂了自动拉起）
+$env:FULL_PROBE_OUT='D:\LocalModels\server\docs\probe-full-<日期>'
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\docs\run-full.ps1
+
+# 打包（先停应用）+ 交付 zip
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\build-portable.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-zip.ps1
+# 打完记得把本机运行目录 config.ini 的 modelDir= 改回 D:\LocalModels（打包会重置成便携默认）
+```
+
+### 五、这一场的教训（都写进硬约束了）
+
+- **`-ngl 0` 不等于「全 CPU」**：它只管文本层，mmproj 图像编码还要 `-mmdev none`，否则正常截图必 500。
+- **打包清单漏一项，包不报错但缺文件**：`package.json` 漏了会让发布包上的版本对账永远对不上；每次打包后按 `technique\05` 的自检表核一遍。
+- **探针会跟着产品/环境过期**：删模型后 `probe-second-opinion` 写死的模型名、改探针签名后驱动传参、状态栏文案变短后的阈值——红之前先分「产品缺陷 / 探针过期 / 环境问题」。
