@@ -2275,3 +2275,49 @@ P4（首启建议 + 1.5B 下载档）改完只跑了 probe-firstrun，按规矩�
 `server\app.mjs`（上下文 / 闲置 / mmproj 设备 / state 字段）、`server\app.html`（Σ、发图质量、参数显示、等待计时）、`server\build-portable.ps1`（config 模板 + 使用说明模板，BOM 保持、PS5.1 Parser 0 错误）、`dist\QingYaoTP AILauncher\config.ini`（`visionContext=32768` / `visionIdleSec=300` / `visionThreads=`）、`dist\...\使用说明.txt`、`technique\02-接口.md`、`交接文档.md`、`新会话启动词.md`。
 
 **没做的**：没升版本号（仍 v1.3.0，下次发布再 bump）、没重打 zip（下次打包生效）；`app.mjs`/`app.html` 已同步 dist 并重启验过。
+
+
+---
+
+## 四十九、2026-11-08 21:30：四个 bug 收口（时间戳 / 看完图自动装回 / 驱动固定入口 / 探针夹具）
+
+用户「把 bug 修一修」，从候选里选了 4 项。
+
+### 一、时间戳三条路径统一
+
+| 问题 | 修法 |
+|---|---|
+| 缺 `t` 时**用户行显示「运行时刻」假时间** | `bubble()` 去掉 `ts ?? Date.now()` 兜底：没有就是没有 |
+| 缺 `t` 时助手行完全不显示 | localStorage 迁移时给老消息**补 `t`**（迁移时刻）；用户行/存档共用同一个 `userT` |
+| live 生成的**第二意见行没有时间戳**（刷新后才有） | `oneSecondOpinion()` 补 `makeMsgTime(Date.now())`（刷新重建路径 `renderStoredAssistant` 本来就有） |
+
+探针同修：`probe-ui-sessions` 新增「迁移时给老消息补了时间戳」断言（27 → **28**）；`probe-timestamps` 改成**自建带 `t` 的夹具会话**再点 `#recentOpen`，不再依赖前序探针留下的「迁移夹具」（否则每轮必红），失败时还会打印会话里每条消息有没有 `t` 做诊断。
+
+### 二、看完图自动装回文本模型
+
+- 视觉 start 前记下被卸载的 `{file, context}`；**最后一帧图结束后 15s**（`visionAutoRestoreSec`）自动装回；期间再来图就顺延（重新计时），用户手动加载模型则取消。
+- 实测：跑完 `probe-vision-api`（它自己会 stop sidecar）后 **+24s** 出现 `loaded=Qwen3.5-9B`（15s 延迟 + 9s 加载）。
+- `/api/vision/state` 新增 `autoRestoreSec` / `lastTextModel`；界面提示从「已卸载，请重新加载」改成「约 N 秒后自动装回来」。
+
+### 三、驱动固定入口（上游化）
+
+- 新增 `server\docs\run-full.ps1`（= 11-08 修正版：BOM `EF BB BF`、PS5.1 Parser 0 错误），**以后跑全量只认这个入口**；各轮目录里的 `run-full.ps1` 降级为历史证据，11-02 原文未动。
+- 文档同步：`新会话启动词.md`（探针行 / 硬约束 / 起服务命令）、`technique\06-探针与验证.md`。
+
+### 四、验证
+
+| 探针 | 结果 |
+|---|---|
+| `probe-vision-api` | **25/25**（含 start 卸载、小图 8.5s、stop 后 +24s 自动装回 9B） |
+| `probe-ui-sessions` | **28/28**（新增迁移补 t 断言通过） |
+| `probe-timestamps` | **4/4**（times=2 rows=2，确定性） |
+| `probe-sessions` | **33/33** |
+| `probe-chat-plain` | **11/11** |
+
+会话从 `session-backups\2026-11-08_17-52-52\workspace-full` 恢复：**8 个真实会话哈希 8/8 一致**。
+
+### 五、口径与落点
+
+- 断言口径 **762 → 763**（`probe-ui-sessions` +1）；`交接文档` / `新会话启动词` / `technique\06` 已同步。
+- 落点：`app.mjs`（自动装回 / state 字段）、`app.html`（时间戳三处 / 提示）、`probe-timestamps.mjs`、`probe-ui-sessions.mjs`、`build-portable.ps1`（config 模板加 `visionAutoRestore` 两项）、`server\docs\run-full.ps1`（新增）、三份文档。
+- 没做的：版本号仍 v1.3.0；没重打 zip。

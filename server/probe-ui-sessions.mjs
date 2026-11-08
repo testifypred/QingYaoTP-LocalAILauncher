@@ -87,6 +87,16 @@ console.log("\n== A. 旧数据迁移 ==");
   ok("history 也重建了", dom.history === 2, String(dom.history));
   ok("已绑定会话 id", !!dom.sessionId, dom.sessionId);
   ok("旧 key 保留作备份（不清空）", dom.legacyStillThere === true);
+  // 2026-11-08：迁移时要给老消息补 t，否则这些会话在界面上永远「有时间行/无时间行」不一致
+  // （旧版 localStorage 记录没有时间戳；probe-timestamps 就是被这种会话坑红的）
+  try {
+    const migrated = await (await fetch(`${API}/api/sessions/${dom.sessionId}`)).json();
+    const msgs = Array.isArray(migrated.messages) ? migrated.messages : [];
+    const noT = msgs.filter((m) => m.t === undefined || m.t === null || !m.t);
+    ok("迁移时给老消息补了时间戳", msgs.length === 2 && noT.length === 0, `messages=${msgs.length} 无t=${noT.length}`);
+  } catch (e) {
+    ok("迁移时给老消息补了时间戳", false, "读会话失败：" + e.message);
+  }
   await ev(`localStorage.removeItem('localai.transcript.v1'); 'ok'`);
 }
 

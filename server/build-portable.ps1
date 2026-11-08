@@ -219,6 +219,8 @@ $cfg = @"
 # visionContext 视觉模式上下文（默认 32768；8K 装不下多图/长对话）
 # visionIdleSec 视觉模型闲置多少秒后自动停止（0 = 不停；默认 300）
 # visionThreads 图像编码线程数（留空 = 核数-2，封顶 20）
+# visionAutoRestore 看完图是否自动装回文本模型（默认 1）
+# visionAutoRestoreSec 最后一帧图结束后多少秒装回（默认 15；0 = 立刻）
 # 说明        首次启动会自动检查本机（CPU/内存/显卡/运行库/磁盘），给出模型与上下文建议，
 #             点「按建议配置并应用」即可写回本文件（下一次启动生效）。
 port=$Port
@@ -233,6 +235,8 @@ visionMmproj=
 visionContext=32768
 visionIdleSec=300
 visionThreads=
+visionAutoRestore=1
+visionAutoRestoreSec=15
 "@
 Set-Content -Path (Join-Path $resolved 'config.ini') -Value $cfg -Encoding UTF8
 

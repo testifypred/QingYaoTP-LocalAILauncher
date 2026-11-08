@@ -1550,6 +1550,8 @@ const vision = {
   starting: false,
   error: "",
   active: 0, // 正在转发的视觉请求数（>0 时不允许加载文本模型）
+  lastText: null, // 视觉启动前被卸载的文本模型 {file, context}：看完图自动装回来
+  restoreTimer: null, // 自动装回文本模型的定时器
   contextUsed: 0, // 本次 sidecar 实际启动时用的上下文（0 = 还没起过）
   idleSec: 0, // 本次 sidecar 的闲置退出秒数（0 = 不自动退出）
   idleAt: 0, // 最近一次视觉活动时刻
@@ -1588,6 +1590,63 @@ function resetVisionState() {
   vision.startedAt = 0;
   vision.starting = false;
   vision.contextUsed = 0;
+}
+
+/**
+ * 看完图自动装回文本模型：视觉 start 前记下当时的 {file, context}，
+ * 最后一帧图结束后等 N 秒（默认 15s，期间再来图就不装），把文本模型装回去。
+ * config.ini 的 visionAutoRestore（默认 1）/ visionAutoRestoreSec（默认 15）可改。
+ */
+async function visionAutoRestoreConfig() {
+  let enabled = true;
+  let sec = 15;
+  try {
+    const cfg = await readConfigIni();
+    if (cfg.visionAutoRestore !== undefined) enabled = !/^(0|false|off|no)$/i.test(String(cfg.visionAutoRestore).trim());
+    const n = Math.floor(Number(cfg.visionAutoRestoreSec));
+    if (Number.isFinite(n) && n >= 0) sec = Math.min(600, n);
+  } catch {}
+  return { enabled, sec };
+}
+
+function clearVisionRestore() {
+  if (vision.restoreTimer) {
+    clearTimeout(vision.restoreTimer);
+    vision.restoreTimer = null;
+  }
+}
+
+/** 每次视觉请求结束后调用：空闲 N 秒把文本模型装回去 */
+function scheduleVisionRestore() {
+  clearVisionRestore();
+  const last = vision.lastText;
+  if (!last || !last.file) return;
+  if (state.file) { vision.lastText = null; return; }
+  (async () => {
+    const { enabled, sec } = await visionAutoRestoreConfig();
+    if (!enabled) return;
+    if (sec <= 0) { await restoreTextNow(last, 0); return; }
+    vision.restoreTimer = setTimeout(() => {
+      vision.restoreTimer = null;
+      restoreTextNow(last, sec).catch(() => {});
+    }, sec * 1000);
+    if (vision.restoreTimer.unref) vision.restoreTimer.unref();
+  })();
+}
+
+async function restoreTextNow(last, sec) {
+  if (vision.active > 0 || visionRequests.busy || state.loading || state.file) return;
+  try {
+    if (visionRunning()) {
+      log("视觉：自动装回文本模型前先停 sidecar（内存互斥）");
+      await stopVision();
+    }
+    log("视觉：闲置" + (sec ? " " + sec + "s" : "") + "，自动装回文本模型 " + last.file);
+    await loadModel(last.file, last.context || 16384);
+    log("视觉：文本模型已自动装回 " + last.file);
+  } catch (err) {
+    log("视觉：自动装回文本模型失败 " + String(err?.message ?? err));
+  }
 }
 
 /** 取消闲置计时（停止 / 崩溃 / 重新启动时都要取消，否则会对着空进程发 stop） */
@@ -1790,7 +1849,7 @@ async function visionPortInUse() {
   }
 }
 
-function visionPublicState(scan, ctx = VISION_CONTEXT_DEFAULT, idleSec = VISION_IDLE_DEFAULT_SEC) {
+function visionPublicState(scan, ctx = VISION_CONTEXT_DEFAULT, idleSec = VISION_IDLE_DEFAULT_SEC, autoRestore = { enabled: true, sec: 15 }) {
   const running = visionRunning();
   let note = scan.note || "";
   if (!existsSync(LLAMA_SERVER)) {
@@ -1815,11 +1874,19 @@ function visionPublicState(scan, ctx = VISION_CONTEXT_DEFAULT, idleSec = VISION_
     idleExitSec: running ? (vision.idleSec || 0) : (idleSec || 0),
     idleAt: running ? vision.idleAt : 0,
     mmprojDevice: VISION_MMPROJ_DEVICE,
+    // 看完图自动装回文本模型：设置页/界面据此显示提示（0 = 关闭）
+    autoRestoreSec: autoRestore.enabled ? autoRestore.sec : 0,
+    lastTextModel: vision.lastText ? vision.lastText.file : "",
   };
 }
 
 async function visionState() {
-  return visionPublicState(await scanVisionPairs(), await visionContextSize(), await visionIdleSec());
+  return visionPublicState(
+    await scanVisionPairs(),
+    await visionContextSize(),
+    await visionIdleSec(),
+    await visionAutoRestoreConfig(),
+  );
 }
 
 /**
@@ -1859,6 +1926,7 @@ async function startVision(opts) {
   const reqModel = String((opts && opts.model) || "").trim();
   const reqMmproj = String((opts && opts.mmproj) || "").trim();
   return runVisionLocked(async () => {
+    clearVisionRestore(); // 又要用视觉了，取消待执行的「装回文本模型」
     const scan = await scanVisionPairs();
     const want = resolveVisionTarget(reqModel, reqMmproj, scan);
 
@@ -1875,7 +1943,15 @@ async function startVision(opts) {
     if (activeChats > 0) throw visionFail(409, "有文本对话正在进行，无法启动视觉模型，请等它结束（或点停止）");
     if (state.loading) throw visionFail(409, "文本模型正在加载，请稍后再试");
     if (state.model || state.context) {
-      log("视觉：先卸载文本模型（内存互斥）");
+      // 记下要装回的模型：最后一帧图结束后 visionAutoRestoreSec 秒自动装回来
+      if (state.file) {
+        vision.lastText = { file: state.file, context: state.contextSize || 16384 };
+        clearVisionRestore();
+        const ar = await visionAutoRestoreConfig();
+        log("视觉：先卸载文本模型（内存互斥；看完图" + (ar.enabled && ar.sec ? " " + ar.sec + "s 后" : "") + "自动装回 " + state.file + "）");
+      } else {
+        log("视觉：先卸载文本模型（内存互斥）");
+      }
       await unloadModel();
     }
     const freed = await clearExtras();
@@ -2297,6 +2373,7 @@ async function handleVisionChat(payload, res) {
     if (release) release();
     vision.active = Math.max(0, vision.active - 1);
     touchVisionIdle(); // 每次请求结束重新计时：还在用就不停
+    scheduleVisionRestore(); // 看完图把文本模型装回来（默认 15s 后，期间再来图就顺延）
   }
 }
 
@@ -5904,6 +5981,9 @@ async function handle(req, res) {
       log("加载文本模型前先停视觉 sidecar（内存互斥）");
       await stopVision();
     }
+    // 用户手动加载了模型 → 取消「看完图自动装回」的待执行任务，免得把刚选的模型顶掉
+    clearVisionRestore();
+    vision.lastText = null;
     try {
       const r = await loadModel(body.file, Number(body.contextSize ?? DEFAULT_CONTEXT));
       return sendJson(res, 200, { ok: true, ...r, context: state.contextSize, layers: state.layers });

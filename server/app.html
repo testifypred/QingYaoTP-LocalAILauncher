@@ -5480,7 +5480,9 @@ async function bootSessions() {
   if (!sessionsCache.length) {
     if (legacy) {
       await createSession(true);
-      transcript = legacy;
+      // 补 t：旧版 localStorage 记录没有时间戳，迁移时统一补一个「迁移时刻」，
+      // 否则这些消息在界面上永远没有时间（2026-11-08 修：用户行还会显示假时间）
+      transcript = legacy.map((e) => (e && typeof e === 'object' && !e.t ? { ...e, t: Date.now() } : e));
       sessionTitle = '';
       await flushTranscript(true); // 迁移旧记录：强制写一次，别被 dirty 判定跳过
       renderStored();
@@ -5594,7 +5596,9 @@ function bubble(role, text, ts, imgs) {
     b.insertBefore(box, b.firstChild);
   }
   row.append(who, b);
-  const tm = makeMsgTime(ts ?? Date.now());
+  // 不再用 Date.now() 兜底：存档里没有 t 的行宁可不显示时间，也不要显示「假时间」
+  // （迁移前的老数据、或历史版本写下的无 t 消息都属于这种；见 bootSessions 的补 t 迁移）
+  const tm = makeMsgTime(ts);
   if (tm) row.appendChild(tm);
   msgsEl.appendChild(row);
   msgsEl.scrollTop = msgsEl.scrollHeight;
@@ -5669,15 +5673,16 @@ async function doSend(text, sendImgs) {
   renderImgPreview();
   syncSendState();
   history.push({ role: 'user', content: text });
+  const userT = Date.now(); // 气泡与存档共用同一个时间，别各取一次
   transcript.push({
     role: 'user',
     content: text,
     images: imgs.length ? imgs.map((it) => it.thumb) : undefined,
-    t: Date.now(),
+    t: userT,
   });
   saveTranscript();
   clearHint();
-  bubble('user', text, null, imgs.map((it) => it.thumb));
+  bubble('user', text, userT, imgs.map((it) => it.thumb));
   input.value = '';
   // 发出去了就把草稿清掉；顺手把没发出去的「新对话」草稿也清掉
   try {
@@ -5863,7 +5868,16 @@ stopBtn.hidden = false;
     if (loaded) setStatus('on', `${prettyName(loaded)} · 就绪`);
     // 视觉请求会把文本模型卸载：立刻同步状态，别让状态栏还挂着旧模型
     if (imgs.length) {
-      if (hadTextModel) showToast('视觉模型占用了内存，文本模型已卸载；继续文字对话请重新加载模型', 'warn', 6500);
+      const arSec = (visionStateCache && visionStateCache.autoRestoreSec) || 0;
+      if (hadTextModel) {
+        showToast(
+          arSec
+            ? '视觉模型占用了内存，文本模型已卸载；约 ' + arSec + ' 秒后自动装回来（期间可以继续发图）'
+            : '视觉模型占用了内存，文本模型已卸载；继续文字对话请重新加载模型',
+          arSec ? 'info' : 'warn',
+          7000,
+        );
+      }
       try { await refresh(); } catch {}
     }
     input.focus();
@@ -7023,6 +7037,9 @@ async function oneSecondOpinion(file, msgs, sidAtStart) {
   const st = document.createElement('span');
   st.textContent = formatStats(usage, metrics);
   stats.appendChild(st);
+  // 刷新后 renderStoredAssistant 会给时间戳；live 这条以前漏了，导致「刷新才出现时间」（2026-11-08 修）
+  const tmLive = makeMsgTime(Date.now());
+  if (tmLive) stats.appendChild(tmLive);
   msgsEl.scrollTop = msgsEl.scrollHeight;
   return { preloaded };
 }
