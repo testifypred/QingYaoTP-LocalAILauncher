@@ -3,7 +3,7 @@
 > 原名 `HANDOFF.md`，由上一任开发者写于 **2026-10-18 21:45**。
 > 从 **2026-10-18 21:44** 起，本文件改为**按时间流水记录**：每一笔写清「几点、改了什么、落在哪、怎么验的」。
 > 第一节是日志索引，其后的一~七节是原交接正文（保留原样，仅修正两处日期笔误），八~十节是本次三项需求的详细设计说明。
-> 最新一笔：**2026-11-08 23:25**（第五十二节，本场会话总收尾；v1.3.1 已打包交付）。全部时间均为 China Standard Time，本机时钟。
+> 最新一笔：**2026-11-10 深夜**（第五十三节，Debugging Tool v2：17 → 23 项检查 + 诊断历史 + 导出诊断包 + 打开目录；版本仍 1.3.1，未重打 zip）。全部时间均为 China Standard Time，本机时钟。
 >
 > **接手先读 [`交接文档.md`](交接文档.md)**（一页纸：定位、现状、代码地图、下一步）。
 > 技术专题已抽到 [`technique/`](technique/)：架构、接口、插件、模型、打包、探针、坑。本文件保留**按时间流水**的原始记录，作为「为什么这么做」的证据。
@@ -2458,3 +2458,77 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 - **`-ngl 0` 不等于「全 CPU」**：它只管文本层，mmproj 图像编码还要 `-mmdev none`，否则正常截图必 500。
 - **打包清单漏一项，包不报错但缺文件**：`package.json` 漏了会让发布包上的版本对账永远对不上；每次打包后按 `technique\05` 的自检表核一遍。
 - **探针会跟着产品/环境过期**：删模型后 `probe-second-opinion` 写死的模型名、改探针签名后驱动传参、状态栏文案变短后的阈值——红之前先分「产品缺陷 / 探针过期 / 环境问题」。
+
+---
+
+## 五十三、2026-11-10 深夜：Debugging Tool v2（17 → 23 项 + 诊断历史 + 导出诊断包 + 打开目录）
+
+> 需求侧一句话：调试工具原来只是「此刻的一张体检快照」——用户报「20 分钟前为什么变慢」「发图 500」「把现场交给维护者」时，它都答不上来。
+
+### 一、为什么升级（四个真问题）
+
+| 问题 | 动手前的事实 |
+|---|---|
+| 视觉没有诊断项 | v1.3.0 / v1.3.1 的主打能力（8101 视觉 sidecar）一条检查都没有，发图 500 只能翻日志 |
+| 「会话备份」检查项**从来不存在** | `app.mjs:349` 调了不存在的 `backupConfig()` → `ReferenceError` 被空 `catch` 吞掉，从 11-04 起这项就没出现过（少一项不报错，没人觉得不对） |
+| 没有历史 | 页面只有「此刻」，答不了「这个问题从什么时候开始、是不是刚变坏」 |
+| 交不出现场 | 用户要交现场只能截图 + 口头描述 |
+
+另外 `/api/diag` 实际是 **17 项**（加载模型 19 项），文档写 18 项——本轮一并把口径对齐到真实值。
+
+### 二、做了什么
+
+| 层 | 内容 | 落点 |
+|---|---|---|
+| 后端 · 6 个新检查项 | `config`（config.ini 是否存在 / modelDir / port / gpu / vkDevices / 视觉配对）、`vision`（8101 运行态 / 配对 / 上下文 / 闲置 / 上次错误）、`backup`（**修掉 `backupConfig` 未定义的老 bug**）、`ragfresh`（索引 vs 最新文档 mtime）、`logs`（>50MB warn / >200MB error）、`webview2`（运行时缺失 warn）；`dist` 检查从 3 份文件扩到 **6 份** | `server\app.mjs` |
+| 后端 · 诊断历史 | `<程序目录上一级>\logs\diag-history.jsonl`；写入节流＝启动后首次 / 任一 level 变化 / 距上次 ≥10 分钟；最多 500 行；进程内维护 `id → {level, since, count}`，启动时读历史尾部延续徽标 | `server\app.mjs` |
+| 后端 · 导出诊断包 | `POST /api/diag/export`（令牌）→ store zip；**零依赖**模块 `server\diag-zip.mjs`（新建，`zipStore` + `crc32`，不装第三方库） | `server\app.mjs`、`server\diag-zip.mjs`、`build-portable.ps1` |
+| 后端 · 打开目录 | `POST /api/diag/open-path`（令牌，白名单 `dir/logs/modelDir/sessions/workspace`，非法 400，`explorer.exe`） | `server\app.mjs` |
+| 页面 | 3 个过滤 chip（带计数）、6 组分组、warn/error「已持续 N 分钟」徽标、2 分钟内变化高亮、每项复制键、`#exportBtn`、诊断历史卡（sparkline + 最近 6 条变更）、三个开目录键；5s/2s/30s 三档轮询只在可见标签页跑 | `server\debug.html` |
+| CLI | `--export [目录]` / `--open <名字>` / `--history [小时]` / `--watch [秒] [--cycles N]`；原有文本 / `--json` / `--ui` / `--logs` 与退出码不变 | `server\localai-debug.mjs`、`server\localai-debug.cmd` |
+| 打包清单 | `diag-zip.mjs` 补进**两处**：依赖检查清单 + 复制清单（漏了整包起不来） | `server\build-portable.ps1`（第 47 / 114 行） |
+| 探针 | 接口 + 界面两条探针扩到新契约 | `server\probe-debug.mjs`、`server\probe-ui-debug.mjs` |
+
+### 三、验证（数字都来自本轮实测）
+
+| 探针 | 结果 |
+|---|---|
+| `probe-debug` | **54/54**（原 35 + 19：23 项检查、6 个新 id 都在、`backup` 项真的出现、`since/changedAt/streak` 形状、history 形状、export 403 / zip 魔数 / 下载头名、open-path 403 / 400、CLI 三条新命令） |
+| `probe-ui-debug` | **33/33**（本机 `loaded` 为空但 localStorage 里 `selected` 有值 → 走品牌图标分支（`/vendor/models/deepseek.png`）；「没加载也没选中」时的回退分支是 31 条，本轮两轮都没走到） |
+| `probe-firstrun` | **22/22**（回归） |
+| `probe-version` | **14/14**（回归） |
+
+第二批是**发布包实机回归**（`dist\QingYaoTP AILauncher\QingYaoTP AILauncher.exe`，8099，未加载模型；与 dev 同一批探针）：
+
+| 探针 | dev（`node app.mjs`） | 发布包（exe） |
+|---|---|---|
+| `probe-debug` | **54/54** | **54/54** |
+| `probe-ui-debug` | **33/33** | **33/33** |
+| `probe-firstrun` | **22/22** | —（回归只在 dev 跑） |
+| `probe-version` | **14/14** | — |
+
+证据：`server\docs\feature-debugtool-v2-2026-11-10\` 下 `probe-*.out.txt`（dev 四份）与 `release-probe-debug.out.txt` / `release-probe-ui-debug.out.txt`（发布包两份，23:23 跑）；截图 `debug-tool-v2-release.png`（1440×2200）、`debug-tool-v2-dev-1440.png`、`debug-tool-v2-narrow-900.png`（900px 单列不溢出）。
+
+- 断言口径 **763 → 792**（763 − 58 + 87：这两条探针按口径记 35+23，现在是 54+33）。
+- 发布包实机：`/debug` HTTP 200、`debug.html` **39603 字节**（探针报响应 36681 字节）且新 UI 在（`#filterErr`/`#exportBtn`/`#histCard` 都能点到）；`/api/diag` **23 项**（error 0，探针当刻 warn 2 / ok 21）、`dist` 检查「六份文件哈希一致」、`/api/diag/history` 200（历史写在发布包自己的 `logs\diag-history.jsonl`）、导出 **20680 字节**、open-path 非法 `which` **400**。
+- dist 冒烟（`PORT=8100` 起发布包）：`/debug` 39.6 KB 含新 UI、`/api/diag` **23 项**、`dist` 检查「六份文件哈希一致」、`/api/diag/history` 200、导出 **20 KB**、open-path 非法 `which` **400**。
+- 六份源码/发布包文件哈希 **6/6 MATCH**（`app.mjs`/`app.html`/`doc-extract.mjs`/`debug.html`/`localai-debug.mjs`/`diag-zip.mjs`）。
+
+### 四、踩到的坑
+
+1. **空 `catch` 能把一个检查项吞掉 5 天**：`app.mjs:349` 的 `backupConfig()` 根本不存在，`ReferenceError` 掉进 `catch {}`，页面上的表现就是「根本没有这一项」。修法是补上函数，并让探针断言「`backup` 检查项必须存在」——把「少一项」从静默变成红。
+2. **探针断言绑定了环境**：`probe-debug` 的 KV 两条断言原来假设「已加载模型」，dev 目录没加载模型时必红；改成双分支（未加载就跳过实际值对账，仍打印 `actual=null`）。
+3. **缓存 60 秒会让首条体检少一项**：`ragfresh` 本来复用 `ragWalk` 的 60s 缓存，服务刚重启、索引还没扫时 `files=0` → 这一项不产出；改成**空结果只缓存 15s**（有结果仍 60s）。
+4. **探针口径跟着真实断言走**：`probe-ui-debug` 原来文档写 23 条、实际 `ok()` 有 25 处；不管历史文档怎么记，结论只认真实输出（33/33），口径公式按 58 → 87 记账。
+
+### 五、落点与残留
+
+- 提交：`4c698c6`（**13 文件 / +2128**）。
+- 版本号**仍是 1.3.1**：`APP_VERSION`、`package.json`、`localai.mjs` 三处都**没动**；**未重打 dist zip**（交付包还是 v1.3.1 的旧内容）。
+- `DebugTool.exe`（C# WebView2 宿主）**本轮没改**，页面升级自动生效；只有需要「窗口内再加功能」时才动它。
+- dist 已同步（集成任务完成）：六份文件哈希 6/6 一致。
+- 文档：`technique\08-调试工具.md`（23 项表 + 诊断历史 / 导出 / 打开目录三节 + 接口 + 扩展口径）、`交接文档.md`、`新会话启动词.md`、本节、新增 `server\docs\feature-debugtool-v2-2026-11-10\RESULT.md`。
+- 留给下一轮：**打包 v1.4.0 + 重打交付 zip**（让交付包带上 v2）；诊断包是否要压缩（现在 store，38 KB/20 KB 已经够小）；`DebugTool.exe` 若要加「一键导出」按钮再说。
+- 一个容易误读的口径：发布包 `/api/version` 的 `builtAt` 现在显示 `2026-11-10T15:18:06Z`。这是「dist 文件不被 git 跟踪 → 回退取文件时间」，**不等于重打了包**——版本仍 1.3.1、交付 zip 仍是 11-08 那份。同步 dist 就会刷新这个时间，别拿它当发布证据。
+- 本轮结束时 8099 跑的是**发布包**（不是 dev），保持运行、未加载模型。
+

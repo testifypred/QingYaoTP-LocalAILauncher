@@ -140,3 +140,23 @@ node server\probe-firstrun.mjs http://127.0.0.1:8099
 - 版本号**不升**（仍 1.3.1；下一轮打包时再升 1.4.0 并重打 zip）。
 - 断言口径：`probe-debug` 35 → 目标 ~48；`probe-ui-debug` 23 → 目标 ~29；总口径 763 → 实际跑完再定。
 - 完成后 Lead 负责：源码同步进 `dist\QingYaoTP AILauncher\app\`（含 diag-zip.mjs）、`git commit`、日志第五十三节（docs-debug 写）。
+
+## 九、实现记录（2026-11-10 收尾，实际落地情况）
+
+- **全部完成**，代码提交 `4c698c6`（13 文件 / +2128 −103）。
+- **DebugTool.exe 未改**：它只是 WebView2 宿主，页面升级自动生效；窗口尺寸记忆/F5 之类留给下一轮（改 C# 要重编译 + 再验 DPI 三件套，本轮不动）。
+- 实现与契约的差异：
+  1. `GET /api/diag/history` 增加了契约里写到的 `exists` 字段（探针会查）。
+  2. `history.points` 是**历史文件里总条数**（不是 24 小时点数）；时间窗内的点由 `points` 数组本身给出。
+  3. `ragfresh` 的「workspace 最新文档 mtime」缓存原本 60 秒，空结果（索引还没从磁盘加载完）只缓存 **15 秒**，
+     避免服务刚重启时第一条体检少一项（探针实测过这个竞态）。
+  4. `config` 检查多了两项：`visionModel/visionMmproj` 指向不存在的文件（error）、`vkDevices` 序号超出设备数（warn）。
+  5. `logs` 阈值：>50MB warn、>200MB error。
+- 检查项数量：未加载模型 **23**；加载模型后 +kv/kvquant = **25**（`kv` 与 `kvquant` 本来就只在有模型时产出）。
+- 探针：`probe-debug` 54/54（原 35 + 19）、`probe-ui-debug` 33/33（本机品牌分支；无模型回退分支 31/33；原 23 + 8）、
+  `probe-firstrun` 22/22、`probe-version` 14/14；断言口径 **763 → 792**（763 − 58 + 87）。
+  证据：`probe-debug.out.txt` / `probe-ui-debug.out.txt` / `probe-firstrun.out.txt` / `probe-version.out.txt`。
+- dist 同步 6 个文件（app.mjs/app.html/doc-extract.mjs/debug.html/localai-debug.mjs/diag-zip.mjs）哈希一致；
+  `PORT=8100` 起 dist 包冒烟：/debug 39.6KB 含新 UI、/api/diag 23 项、dist 检查「六份文件哈希一致」、history、export 20KB、open-path 非法 400。
+- 版本号未动（仍 1.3.1），未重打交付 zip；下一轮打包时升 1.4.0 并跑全量 53 条。
+
