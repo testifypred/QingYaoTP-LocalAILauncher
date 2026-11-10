@@ -151,6 +151,7 @@ $probes=@(
   @{n='probe-ui-rag'; a=@($cdp,$base,$shots); t=150},
   @{n='probe-ui-version'; a=@($cdp,$base); t=150},
   @{n='probe-ui-debug'; a=@($cdp,$base); t=200},
+  @{n='probe-download-ui'; a=@($cdp,$base); t=200},
   @{n='probe-ui-backup'; a=@($cdp,$base,$shots); t=200},
   @{n='probe-sidebar-search'; a=@($cdp,$base); t=180},
   @{n='probe-auto-title'; a=@($cdp,$shots); t=240},

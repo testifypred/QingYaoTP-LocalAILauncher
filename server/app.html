@@ -418,6 +418,90 @@ label.chk:has(input:disabled){opacity:.4;cursor:default;background:none}
 .ctxFoot{margin-top:5px;font:11px var(--mono);color:var(--dim);line-height:1.5}
 .ctxPanel.danger .ctxFoot{color:var(--err)}
 
+/* ---------------- 模型下载进度（顶栏常驻 chip + 可折叠详情） ---------------- */
+.dlWrap{flex:none;min-width:0;max-width:100%;display:flex}
+.dlWrap[hidden]{display:none}
+.dlChip{
+  display:flex;align-items:center;gap:7px;height:26px;padding:0 9px;min-width:0;max-width:280px;
+  font:600 11.5px/1 var(--mono);overflow:hidden;
+}
+#dlChipIco{width:13px;flex:none;text-align:center;font:600 12px/1 var(--mono);color:var(--cyan)}
+#dlChipText{
+  min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+.dlChipBar{
+  display:block;flex:none;width:44px;height:5px;border-radius:3px;overflow:hidden;position:relative;
+  background:var(--panel-2);border:1px solid var(--line);
+}
+.dlChipBar i{
+  display:block;height:100%;width:0;border-radius:3px;
+  background:linear-gradient(90deg,var(--cyan),var(--violet));
+  transition:width .4s cubic-bezier(.4,.9,.4,1);
+}
+#dlChipSpeed{flex:none;font-size:10.5px;font-weight:500;color:var(--dim);font-variant-numeric:tabular-nums;white-space:nowrap}
+.dlWrap.done #dlChipIco{color:var(--ok)}
+.dlWrap.done #dlChipText{color:var(--ok)}
+.dlWrap.err #dlChipIco,.dlWrap.err #dlChipText{color:var(--err)}
+.dlWrap.cancel #dlChipIco,.dlWrap.cancel #dlChipText{color:var(--dim)}
+.dlChip.stall #dlChipSpeed,.dlChip.stall #dlChipText{color:var(--warn)}
+/* 总量未知：迷你条改成来回扫 */
+.dlChipBar.indet i,.dlBar.indet i{width:36% !important;transition:none;animation:dlIndet 1.15s linear infinite}
+@keyframes dlIndet{0%{transform:translateX(-110%)}100%{transform:translateX(300%)}}
+
+.dlPanel{
+  position:fixed;top:var(--dl-top,120px);right:18px;width:min(360px,calc(100vw - 24px));z-index:45;
+  padding:11px 13px 10px;border-radius:10px;border:1px solid var(--line-2);
+  background:linear-gradient(180deg,var(--panel-3),var(--panel));
+  box-shadow:var(--shadow);backdrop-filter:blur(10px);
+  animation:ctxIn .16s ease-out;
+}
+.dlPanel[hidden]{display:none}
+.dlHead{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.dlTitle{font-size:11px;letter-spacing:.06em;color:var(--text-2);font-weight:700}
+#dlPct{margin-left:auto;font:700 12.5px var(--mono);color:var(--accent-2);font-variant-numeric:tabular-nums}
+.dlPanel.done #dlPct{color:var(--ok)}
+.dlPanel.err #dlPct{color:var(--err)}
+.dlPanel.cancel #dlPct{color:var(--dim)}
+.dlX{
+  height:20px;padding:0 6px;line-height:1;border:none;background:none;border-radius:4px;
+  color:var(--dim);font:500 11px/1 var(--mono);
+}
+.dlX:hover{color:var(--text);background:var(--panel-2);box-shadow:none;transform:none}
+.dlBar{height:8px;border-radius:4px;background:var(--panel-2);border:1px solid var(--line);overflow:hidden;position:relative}
+.dlBar i{
+  display:block;height:100%;width:0;border-radius:4px;
+  background:linear-gradient(90deg,var(--cyan),var(--violet));
+  transition:width .35s cubic-bezier(.4,.9,.4,1),background .2s ease;
+}
+.dlPanel.done .dlBar i{background:linear-gradient(90deg,var(--ok),#10b981)}
+.dlPanel.err .dlBar i,.dlPanel.cancel .dlBar i{background:linear-gradient(90deg,var(--err),#f43f5e);opacity:.6}
+.dlFile{
+  margin-top:7px;font:11px var(--mono);color:var(--text-2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.dlNums{
+  display:flex;align-items:baseline;gap:6px 12px;margin-top:6px;flex-wrap:wrap;
+  font:11px var(--mono);color:var(--dim);white-space:nowrap;
+}
+.dlNums b{font:700 12px var(--mono);color:var(--text);font-variant-numeric:tabular-nums}
+.dlFoot{display:flex;align-items:center;gap:8px;margin-top:9px;min-width:0}
+.dlFoot .spacer{flex:1}
+#dlNote{
+  min-width:0;font:11px var(--mono);color:var(--dim);line-height:1.5;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.dlPanel.done #dlNote{color:var(--ok);white-space:normal}
+.dlPanel.err #dlNote{color:var(--err);white-space:normal}
+.dlPanel.cancel #dlNote{color:var(--text-2)}
+#dlCancel{height:24px;padding:0 10px;flex:none;font:600 11px/1 "Segoe UI","Microsoft YaHei",system-ui;border-radius:5px}
+#dlCancel[hidden]{display:none}
+/* 窄窗：chip 只留图标 + 百分比 + 迷你条，别把顶栏挤到换行/溢出 */
+@media (max-width:1080px){
+  #dlChipSpeed{display:none}
+  .dlChip{max-width:150px}
+}
+
 /* ---------------- 回到最新 ---------------- */
 .toBottom{position:fixed;right:26px;bottom:152px;z-index:35;width:36px;height:36px;border-radius:50%;padding:0;font-size:16px;line-height:1;background:var(--panel-3);border:1px solid var(--line-2);color:var(--text-2);box-shadow:var(--shadow-sm)}
 .toBottom:hover{color:var(--text);border-color:var(--accent);transform:none;box-shadow:0 0 14px rgba(34,211,238,.2)}
@@ -983,6 +1067,14 @@ header::before{
     </div>
     <span id="status" title="服务状态"><span id="dot"></span><span id="statusText">正在连接…</span></span>
     <span id="totals" title="本次会话累计"></span>
+    <div id="dlWrap" class="dlWrap" hidden>
+      <button id="dlChip" class="ghost dlChip" type="button" aria-expanded="false" title="模型下载：点击展开详情">
+        <span id="dlChipIco" aria-hidden="true">↓</span>
+        <span id="dlChipText">下载 0%</span>
+        <span id="dlChipBar" class="dlChipBar"><i id="dlChipFill"></i></span>
+        <span id="dlChipSpeed">—</span>
+      </button>
+    </div>
     <button id="wsBtn" class="ghost" title="工作区：浏览/编辑 workspace 里的文件">文件</button>
     <button id="codeBtn" class="ghost" title="独立代码运行器（不依赖对话）">代码</button>
     <button id="termBtn" class="ghost" title="打开命令行终端（本地 TUI：对话 + 跑命令）">终端</button>
@@ -1020,6 +1112,26 @@ header::before{
     <span id="ctxUsed"></span>
   </div>
   <div class="ctxFoot" id="ctxFoot">等待用量数据</div>
+</section>
+
+<!-- 模型下载详情：悬在顶栏下方，可收起；收起后下载继续（进度在服务端） -->
+<section id="dlPanel" class="dlPanel" hidden aria-label="模型下载详情">
+  <div class="dlHead"><span class="dlTitle">模型下载</span><span id="dlPct">0%</span>
+    <button id="dlCollapse" class="dlX" type="button" title="收起（继续在后台下载）">收起</button></div>
+  <div class="dlBar"><i id="dlFill"></i></div>
+  <div class="dlFile" id="dlFile">—</div>
+  <div class="dlNums">
+    <span>已下载 <b id="dlReceived">—</b> / 总量 <b id="dlTotal">—</b></span>
+    <span>剩余 <b id="dlLeft">—</b></span>
+  </div>
+  <div class="dlNums">
+    <span>速度 <b id="dlSpeed">—</b></span>
+    <span>预计剩余 <b id="dlEta">—</b></span>
+    <span>已用 <b id="dlElapsed">—</b></span>
+  </div>
+  <div class="dlFoot"><span id="dlNote">后台下载中，可以继续聊天</span>
+    <span class="spacer"></span>
+    <button id="dlCancel" class="ghost danger" type="button">取消下载</button></div>
 </section>
 
 <main id="msgs">
@@ -2323,6 +2435,349 @@ let generating = false;     // 仅「正在生成回答」——轮询用它做�
 let supportsThinking = false; // 已加载的模型是否真的支持思考（由服务端从聊天模板判定）
 let localToken = '';          // 破坏性接口需要的本地令牌（仅同源页面能读到）
 const history = [];
+
+// ---------------- 模型下载进度（顶栏常驻 chip + 可折叠详情） ----------------
+// 数据源：GET /api/download/state（只读、无令牌）。状态优先级按后端口径：active → done → error → 空闲。
+// 取消是 error === '已取消'，单独显示，不当失败；done 优先于 error（刚下完时后端 error 为空）。
+// 收起只改本地的展开偏好（localStorage），下载在服务端照跑。
+const DL_KEY = 'localai.dlPanel';   // '1' 展开 / '0' 收起
+const DL_KEEP_MS = 20000;           // 完成 / 失败 / 取消后保留 20 秒再收起
+const DL_STALL_SEC = 2.5;           // 距上一条数据超过这个秒数 → 显示「连接中…」
+const DL_COOL_MS = 15000;           // 刚打开页面先按 1 秒档接一小会儿（能接上别处开的下载）
+
+const dlWrapEl = $('dlWrap'), dlChipEl = $('dlChip');
+const dlChipIcoEl = $('dlChipIco'), dlChipTextEl = $('dlChipText');
+const dlChipBarEl = $('dlChipBar'), dlChipFillEl = $('dlChipFill'), dlChipSpeedEl = $('dlChipSpeed');
+const dlPanelEl = $('dlPanel'), dlPctEl = $('dlPct');
+const dlBarEl = dlPanelEl.querySelector('.dlBar'), dlFillEl = $('dlFill');
+const dlFileEl = $('dlFile'), dlReceivedEl = $('dlReceived'), dlTotalEl = $('dlTotal'), dlLeftEl = $('dlLeft');
+const dlSpeedEl = $('dlSpeed'), dlEtaEl = $('dlEta'), dlElapsedEl = $('dlElapsed');
+const dlNoteEl = $('dlNote'), dlCancelEl = $('dlCancel'), dlCollapseEl = $('dlCollapse');
+
+let dlState = null;      // 最近一次 /api/download/state
+let dlPhase = '';        // 上一帧的 phase：只在转场时弹 toast、起隐藏计时
+let dlOpen = true;       // 面板展开偏好（DL_KEY）
+let dlTimer = null;      // 唯一轮询定时器（setTimeout 链，1000 / 4000 两档）
+let dlTimerMs = 0;       // 当前档位
+let dlBusy = false;      // 上一次请求还没回来
+let dlPending = false;   // 飞行中的请求期间又被催了一次
+let dlHideAt = 0;        // 完成/失败/取消的自动隐藏截止时间戳（0 = 不隐藏）
+let dlHideTimer = null;
+let dlFastUntil = 0;     // 首屏/刚唤醒的快速档截止时间戳
+let dlToastKey = '';     // 去重：同一次完成/失败只 toast 一次
+let dlFirstSample = true; // 还没拿到任何真实状态：首帧拿到的结果算「旧结果」，不计 20 秒展示期也不 toast
+
+function dlPhaseOf(st) {
+  if (!st) return 'idle';
+  if (st.active) return 'active';        // active 最优先
+  if (st.done) return 'done';            // 刚下完时 error 可能还是空；done 优先
+  const err = st.error == null ? '' : String(st.error);
+  if (err) return err === '已取消' ? 'cancel' : 'error';
+  return 'idle';
+}
+
+function dlBytes(st, bytesKey, mbKey) {
+  const b = Number(st && st[bytesKey]);
+  if (isFinite(b) && b > 0) return b;
+  const mb = Number(st && st[mbKey]);
+  if (isFinite(mb) && mb > 0) return Math.round(mb * 1024 * 1024);
+  return 0;
+}
+
+/** 字节格式化：<1GB 保留一位小数 MB（契约示例 468.8 MB / 3.2 MB/s 就是这个口径），≥1GB 走 GB */
+function dlFmtSize(bytes) {
+  const b = Number(bytes) || 0;
+  if (b <= 0) return '—';
+  const mb = b / 1024 ** 2;
+  if (mb < 1) {
+    const kb = b / 1024;
+    return (kb < 10 ? kb.toFixed(1) : String(Math.round(kb))) + ' KB';
+  }
+  if (mb < 1024) return mb.toFixed(1) + ' MB';
+  return (b / 1024 ** 3).toFixed(2) + ' GB';
+}
+
+function dlFmtSpeed(st) {
+  const b = Number(st && st.speedBytes) || 0;
+  return b > 0 ? dlFmtSize(b) + '/s' : '—';
+}
+
+/** ETA 人话：<60s「约 45 秒」；<1h「约 3 分 20 秒」；否则「约 1 小时 5 分」；null「—」 */
+function dlFmtEta(sec) {
+  if (sec == null) return '—';
+  const s = Math.round(Number(sec));
+  if (!isFinite(s) || s < 0) return '—';
+  if (s < 60) return '约 ' + Math.max(1, s) + ' 秒';
+  if (s < 3600) {
+    const m = Math.floor(s / 60), r = s % 60;
+    return '约 ' + m + ' 分' + (r ? ' ' + r + ' 秒' : '');
+  }
+  const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
+  return '约 ' + h + ' 小时' + (m ? ' ' + m + ' 分' : '');
+}
+
+/** 已用时间：m:ss 或 h:mm:ss */
+function dlFmtClock(sec) {
+  const s = Math.max(0, Math.round(Number(sec) || 0));
+  const p2 = (n) => (n < 10 ? '0' : '') + n;
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+  return h > 0 ? h + ':' + p2(m) + ':' + p2(ss) : m + ':' + p2(ss);
+}
+
+/** 浮窗贴顶栏正下方（顶栏高度随窗口宽度 / 侧栏 / 是否换行变化），和 #ctxPanel 一个做法 */
+function placeDl() {
+  const hdr = document.querySelector('header');
+  if (!hdr) return;
+  document.documentElement.style.setProperty('--dl-top', Math.round(hdr.getBoundingClientRect().bottom + 8) + 'px');
+}
+
+function dlSyncExpanded() {
+  dlChipEl.setAttribute('aria-expanded', (dlOpen && !dlPanelEl.hidden) ? 'true' : 'false');
+}
+
+function dlSetOpen(v, remember) {
+  dlOpen = !!v;
+  dlPanelEl.hidden = !dlOpen || dlWrapEl.hidden;
+  dlSyncExpanded();
+  if (dlOpen) placeDl();
+  if (remember !== false) {
+    try { localStorage.setItem(DL_KEY, dlOpen ? '1' : '0'); } catch {}
+  }
+}
+
+function dlToastResult(phase, st) {
+  // 首启弹窗开着时不 toast：那边自己有完成提示，弹两次很吵
+  const firstModal = $('firstModal');
+  if (firstModal && !firstModal.hidden) return;
+  const key = phase + '|' + ((st && (st.finishedAt || st.file)) || '');
+  if (key === dlToastKey) return;
+  dlToastKey = key;
+  const name = (st && st.file) || '';
+  if (phase === 'done') showToast('模型下载完成' + (name ? '：' + name : ''), 'ok', 5000);
+  else if (phase === 'error') showToast('模型下载失败：' + ((st && st.error) || '未知原因'), 'err', 6000);
+}
+
+/** 外部（首启弹窗开始下载后 / 探针 stub 后）通知「结果已经有人提示过了」 */
+function dlMarkResultShown(st) {
+  const phase = dlPhaseOf(st);
+  if (phase === 'done' || phase === 'error') dlToastKey = phase + '|' + ((st && (st.finishedAt || st.file)) || '');
+}
+
+function renderDl() {
+  const st = dlState;
+  const phase = dlPhaseOf(st);
+  const total = dlBytes(st, 'totalBytes', 'totalMB');
+  const received = dlBytes(st, 'receivedBytes', 'receivedMB');
+  let remaining = dlBytes(st, 'remainingBytes', 'remainingMB');
+  if (!remaining) remaining = Math.max(0, total - received);
+  const hasTotal = total > 0;
+  const pct = hasTotal ? Math.min(100, Math.max(0, Math.round(Number(st && st.pct) || 0))) : 0;
+  const stalled = phase === 'active' && (Number(st && st.stallSec) || 0) > DL_STALL_SEC;
+  const elapsedSec = Number(st && st.elapsedSec) || 0;
+
+  // 转场：安排 20 秒自动隐藏，并在完成/失败时提示一次
+  if (phase !== dlPhase) {
+    const prev = dlPhase;
+    dlPhase = phase;
+    const keep = phase === 'done' || phase === 'error' || phase === 'cancel';
+    if (keep) {
+      // 每次转场都重新计 20 秒；刷新页面接到的「旧结果」按真实完成时间算，早过 20 秒就不再占顶栏
+      // （不然每次开页都亮一下上一次的「下载完成」）
+      const fin = Number(st && (st.finishedAt || st.updatedAt)) || 0;
+      dlHideAt = (dlFirstSample && fin > 0 ? fin : Date.now()) + DL_KEEP_MS;
+    } else dlHideAt = 0;
+    if (dlHideTimer) { clearTimeout(dlHideTimer); dlHideTimer = null; }
+    if (dlHideAt) {
+      dlHideTimer = setTimeout(() => { dlHideTimer = null; renderDl(); }, Math.max(0, dlHideAt - Date.now()) + 50);
+    }
+    if (prev && !dlFirstSample && (phase === 'done' || phase === 'error')) dlToastResult(phase, st);
+  }
+
+  const visible = (phase === 'active' || phase === 'done' || phase === 'error' || phase === 'cancel') &&
+    !(dlHideAt && Date.now() >= dlHideAt);
+  dlWrapEl.hidden = !visible;
+  if (!visible) {
+    dlPanelEl.hidden = true;
+    dlSyncExpanded();
+    return;
+  }
+
+  dlWrapEl.classList.toggle('done', phase === 'done');
+  dlWrapEl.classList.toggle('err', phase === 'error');
+  dlWrapEl.classList.toggle('cancel', phase === 'cancel');
+  dlChipEl.classList.toggle('stall', stalled);
+  dlPanelEl.classList.toggle('done', phase === 'done');
+  dlPanelEl.classList.toggle('err', phase === 'error');
+  dlPanelEl.classList.toggle('cancel', phase === 'cancel');
+  dlPanelEl.hidden = !dlOpen;
+  dlSyncExpanded();
+
+  const pctText = hasTotal ? pct + '%' : '—';
+  const file = (st && st.file) || '—';
+
+  if (phase === 'active') {
+    dlChipIcoEl.textContent = '↓';
+    dlChipTextEl.textContent = '下载 ' + pctText;
+    dlChipFillEl.style.width = hasTotal ? Math.max(2, pct) + '%' : '0%';
+    dlChipBarEl.classList.toggle('indet', !hasTotal);
+    dlChipSpeedEl.textContent = stalled ? '连接中…' : dlFmtSpeed(st);
+    dlChipEl.title = '模型下载：' + (hasTotal ? pct + '%' : '总量未知') +
+      (st && st.file ? ' · ' + st.file : '') + (stalled ? ' · 连接中…' : '') + '（点击展开详情）';
+
+    dlPctEl.textContent = pctText;
+    dlBarEl.classList.toggle('indet', !hasTotal);
+    dlFillEl.style.width = hasTotal ? Math.max(1.5, pct) + '%' : '0%';
+    dlFileEl.textContent = file;
+    dlFileEl.title = st && st.file ? st.file : '';
+    dlReceivedEl.textContent = dlFmtSize(received);
+    dlTotalEl.textContent = hasTotal ? dlFmtSize(total) : '—';
+    dlLeftEl.textContent = hasTotal ? dlFmtSize(remaining) : '—';
+    dlSpeedEl.textContent = stalled ? '连接中…' : dlFmtSpeed(st);
+    dlEtaEl.textContent = stalled ? '—' : dlFmtEta(st && st.etaSec);
+    dlElapsedEl.textContent = dlFmtClock(elapsedSec);
+    dlNoteEl.textContent = stalled ? '连接中…（源站或网络慢，稍等）' : '后台下载中，可以继续聊天';
+    dlCancelEl.hidden = false;
+    dlCancelEl.disabled = false;
+    return;
+  }
+
+  dlChipBarEl.classList.remove('indet');
+  dlBarEl.classList.remove('indet');
+  dlFileEl.textContent = file;
+  dlFileEl.title = st && st.file ? st.file : '';
+  dlReceivedEl.textContent = dlFmtSize(received || (phase === 'done' ? total : 0));
+  dlTotalEl.textContent = hasTotal ? dlFmtSize(total) : '—';
+  dlLeftEl.textContent = phase === 'done' ? '0 MB' : (hasTotal ? dlFmtSize(remaining) : '—');
+  dlElapsedEl.textContent = phase === 'done'
+    ? dlFmtClock(Number(st && st.elapsedTotalSec) || elapsedSec)
+    : dlFmtClock(elapsedSec);
+  dlCancelEl.hidden = true;
+
+  if (phase === 'done') {
+    const usedSec = Number(st && st.elapsedTotalSec) || elapsedSec;
+    dlChipIcoEl.textContent = '✓';
+    dlChipTextEl.textContent = '下载完成';
+    dlChipSpeedEl.textContent = hasTotal ? dlFmtSize(total) : '—';
+    dlChipFillEl.style.width = '100%';
+    dlChipEl.title = '模型下载已完成' + (st && st.file ? '：' + st.file : '');
+    dlPctEl.textContent = '100%';
+    dlFillEl.style.width = '100%';
+    dlSpeedEl.textContent = '—';
+    dlEtaEl.textContent = '—';
+    dlNoteEl.textContent = '已完成 · 用时 ' + (usedSec >= 60 ? dlFmtClock(usedSec) : Math.round(usedSec) + 's') + ' · 可在「模型」菜单里选择';
+  } else if (phase === 'error') {
+    const why = (st && st.error) || '未知原因';
+    dlChipIcoEl.textContent = '!';
+    dlChipTextEl.textContent = '下载失败';
+    dlChipSpeedEl.textContent = hasTotal ? dlFmtSize(total) : '—';
+    dlChipFillEl.style.width = hasTotal ? Math.max(2, pct) + '%' : '0%';
+    dlChipEl.title = '模型下载失败：' + why;
+    dlPctEl.textContent = pctText;
+    dlFillEl.style.width = hasTotal ? Math.max(1.5, pct) + '%' : '0%';
+    dlSpeedEl.textContent = '—';
+    dlEtaEl.textContent = '—';
+    dlNoteEl.textContent = '下载失败：' + why;
+  } else {
+    dlChipIcoEl.textContent = '✕';
+    dlChipTextEl.textContent = '已取消';
+    dlChipSpeedEl.textContent = hasTotal ? dlFmtSize(total) : '—';
+    dlChipFillEl.style.width = hasTotal ? Math.max(2, pct) + '%' : '0%';
+    dlChipEl.title = '模型下载已取消';
+    dlPctEl.textContent = pctText;
+    dlFillEl.style.width = hasTotal ? Math.max(1.5, pct) + '%' : '0%';
+    dlSpeedEl.textContent = '—';
+    dlEtaEl.textContent = '—';
+    dlNoteEl.textContent = '已取消 · 可在「模型」菜单里重新开始';
+  }
+}
+
+function dlIntervalWanted() {
+  if (dlPhaseOf(dlState) === 'active') return 1000;
+  if (Date.now() < dlFastUntil) return 1000;
+  return 4000;
+}
+
+function dlSchedule() {
+  if (document.hidden) {   // 页面在后台：暂停轮询，visibilitychange 回来再补
+    if (dlTimer) { clearTimeout(dlTimer); dlTimer = null; dlTimerMs = 0; }
+    return;
+  }
+  const want = dlIntervalWanted();
+  if (dlTimer && dlTimerMs === want) return;
+  if (dlTimer) clearTimeout(dlTimer);
+  dlTimerMs = want;
+  dlTimer = setTimeout(dlTick, want);
+}
+
+async function dlTick() {
+  dlTimer = null; dlTimerMs = 0;
+  if (document.hidden) return;
+  if (dlBusy) { dlPending = true; return; }
+  dlBusy = true;
+  try {
+    const st = await apiJson('/api/download/state');
+    if (st && typeof st === 'object') { dlState = st; renderDl(); dlFirstSample = false; }
+  } catch (e) {
+    // 服务端暂时不可达：保留上一屏，不误报成「失败」
+  } finally {
+    dlBusy = false;
+  }
+  if (dlPending) { dlPending = false; dlTick(); return; }
+  dlSchedule();
+}
+
+/** 强制立刻取一次（首启弹窗开始下载后、探针 stub 完、切回前台时用），不等轮询窗口 */
+function dlRefreshNow() {
+  dlFastUntil = Math.max(dlFastUntil, Date.now() + 5000);
+  if (dlBusy) { dlPending = true; return; }
+  if (dlTimer) { clearTimeout(dlTimer); dlTimer = null; dlTimerMs = 0; }
+  dlTick();
+}
+
+dlChipEl.onclick = () => dlSetOpen(!dlOpen);
+dlCollapseEl.onclick = () => dlSetOpen(false);
+
+dlCancelEl.onclick = async () => {
+  dlCancelEl.disabled = true;
+  try {
+    const r = await apiJson('/api/download/cancel', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-local-token': localToken },
+      body: '{}',
+    });
+    if (r && r.cancelled === false) showToast('这次下载已经结束了，不用取消', 'info', 4000);
+    else showToast('已取消下载', 'info', 4000);
+  } catch (e) {
+    showToast('取消失败：' + e.message, 'err', 5000);
+  }
+  dlCancelEl.disabled = false;
+  dlRefreshNow();
+};
+
+function initDlPanel() {
+  let saved = '1';
+  try { saved = localStorage.getItem(DL_KEY) ?? '1'; } catch {}
+  dlOpen = saved !== '0';
+  dlPanelEl.hidden = !dlOpen;
+  dlSyncExpanded();
+  dlFastUntil = Date.now() + DL_COOL_MS;
+  addEventListener('resize', placeDl);
+  if (window.ResizeObserver) {
+    try { new ResizeObserver(placeDl).observe(document.querySelector('header')); } catch {}
+  }
+  placeDl();
+  // 探针 / 控制台钩子：stub 完 /api/download/state 后可以立刻催一次
+  window.dlRefreshNow = dlRefreshNow;
+  window.dlMarkResultShown = dlMarkResultShown;
+  document.addEventListener('localai:dl-tick', () => dlRefreshNow());
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { dlSchedule(); return; }         // 后台 → 暂停
+    dlFastUntil = Math.max(dlFastUntil, Date.now() + 4000); // 回前台 → 立刻补一次
+    dlRefreshNow();
+  });
+  renderDl();       // 先把空状态摆好（#dlWrap 保持 hidden）
+  dlRefreshNow();   // 立刻取一次：刷新页面也能接上后台下载
+}
 
 function setStatus(kind, text, detail) {
   dot.className = kind;
@@ -5047,6 +5502,7 @@ async function frStartDownload() {
     const r = await apiJson('/api/download/start', { method: 'POST', headers: { 'content-type': 'application/json', 'x-local-token': localToken }, body: JSON.stringify(body) });
     showToast('开始下载 ' + r.file + '（约 ' + r.totalMB + 'MB）', 'info');
     frPoll();
+    dlRefreshNow();   // 顶栏进度条立刻接上，不用等下一个轮询窗口
   } catch (e) {
     showToast('下载没能开始：' + e.message, 'err', 6000);
     frEl('frDl').disabled = false;
@@ -5077,6 +5533,7 @@ function frPoll() {
       clearInterval(frTimer); frTimer = null;
       box.innerHTML = '<div class="hintText">✓ ' + st.file + ' 已下载完成（' + st.totalMB + 'MB）</div>';
       showToast('模型下载完成：' + st.file, 'ok', 5000);
+      dlMarkResultShown(st);   // 顶栏不再重复提示
       // 第一次成功要快：下完直接问一句，用户立刻看到"本地模型真的在回答"
       firstRunClose(true);
       setTimeout(function () {
@@ -7553,6 +8010,7 @@ dscAdopt.onclick = adoptSelected;
 document.getElementById('newChatBtn').onclick = newChat;
 
 initCtxPanel();
+initDlPanel();
 refresh().catch((e) => setStatus('err', '无法连接服务：' + e.message));
 // 会话存在服务端：先读列表，再决定打开哪一条（上次用的 / 最新的 / 新建）
 bootSessions().catch((e) => {

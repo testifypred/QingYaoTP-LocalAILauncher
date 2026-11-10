@@ -5284,35 +5284,63 @@ const DOWNLOAD_CATALOG = [
 const dl = {
   active: false, file: "", id: "", received: 0, total: 0,
   error: null, startedAt: 0, finishedAt: 0, done: false,
-  samples: [], sampleAt: 0, req: null, res: null, part: "",
+  samples: [], sampleAt: 0, lastDataAt: 0, req: null, res: null, part: "",
 };
 
+/** 速度窗口：只用最近 4 秒的采样（否则限速/卡住时旧样本会让速度虚高、ETA 偏乐观） */
+function dlSpeedMBs() {
+  if (!dl.active) return 0;
+  const now = Date.now();
+  const recent = dl.samples.filter((s) => now - s.t <= 4000);
+  if (recent.length < 2) return 0;
+  const a = recent[0], b = recent[recent.length - 1];
+  const sec = (b.t - a.t) / 1000;
+  return sec > 0.2 ? Math.max(0, (b.b - a.b) / 1048576 / sec) : 0;
+}
+
+/**
+ * 下载状态（顶栏进度条 + 首启弹窗共用）。
+ * 除了百分比，还要给出「总量/已下/剩余/速度/预计剩余」——顶栏收起时只显示速度和百分比，
+ * 展开后才有余量明细。所有字节字段都同时保留 bytes 与 MB 两种口径，前端不用自己换单位。
+ */
 function downloadState() {
-  let speed = 0;
-  if (dl.active && dl.samples.length > 1) {
-    const a = dl.samples[0], b = dl.samples[dl.samples.length - 1];
-    const sec = (b.t - a.t) / 1000;
-    if (sec > 0.2) speed = (b.b - a.b) / 1048576 / sec;
-  }
-  const eta = dl.active && speed > 0.05 && dl.total > 0 ? Math.round((dl.total - dl.received) / 1048576 / speed) : null;
+  const speed = dlSpeedMBs();
+  const eta = dl.active && speed > 0.05 && dl.total > 0 ? Math.max(1, Math.round((dl.total - dl.received) / 1048576 / speed)) : null;
+  const remainingBytes = dl.total > 0 ? Math.max(0, dl.total - dl.received) : 0;
+  const now = Date.now();
   return {
     active: dl.active, done: dl.done, file: dl.file, id: dl.id,
     received: dl.received, total: dl.total,
+    receivedBytes: dl.received, totalBytes: dl.total, remainingBytes,
     receivedMB: Number((dl.received / 1048576).toFixed(1)),
     totalMB: Number((dl.total / 1048576).toFixed(1)),
+    remainingMB: Number((remainingBytes / 1048576).toFixed(1)),
     pct: dl.total ? Math.min(100, Math.round((dl.received / dl.total) * 100)) : 0,
-    speedMBs: Number(speed.toFixed(2)), etaSec: eta, error: dl.error,
-    elapsedSec: dl.startedAt ? Math.round((Date.now() - dl.startedAt) / 1000) : 0,
+    speedMBs: Number(speed.toFixed(2)), speedBytes: Math.round(speed * 1048576),
+    etaSec: eta, error: dl.error,
+    elapsedSec: dl.startedAt ? Math.round((now - dl.startedAt) / 1000) : 0,
+    startedAt: dl.startedAt || 0, finishedAt: dl.finishedAt || 0, updatedAt: now,
+    // 卡住检测：超过 2.5 秒没有新数据，界面应显示「连接中…」而不是一个不动的速度
+    lastDataAt: dl.lastDataAt || 0,
+    stallSec: dl.active && dl.lastDataAt ? Number(((now - dl.lastDataAt) / 1000).toFixed(1)) : 0,
+    elapsedTotalSec: dl.startedAt && dl.finishedAt ? Math.round((dl.finishedAt - dl.startedAt) / 1000) : 0,
   };
 }
 
 function cancelDownload() {
+  // 没有进行中的下载时不要「假取消」：早期实现会在这里把 error 改成「已取消」，
+  // 于是「刚下完」的状态会变成 done=true 同时又 error=已取消，顶栏不知道该显示完成还是失败。
+  if (!dl.active) {
+    log("下载取消：当前没有进行中的下载（忽略）");
+    return { cancelled: false, reason: "no-active-download" };
+  }
   try { dl.req?.destroy(new Error("用户取消")); } catch {}
   try { dl.res?.destroy(); } catch {}
   dl.active = false;
   dl.error = "已取消";
   try { if (dl.part && existsSync(dl.part)) unlinkSync(dl.part); } catch {}
   log("下载已取消");
+  return { cancelled: true };
 }
 
 /** 跟随重定向取流。ModelScope 会 302 到 CDN，跳转必须手动跟随并保留 UA。 */
@@ -5344,7 +5372,7 @@ async function startDownload(target) {
   Object.assign(dl, {
     active: true, file: target.file, id: target.id, received: 0, total: 0,
     error: null, startedAt: Date.now(), finishedAt: 0, done: false,
-    samples: [], sampleAt: 0, part,
+    samples: [], sampleAt: 0, lastDataAt: 0, part,
   });
 
   const { req, res } = await followGet(target.url, { "user-agent": DOWNLOAD_UA, accept: "*/*" });
@@ -5362,10 +5390,12 @@ async function startDownload(target) {
   res.on("data", (chunk) => {
     dl.received += chunk.length;
     const now = Date.now();
+    dl.lastDataAt = now;
+    // 顶栏进度条要 1 秒刷新一次，400ms 一采就够平滑；只留最近 20 个样本（见 dlSpeedMBs 的 4 秒窗口）
     if (now - dl.sampleAt > 400) {
       dl.samples.push({ t: now, b: dl.received });
       dl.sampleAt = now;
-      if (dl.samples.length > 16) dl.samples.shift();
+      if (dl.samples.length > 20) dl.samples.shift();
     }
   });
 
@@ -6709,8 +6739,8 @@ async function handle(req, res) {
     if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
       return sendJson(res, 403, { error: { message: "缺少本地令牌" } });
     }
-    cancelDownload();
-    return sendJson(res, 200, { ok: true });
+    const r = cancelDownload();
+    return sendJson(res, 200, { ok: true, ...r });
   }
   if (url === "/api/discover/config") {
     try {
