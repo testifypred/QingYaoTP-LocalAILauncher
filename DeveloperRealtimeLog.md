@@ -3,7 +3,7 @@
 > 原名 `HANDOFF.md`，由上一任开发者写于 **2026-10-18 21:45**。
 > 从 **2026-10-18 21:44** 起，本文件改为**按时间流水记录**：每一笔写清「几点、改了什么、落在哪、怎么验的」。
 > 第一节是日志索引，其后的一~七节是原交接正文（保留原样，仅修正两处日期笔误），八~十节是本次三项需求的详细设计说明。
-> 最新一笔：**2026-11-10 深夜**（第五十三节，Debugging Tool v2：17 → 23 项检查 + 诊断历史 + 导出诊断包 + 打开目录；版本仍 1.3.1，未重打 zip）。全部时间均为 China Standard Time，本机时钟。
+> 最新一笔：**2026-11-11 凌晨**（第五十四节，模型下载进度条：顶栏可折叠 chip + 详情（速度/总量/余量/预计）+ 后端进度字段增强 + 新探针；版本仍 1.3.1，未重打 zip）。全部时间均为 China Standard Time，本机时钟。
 >
 > **接手先读 [`交接文档.md`](交接文档.md)**（一页纸：定位、现状、代码地图、下一步）。
 > 技术专题已抽到 [`technique/`](technique/)：架构、接口、插件、模型、打包、探针、坑。本文件保留**按时间流水**的原始记录，作为「为什么这么做」的证据。
@@ -2531,4 +2531,53 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 - 留给下一轮：**打包 v1.4.0 + 重打交付 zip**（让交付包带上 v2）；诊断包是否要压缩（现在 store，38 KB/20 KB 已经够小）；`DebugTool.exe` 若要加「一键导出」按钮再说。
 - 一个容易误读的口径：发布包 `/api/version` 的 `builtAt` 现在显示 `2026-11-10T15:18:06Z`。这是「dist 文件不被 git 跟踪 → 回退取文件时间」，**不等于重打了包**——版本仍 1.3.1、交付 zip 仍是 11-08 那份。同步 dist 就会刷新这个时间，别拿它当发布证据。
 - 本轮结束时 8099 跑的是**发布包**（不是 dev），保持运行、未加载模型。
+
+---
+
+## 五十四、2026-11-11 凌晨：模型下载进度条（顶栏 · 可折叠）
+
+> 需求原话：软件下载模型时加下载进度条，挂在顶栏，做成可折叠（收起）进度条的形式，并显示后台下载速度、总量、余量、预计时间。
+
+### 一、动手前的现状
+
+- 后端 `GET /api/download/state` 已经有 `active/done/pct/speedMBs/etaSec/receivedMB/totalMB`，但界面**只有首启弹窗里一行文字**：「42% · 200/470MB · 3.2MB/s」。
+- 关掉首启弹窗、或从「模型」页/设置里开始下载之后，用户看不到任何进度，更不知道「还剩多少、要多久」。
+- 下载是服务端后台任务（Node 进程里的 `dl` 状态），页面刷新、切会话都不影响；状态一直保留到下一次 `start`。
+
+### 二、做了什么
+
+| 层 | 内容 | 落点 |
+|---|---|---|
+| 后端 | `downloadState()` 补 `receivedBytes/totalBytes/remainingBytes/remainingMB/speedBytes/startedAt/finishedAt/updatedAt/lastDataAt/stallSec/elapsedTotalSec`（原有字段全保留）；速度改用**最近 4 秒**样本窗口（限速/卡顿时旧样本会让速度虚高、ETA 偏乐观）；采样记 `lastDataAt`（给「连接中…」用）；`cancelDownload()` 没有进行中下载时返回 `cancelled:false`，不再「假取消」 | `server\app.mjs` |
+| 页面 | 顶栏 `#dlWrap/#dlChip`（↓ + 下载 N% + 迷你条 + 速度，空闲不占位）；详情浮窗 `#dlPanel`（文件名/大进度条/已下/**总量**/**剩余**/速度/**预计剩余**/已用 + 取消 + 收起）；`localStorage.localai.dlPanel` 记住展开偏好；1 秒/4 秒两档轮询、`document.hidden` 暂停；完成/失败/取消保留 20 秒后自动隐藏；`stallSec>2.5` 显示「连接中…」；总量未知走 indeterminate；状态优先级 `active→done→error`、「已取消」单独显示；旧结果（`finishedAt` 早于 20 秒）开页不显示；首启弹窗完成时顶栏不重复 toast | `server\app.html` |
+| 探针 | 新增 `probe-download-ui.mjs`（CDP + stub `/api/download/state`，**35 条**：空闲 2 / stub 1 / 下载中 9 / 收起展开 3 / 卡住 2 / 取消 2 / 窄窗 4 / 失败 4 / 完成 5 / 收尾 2 / 无异常 1）；不调 start、不真下载 | `server\probe-download-ui.mjs` |
+| 驱动 | 全量清单 53 → **54 条**（`probe-ui-debug` 之后），BOM + PS5.1 Parser 0 错误 | `server\docs\run-full.ps1` |
+
+### 三、验证（数字都来自实测）
+
+| 探针 | dev | 发布包 |
+|---|---|---|
+| `probe-download-ui` | **35/35** | **35/35** |
+| `probe-ui-debug`（回归，窄窗/顶栏） | 33/33 | 33/33 |
+| `probe-start-screen` / `probe-ui-new`（回归） | 12/12 / 30/30 | 12/12 / — |
+
+- 断言口径 **792 → 827**（`probe-download-ui` +35）。
+- dist 已同步：`app.mjs` / `app.html` 哈希与源码 MATCH（另有 4 份未改文件 6/6 一致的精神照旧）；发布包 `/api/download/state` 新字段齐全、首页含 `#dlWrap/#dlPanel`。
+- 后端真实下载实测（本地限速源 4MB）：active 时 pct 14→38→61→84、speed≈1.0MB/s、remainingMB 递减、etaSec 倒计时；完成 pct 100 + `elapsedTotalSec`；空闲 cancel 返回 `cancelled:false`。
+- 证据：`server\docs\feature-download-progress-2026-11-10\`（CONTRACT、release-probe-*.out.txt、亮/暗两张截图）。
+
+### 四、踩坑与取舍
+
+1. **窄窗断言测错了对象**：`header::before` 是 HUD 扫光伪元素（宽 26%、`sweep` 7 秒、`translateX` 扫到 480%），会把 `body.scrollWidth` 按相位撑大（实测 850→878→960→1042→1126）；而 `body` 是 `overflow:hidden`，用户根本看不到横向滚动条。所以「`body.scrollWidth <= innerWidth + 2`」必然假红。改成「真实 DOM 元素不越界（`rect.width>0 && rect.right<=innerWidth+2`）+ `scrollTo(9999,0)` 后 `scrollX===0`」，必要时临时 `prefers-reduced-motion: reduce` 关动画；`probe-ui-debug` 的同类断言仍有这个时序脆弱性（本轮未改，已记进 `technique\06` 的「探针过期」表）。
+2. **速度口径**：4 秒滑动窗口，而不是「从头到现在」的平均值；否则源站限速或卡住时 ETA 会越来越乐观。
+3. **「假取消」**：旧 `cancelDownload()` 不检查有没有在下的任务，刚下完再点取消会把状态写成 `done=true` 同时又 `error=已取消`；现在空闲时返回 `cancelled:false`，页面按 `done` 优先显示。
+4. **收起的语义**：只改本地展开偏好，下载在服务端照跑；刷新后由 `/api/download/state` 接上（无持久化下载任务，重启服务才丢）。
+5. **首启弹窗保留原下载 UI**（引导的一部分），只加两行联动：开始下载时立刻催顶栏、完成时顶栏不重复 toast。
+
+### 五、落点与残留
+
+- 提交 **`1ca6fb0`**（8 文件 / +976）。
+- 版本号**仍是 1.3.1**（三处没动）、**未重打 dist zip**；dist 运行目录已同步（现在 8099 跑的发布包就是新页面）。
+- 不做（仍是下一步）：下载队列/多任务、断点续传、暂停。
+- 口径：全量 **54 条**、断言 **827**。
 
