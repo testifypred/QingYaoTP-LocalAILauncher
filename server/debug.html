@@ -13,7 +13,7 @@
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:13px/1.55 "Segoe UI",system-ui,sans-serif}
-header{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:linear-gradient(180deg,#0b0e14,#07080b);z-index:5}
+header{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:linear-gradient(180deg,#0b0e14,#07080b);z-index:5;flex-wrap:wrap}
 .mark{width:30px;height:30px;border-radius:8px;background:#000;border:1px solid rgba(34,211,238,.35);display:grid;place-items:center;font-family:"Cambria Math",serif;font-style:italic;font-size:19px;position:relative}
 .mark i{position:absolute;right:2px;top:-3px;font:700 11px "Segoe UI";color:var(--cyan);font-style:normal}
 h1{font-size:15px;margin:0;letter-spacing:.02em}
@@ -21,12 +21,15 @@ h1 small{color:var(--dim);font-weight:400;font-size:11.5px;margin-left:8px}
 .spacer{flex:1}
 button{background:var(--panel2);color:var(--text);border:1px solid var(--line2);border-radius:7px;padding:6px 11px;font-size:12px;cursor:pointer}
 button:hover{border-color:var(--cyan);color:var(--cyan)}
+button:disabled{opacity:.55;cursor:default;border-color:var(--line2);color:var(--dim)}
 button.primary{background:var(--cyan);border-color:var(--cyan);color:#04141a;font-weight:700}
 button.danger:hover{border-color:var(--err);color:var(--err)}
 .wrap{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px;padding:14px 18px 28px}
 @media (max-width:1080px){.wrap{grid-template-columns:1fr}}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-width:0}
 .card h2{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:0 0 10px;font-weight:700}
+.cardHead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.cardHead h2{margin:0}
 .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;font-size:11.5px;border:1px solid var(--line2)}
 .pill.ok{color:var(--ok);border-color:rgba(52,211,153,.45)}
 .pill.warn{color:var(--warn);border-color:rgba(251,191,36,.45)}
@@ -38,9 +41,24 @@ ul.checks li:first-child{border-top:0}
 .dot.ok{background:var(--ok);box-shadow:0 0 8px rgba(52,211,153,.6)}
 .dot.warn{background:var(--warn);box-shadow:0 0 8px rgba(251,191,36,.5)}
 .dot.err{background:var(--err);box-shadow:0 0 8px rgba(248,113,113,.6)}
-.ct{font-weight:600;font-size:12.5px}
+.cbody{flex:1;min-width:0}
+.ctop{display:flex;align-items:center;gap:8px;min-width:0}
+.ct{flex:1;min-width:0;font-weight:600;font-size:12.5px}
 .cd{color:var(--dim);font-size:11.5px;word-break:break-word}
 .fix{color:var(--warn);font-size:11.5px;margin-top:3px}
+/* 检查项：分组头 / 过滤 chip / 持续徽标 / 复制键 / 2 分钟内变化高亮 */
+li.grp{display:block;border-top:0;padding:12px 0 3px;color:var(--dim);font-size:10.5px;letter-spacing:.16em;font-weight:700}
+li.grp:first-child{padding-top:2px}
+li.empty{display:block;color:var(--dim);font-size:12px;padding:10px 0}
+#filters button{font-size:11.5px;padding:4px 9px;border-radius:999px}
+.badge{flex:none;font-size:10.5px;color:var(--dim);border:1px solid var(--line2);border-radius:999px;padding:1px 7px;white-space:nowrap}
+.badge.warn{color:var(--warn);border-color:rgba(251,191,36,.35)}
+.badge.err{color:var(--err);border-color:rgba(248,113,113,.35)}
+.cp{flex:none;background:transparent;border:1px solid var(--line2);border-radius:6px;color:var(--dim);font-size:10.5px;padding:1px 7px;cursor:pointer;opacity:.55}
+li:hover .cp,.cp:focus-visible{opacity:1}
+.cp:hover{color:var(--cyan);border-color:var(--cyan)}
+li.chg{background:linear-gradient(90deg,rgba(34,211,238,.10),rgba(34,211,238,0) 55%);border-left:2px solid var(--cyan);padding-left:7px;animation:chgPulse 1.8s ease-in-out infinite}
+@keyframes chgPulse{0%,100%{border-left-color:rgba(34,211,238,.85)}50%{border-left-color:rgba(34,211,238,.25)}}
 .kv{display:grid;grid-template-columns:96px 1fr;gap:4px 10px;font-size:12px}
 .kv b{color:var(--dim);font-weight:500}
 .kv span{font-family:var(--mono);word-break:break-all}
@@ -61,6 +79,16 @@ pre{background:#05060a;border:1px solid var(--line);border-radius:8px;padding:10
 .resNote{color:var(--dim);font-size:11px;font-family:var(--mono);margin-top:4px;word-break:break-word}
 #resSpark{display:block;width:100%;height:56px;margin-top:10px;border:1px solid var(--line);border-radius:8px;background:#05060a}
 #resCard .kv{margin-top:10px}
+/* 诊断历史卡 */
+#histSpark{display:block;width:100%;height:76px;border:1px solid var(--line);border-radius:8px;background:#05060a}
+.histLegend{color:var(--dim);font-size:11px;font-family:var(--mono);margin-top:4px}
+#histList{display:grid;gap:4px;margin-top:9px}
+.chi{display:flex;gap:8px;align-items:baseline;font-size:11.5px;min-width:0}
+.cht{font-family:var(--mono);color:var(--dim);flex:none}
+.chl{font-family:var(--mono);flex:none}
+.chl .lo{color:var(--ok)}.chl .lw{color:var(--warn)}.chl .le{color:var(--err)}
+.chtl{color:var(--dim);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.histEmpty{color:var(--dim);font-size:11.5px}
 </style>
 </head>
 <body>
@@ -71,11 +99,19 @@ pre{background:#05060a;border:1px solid var(--line);border-radius:8px;padding:10
   <span id="pills" class="row"></span>
   <button id="refresh">刷新</button>
   <button id="copy">复制报告</button>
+  <button id="exportBtn">导出诊断包</button>
 </header>
 
 <div class="wrap">
   <div class="card">
-    <h2>检查项 <span class="hint" id="checkedAt"></span></h2>
+    <div class="cardHead">
+      <h2>检查项 <span class="hint" id="checkedAt"></span></h2>
+      <div class="seg" id="filters">
+        <button id="filterAll" class="chip sel" type="button">全部 0</button>
+        <button id="filterErr" class="chip" type="button">错误 0</button>
+        <button id="filterWarn" class="chip" type="button">警告 0</button>
+      </div>
+    </div>
     <ul class="checks" id="checks"></ul>
   </div>
 
@@ -95,6 +131,12 @@ pre{background:#05060a;border:1px solid var(--line);border-radius:8px;padding:10
       <div class="kv" id="resKv"></div>
       <canvas id="resSpark" width="560" height="56"></canvas>
       <div class="resNote">最近 60 次采样（约 2 分钟）· 青 = CPU% · 紫 = 内存% · 黄虚线 = 70%</div>
+    </div>
+    <div class="card" id="histCard">
+      <h2>诊断历史 <span class="hint" id="histNote">读取中…</span></h2>
+      <canvas id="histSpark" width="560" height="76"></canvas>
+      <div class="histLegend">红线 = 错误数 · 黄线 = 警告数 · 横轴 = 最近 24 小时</div>
+      <div id="histList"><div class="histEmpty">还没有历史（首次体检后开始记录）</div></div>
     </div>
     <div class="card">
       <h2>运行环境</h2>
@@ -128,6 +170,11 @@ pre{background:#05060a;border:1px solid var(--line);border-radius:8px;padding:10
         <button id="ragRebuild">重建文档索引</button>
         <button id="unload">卸载模型（释放内存）</button>
       </div>
+      <div class="row" style="margin-top:8px">
+        <button id="openDir">打开程序目录</button>
+        <button id="openLogs">打开日志目录</button>
+        <button id="openModels">打开模型目录</button>
+      </div>
       <div class="hint" id="actionInfo" style="margin-top:8px">这里的动作都会立刻生效；卸载模型后要重新加载才能问答。</div>
     </div>
   </div>
@@ -138,8 +185,12 @@ const $ = (id) => document.getElementById(id);
 let localToken = '';
 let diag = null;
 let logWhich = 'app';
+let filterState = 'all'; // all | err | warn：只影响 #checks 渲染
+let lastChecks = [];
+let checkById = new Map();
+let hist = null;
 
-const esc = (s) => String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 async function api(path, opt) {
   const r = await fetch(path, opt);
@@ -159,6 +210,17 @@ function fmtTime(ts) {
   const p = (n) => String(n).padStart(2, '0');
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
 }
+function fmtHM(ts) {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return '--:--';
+  const p = (n) => String(n).padStart(2, '0');
+  return p(d.getHours()) + ':' + p(d.getMinutes());
+}
+function stamp() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return '' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+}
 function fmtUptime(sec) {
   const s = Number(sec) || 0;
   if (s < 90) return s + ' 秒';
@@ -166,6 +228,7 @@ function fmtUptime(sec) {
   return (s / 3600).toFixed(1) + ' 小时';
 }
 function fmtMB(n) { return Math.round(Number(n) || 0) + ' MB'; }
+function numOr0(v) { const n = Number(v); return Number.isFinite(n) ? n : 0; }
 
 // ---------------------------------------------------------------- 实时资源
 // 2 秒轮询 /api/diag/resources；CPU 首次采样为 null（服务刚起没有基准），先显示「—」，
@@ -278,6 +341,268 @@ async function loadRes() {
   renderRes(r.j);
 }
 
+// ---------------------------------------------------------------- 检查项：分组 / 过滤 / 徽标
+// 后端契约给了 group/since/changedAt；旧接口没有这些字段时按 id 兜底推断分组，
+// 认不出就归「其他」，没有 since/changedAt 就不显示徽标与高亮——页面在旧 /api/diag 上也不能报错。
+const GROUP_ORDER = ['服务', '系统', '推理', '数据', '扩展', '发布'];
+const GROUP_OTHER = '其他';
+const ID_GROUP = {
+  server: '服务', bind: '服务', busy: '服务',
+  version: '系统', msvcp: '系统', node: '系统', mem: '系统', disk: '系统', logs: '系统', webview2: '系统', config: '系统',
+  backend: '推理', vkdevices: '推理', crash: '推理', models: '推理', loaded: '推理', vision: '推理',
+  sessions: '数据', rag: '数据', backup: '数据', ragfresh: '数据',
+  plugins: '扩展',
+  dist: '发布',
+};
+function groupOf(c) {
+  if (c && typeof c.group === 'string' && c.group.trim()) return c.group.trim();
+  return (c && ID_GROUP[c.id]) || GROUP_OTHER;
+}
+function levelOf(c) {
+  if (!c) return 'ok';
+  if (c.level === 'error') return 'error';
+  if (c.level === 'warn') return 'warn';
+  return 'ok';
+}
+function dotLevel(lv) { return lv === 'error' ? 'err' : lv; }
+function fmtSpan(minutes) {
+  const m = Math.max(0, Math.round(minutes));
+  if (m < 60) return m + ' 分钟';
+  if (m < 60 * 24) {
+    const h = m / 60;
+    return (h >= 10 ? Math.round(h) : h.toFixed(1).replace(/\.0$/, '')) + ' 小时';
+  }
+  const d = m / (60 * 24);
+  return (d >= 10 ? Math.round(d) : d.toFixed(1).replace(/\.0$/, '')) + ' 天';
+}
+function spanBadge(c, nowMs) {
+  // 只有 warn/error 项才显示「已持续 N 分钟」；正常项不需要打扰
+  if (!c || !c.since || levelOf(c) === 'ok') return '';
+  const t = new Date(c.since).getTime();
+  if (!Number.isFinite(t)) return '';
+  const mins = (nowMs - t) / 60000;
+  if (!Number.isFinite(mins)) return '';
+  const text = mins < 1 ? '刚刚出现' : '已持续 ' + fmtSpan(mins);
+  return '<span class="badge ' + dotLevel(levelOf(c)) + '">' + esc(text) + '</span>';
+}
+function isChangedRecently(c, nowMs) {
+  if (!c || !c.changedAt) return false;
+  const t = new Date(c.changedAt).getTime();
+  if (!Number.isFinite(t)) return false;
+  const age = nowMs - t;
+  return age >= 0 && age <= 2 * 60000;
+}
+function checkText(c) {
+  const head = [c.title || c.id || '检查项', c.detail || ''].filter(Boolean).join(' — ');
+  return head + (c.fix ? ' → ' + c.fix : '');
+}
+async function copyText(t) {
+  try {
+    await navigator.clipboard.writeText(t);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = t;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const good = document.execCommand('copy');
+      ta.remove();
+      return good;
+    } catch {
+      return false;
+    }
+  }
+}
+function updateFilterCounts() {
+  const total = lastChecks.length;
+  let err = 0, warn = 0;
+  for (const c of lastChecks) {
+    const lv = levelOf(c);
+    if (lv === 'error') err++;
+    else if (lv === 'warn') warn++;
+  }
+  $('filterAll').textContent = '全部 ' + total;
+  $('filterErr').textContent = '错误 ' + err;
+  $('filterWarn').textContent = '警告 ' + warn;
+  $('filterAll').classList.toggle('sel', filterState === 'all');
+  $('filterErr').classList.toggle('sel', filterState === 'err');
+  $('filterWarn').classList.toggle('sel', filterState === 'warn');
+}
+function visibleChecks() {
+  if (filterState === 'err') return lastChecks.filter((c) => levelOf(c) === 'error');
+  if (filterState === 'warn') return lastChecks.filter((c) => levelOf(c) === 'warn');
+  return lastChecks.slice();
+}
+function renderChecks() {
+  const rawNow = diag && diag.now ? new Date(diag.now).getTime() : Date.now();
+  const nowMs = Number.isFinite(rawNow) ? rawNow : Date.now();
+  if (!lastChecks.length) {
+    checkById = new Map();
+    $('checks').innerHTML = '<li class="empty">还没有检查结果（等下一次体检…）</li>';
+    return;
+  }
+  const list = visibleChecks();
+  if (!list.length) {
+    checkById = new Map();
+    $('checks').innerHTML = '<li class="empty">没有符合当前过滤的检查项</li>';
+    return;
+  }
+  const byGroup = new Map();
+  for (const c of list) {
+    const g = groupOf(c);
+    if (!byGroup.has(g)) byGroup.set(g, []);
+    byGroup.get(g).push(c);
+  }
+  const groups = [...byGroup.keys()].sort((a, b) => {
+    const ia = GROUP_ORDER.indexOf(a), ib = GROUP_ORDER.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  });
+  checkById = new Map(list.map((c) => [String(c.id || ''), c]));
+  const html = [];
+  for (const g of groups) {
+    html.push('<li class="grp">' + esc(g) + '</li>');
+    for (const c of byGroup.get(g)) {
+      const lv = levelOf(c);
+      const cls = isChangedRecently(c, nowMs) ? ' class="chg"' : '';
+      html.push('<li data-id="' + esc(String(c.id || '')) + '" data-level="' + lv + '" data-group="' + esc(g) + '"' + cls + '>' +
+        '<span class="dot ' + dotLevel(lv) + '"></span>' +
+        '<div class="cbody">' +
+          '<div class="ctop">' +
+            '<span class="ct">' + esc(c.title || c.id || '检查项') + '</span>' +
+            spanBadge(c, nowMs) +
+            '<button type="button" class="cp" title="复制这一项（标题 — 说明 → 建议）">复制</button>' +
+          '</div>' +
+          '<div class="cd">' + esc(c.detail || '') + '</div>' +
+          (c.fix ? '<div class="fix">→ ' + esc(c.fix) + '</div>' : '') +
+        '</div></li>');
+    }
+  }
+  $('checks').innerHTML = html.join('');
+}
+
+function setFilter(f) {
+  filterState = f === 'err' || f === 'warn' ? f : 'all';
+  updateFilterCounts();
+  renderChecks();
+}
+
+// ---------------------------------------------------------------- 诊断历史
+// GET /api/diag/history?hours=24：每 30 秒刷新，标签页不可见时暂停；旧后端没有这个接口就显示空态。
+const HIST_HOURS = 24;
+
+function drawHistSpark() {
+  const cv = $('histSpark');
+  if (!cv) return;
+  const pts = hist && Array.isArray(hist.points) ? hist.points : [];
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(240, Math.round(cv.clientWidth || 560)), h = 76;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+  }
+  const ctx = cv.getContext('2d');
+  if (!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const top = 6, span = h - 20;
+  let maxV = 1;
+  for (const p of pts) maxV = Math.max(maxV, numOr0(p && p.e), numOr0(p && p.w));
+  const yOf = (v) => top + span * (1 - Math.max(0, Math.min(maxV, v)) / maxV);
+  ctx.font = '9px ui-monospace,Consolas,monospace';
+  ctx.textBaseline = 'middle';
+  for (const f of [0, 0.5, 1]) {
+    const y = Math.round(top + span * f) + 0.5;
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(36,43,55,.9)';
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    ctx.fillStyle = 'rgba(142,154,173,.85)';
+    ctx.fillText(String(Math.round(maxV * (1 - f))), 3, y);
+  }
+  if (!pts.length) return;
+  const n = pts.length;
+  const xOf = (i) => (n <= 1 ? w - 4 : 4 + (i / (n - 1)) * (w - 8));
+  const drawLine = (key, color) => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const x = xOf(i), y = yOf(numOr0(pts[i] && pts[i][key]));
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  };
+  drawLine('w', 'rgba(251,191,36,.9)');
+  drawLine('e', 'rgba(248,113,113,.95)');
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = 'rgba(142,154,173,.85)';
+  ctx.fillText(fmtHM(pts[0] && pts[0].t), 3, h - 1);
+  const lastT = fmtHM(pts[n - 1] && pts[n - 1].t);
+  ctx.fillText(lastT, w - ctx.measureText(lastT).width - 3, h - 1);
+  for (const key of ['w', 'e']) {
+    ctx.fillStyle = key === 'w' ? '#fbbf24' : '#f87171';
+    ctx.beginPath();
+    ctx.arc(xOf(n - 1), yOf(numOr0(pts[n - 1] && pts[n - 1][key])), 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function renderHist(h) {
+  hist = h && typeof h === 'object' ? h : {};
+  const pts = Array.isArray(hist.points) ? hist.points : [];
+  const changes = Array.isArray(hist.changes) ? hist.changes : [];
+  const total = numOr0(hist.total) > 0 ? numOr0(hist.total) : pts.length;
+  const note = ['· ' + pts.length + ' 个采样点', '近 ' + HIST_HOURS + ' 小时'];
+  if (total > pts.length) note.push('累计 ' + total + ' 条');
+  if (pts.length && pts[0] && pts[0].t) note.push('从 ' + fmtHM(pts[0].t) + ' 开始');
+  $('histNote').textContent = note.join(' · ');
+  const recent = changes.slice(-6).reverse();
+  if (!recent.length) {
+    $('histList').innerHTML = '<div class="histEmpty">' +
+      (pts.length ? '近 ' + HIST_HOURS + ' 小时没有级别变化' : '还没有历史（首次体检后开始记录）') + '</div>';
+  } else {
+    $('histList').innerHTML = recent.map((ch) => {
+      ch = ch || {};
+      const from = String(ch.from || '?');
+      const to = String(ch.to || '?');
+      const cls = (lv) => lv === 'error' ? 'le' : lv === 'warn' ? 'lw' : 'lo';
+      return '<div class="chi">' +
+        '<span class="cht">' + esc(fmtHM(ch.t)) + '</span>' +
+        '<span class="chl"><span class="' + cls(from) + '">' + esc(from) + '</span>→<span class="' + cls(to) + '">' + esc(to) + '</span></span>' +
+        '<span class="chtl" title="' + esc(ch.title || ch.id || '') + '">' + esc(ch.title || ch.id || '未知检查项') + '</span>' +
+        '</div>';
+    }).join('');
+  }
+  drawHistSpark();
+}
+
+function renderHistUnavailable(reason) {
+  hist = { points: [], changes: [] };
+  $('histNote').textContent = '· 历史接口不可用（' + reason + '）';
+  $('histList').innerHTML = '<div class="histEmpty">还没有历史（首次体检后开始记录）</div>';
+  drawHistSpark();
+}
+
+async function loadHist() {
+  let r;
+  try {
+    r = await api('/api/diag/history?hours=' + HIST_HOURS);
+  } catch {
+    renderHistUnavailable('连不上服务');
+    return;
+  }
+  if (r.status !== 200) {
+    renderHistUnavailable('HTTP ' + r.status);
+    return;
+  }
+  renderHist(r.j);
+}
+
+// ---------------------------------------------------------------- 诊断快照
 function render() {
   if (!diag) return;
   const sum = diag.summary || {};
@@ -286,24 +611,20 @@ function render() {
     '<span class="pill warn">警告 ' + (sum.warn || 0) + '</span>' +
     '<span class="pill ok">正常 ' + (sum.ok || 0) + '</span>';
 
-  $('ver').textContent = 'v' + diag.version.version + (diag.version.commit ? ' · ' + diag.version.commit : '');
+  const ver = diag.version || {};
+  $('ver').textContent = 'v' + (ver.version || '—') + (ver.commit ? ' · ' + ver.commit : '');
   $('checkedAt').textContent = '· ' + fmtTime(diag.now);
 
-  $('checks').innerHTML = (diag.checks || []).map((c) => {
-    const lv = c.level === 'error' ? 'err' : c.level;
-    return '<li><span class="dot ' + lv + '"></span><div style="min-width:0">' +
-      '<div class="ct">' + esc(c.title) + '</div>' +
-      '<div class="cd">' + esc(c.detail) + '</div>' +
-      (c.fix ? '<div class="fix">→ ' + esc(c.fix) + '</div>' : '') +
-      '</div></li>';
-  }).join('');
+  lastChecks = Array.isArray(diag.checks) ? diag.checks : [];
+  updateFilterCounts();
+  renderChecks();
 
   const s = diag.server || {}, sys = diag.system || {}, m = diag.model || {};
   kvRows($('env'), [
-    ['系统', (sys.platform || '') + ' ' + (sys.arch || '') + ' · ' + sys.cpus + ' 核 · 内存 ' + fmtGB(sys.totalGB) + '（可用 ' + fmtGB(sys.freeGB) + '）'],
-    ['Node', sys.node],
-    ['版本', 'v' + diag.version.version + (diag.version.commit ? ' (' + diag.version.commit + (diag.version.dirty ? ' 未提交' : '') + ')' : diag.version.builtAt ? ' 打包 ' + diag.version.builtAt.slice(0, 16).replace('T', ' ') : '')],
-    ['服务', '127.0.0.1:' + s.port + ' · pid ' + s.pid + ' · 已运行 ' + fmtUptime(s.uptimeSec)],
+    ['系统', (sys.platform || '') + ' ' + (sys.arch || '') + ' · ' + (sys.cpus || 0) + ' 核 · 内存 ' + fmtGB(sys.totalGB) + '（可用 ' + fmtGB(sys.freeGB) + '）'],
+    ['Node', sys.node || '—'],
+    ['版本', 'v' + (ver.version || '—') + (ver.commit ? ' (' + ver.commit + (ver.dirty ? ' 未提交' : '') + ')' : ver.builtAt ? ' 打包 ' + String(ver.builtAt).slice(0, 16).replace('T', ' ') : '')],
+    ['服务', '127.0.0.1:' + (s.port || '—') + ' · pid ' + (s.pid || '—') + ' · 已运行 ' + fmtUptime(s.uptimeSec)],
     ['并发', (s.activeChats || 0) + ' 个进行中'],
     ['后端', s.gpu === 'vulkan' ? 'Vulkan（核显）' : 'CPU' + (s.backendNote ? ' · ' + s.backendNote : '')],
     ['目录', (diag.paths || {}).dir || ''],
@@ -325,14 +646,26 @@ function render() {
   ]);
 }
 
+async function ensureToken() {
+  if (localToken) return localToken;
+  try {
+    const r = await api('/api/state');
+    localToken = (r.j && r.j.localToken) || '';
+  } catch { /* 拿不到令牌就让服务端回 403，页面给人话 */ }
+  return localToken;
+}
+
 async function loadDiag() {
   const r = await api('/api/diag');
   if (r.status !== 200) {
-    $('checks').innerHTML = '<li><span class="dot err"></span><div><div class="ct">诊断接口不可用</div><div class="cd">HTTP ' + r.status + '</div></div></li>';
+    checkById = new Map();
+    $('checks').innerHTML = '<li data-id="diag-api" data-level="error" data-group="服务">' +
+      '<span class="dot err"></span><div class="cbody"><div class="ctop"><span class="ct">诊断接口不可用</span></div>' +
+      '<div class="cd">HTTP ' + r.status + ' —— 确认调试服务还在运行；旧版页面刷新一下再试。</div></div></li>';
     return;
   }
   diag = r.j;
-  localToken = (await api('/api/state')).j?.localToken || '';
+  await ensureToken();
   render();
 }
 
@@ -340,7 +673,7 @@ async function loadLog() {
   $('logBox').textContent = '（读取中…）';
   const r = await api('/api/diag/logs?which=' + logWhich + '&lines=300');
   const j = r.j || {};
-  if (r.status !== 200) { $('logBox').textContent = '读取失败：HTTP ' + r.status; return; }
+  if (r.status !== 200) { $('logBox').textContent = '读取失败：HTTP ' + r.status + ' —— 日志接口不可用时先看程序目录下的 logs\\app.log'; return; }
   $('logInfo').textContent = (j.file || '') + (j.size ? ' · ' + (j.size / 1024).toFixed(0) + ' KB' : '') + (j.truncated ? ' · 只显示尾部' : '');
   $('logBox').textContent = j.text || (j.error ? '（读不到：' + j.error + '）' : '（空）');
   $('logBox').scrollTop = $('logBox').scrollHeight;
@@ -348,11 +681,12 @@ async function loadLog() {
 
 function reportText() {
   if (!diag) return '';
+  const ver = diag.version || {}, s = diag.server || {}, sys = diag.system || {}, m = diag.model || {};
   const lines = [];
-  lines.push('QingYaoTP AILauncher · Debugging Tool · v' + diag.version.version + (diag.version.commit ? ' (' + diag.version.commit + ')' : ''));
+  lines.push('QingYaoTP AILauncher · Debugging Tool · v' + (ver.version || '—') + (ver.commit ? ' (' + ver.commit + ')' : ''));
   lines.push('生成时间: ' + fmtTime(diag.now));
-  lines.push('服务: 127.0.0.1:' + diag.server.port + ' · pid ' + diag.server.pid + ' · 后端 ' + diag.server.gpu);
-  lines.push('系统: ' + diag.system.platform + ' ' + diag.system.arch + ' · ' + diag.system.cpus + ' 核 · 内存 ' + fmtGB(diag.system.totalGB) + '（可用 ' + fmtGB(diag.system.freeGB) + '） · node ' + diag.system.node);
+  lines.push('服务: 127.0.0.1:' + (s.port || '—') + ' · pid ' + (s.pid || '—') + ' · 后端 ' + (s.gpu || '—'));
+  lines.push('系统: ' + (sys.platform || '') + ' ' + (sys.arch || '') + ' · ' + (sys.cpus || 0) + ' 核 · 内存 ' + fmtGB(sys.totalGB) + '（可用 ' + fmtGB(sys.freeGB) + '） · node ' + (sys.node || '—'));
   if (resLast) {
     const rc = resLast.cpu || {}, rm = resLast.mem || {}, rp = resLast.proc || {}, rd = resLast.disk;
     lines.push('实时资源: CPU ' + (typeof rc.usagePct === 'number' ? rc.usagePct + '%' : '—') +
@@ -360,49 +694,177 @@ function reportText() {
       ' · 进程 RSS ' + fmtMB(rp.rssMB) +
       ' · 磁盘剩余 ' + (rd && rd.path ? fmtGB(rd.freeGB) : '—'));
   }
-  lines.push('模型: ' + (diag.model.file || '未加载') + ' · 上下文 ' + diag.model.context + ' · ' + diag.model.layers + ' 层 · KV ' + diag.model.cachedTokens);
+  lines.push('模型: ' + (m.file || '未加载') + ' · 上下文 ' + (m.context || '—') + ' · ' + (m.layers || '—') + ' 层 · KV ' + (m.cachedTokens || 0));
   lines.push('--- 检查 ---');
-  for (const c of diag.checks) {
+  for (const c of (Array.isArray(diag.checks) ? diag.checks : [])) {
     const tag = c.level === 'error' ? '[错误]' : c.level === 'warn' ? '[警告]' : '[正常]';
-    lines.push(tag + ' ' + c.title + ' — ' + c.detail + (c.fix ? ' → ' + c.fix : ''));
+    lines.push(tag + ' ' + (c.title || c.id) + ' — ' + (c.detail || '') + (c.fix ? ' → ' + c.fix : ''));
   }
   return lines.join('\n');
 }
 
-$('refresh').onclick = () => loadDiag().then(loadLog).catch(() => {});
-$('logRefresh').onclick = () => loadLog().catch(() => {});
-$('logApp').onclick = () => { logWhich = 'app'; $('logApp').classList.add('sel'); $('logCrash').classList.remove('sel'); loadLog(); };
-$('logCrash').onclick = () => { logWhich = 'crash'; $('logCrash').classList.add('sel'); $('logApp').classList.remove('sel'); loadLog(); };
-
-$('copy').onclick = async () => {
-  if (!resLast) await loadRes().catch(() => {});
-  const t = reportText();
-  try { await navigator.clipboard.writeText(t); } catch {
-    const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
-  }
-  $('copy').textContent = '已复制';
-  setTimeout(() => { $('copy').textContent = '复制报告'; }, 1200);
-};
+// ---------------------------------------------------------------- 动作反馈 / 导出 / 打开目录
+function say(text, good) {
+  const el = $('actionInfo');
+  el.textContent = text;
+  el.style.color = good ? 'var(--ok)' : 'var(--err)';
+}
+function humanHttp(status, j, what) {
+  const msg = j && j.error && j.error.message ? String(j.error.message) : '';
+  if (status === 403) return '令牌无效或已过期——刷新页面再试一次';
+  if (status === 404) return '服务端还没有「' + what + '」接口（HTTP 404）：当前程序还是旧版本，升级后再用';
+  if (status === 400) return msg ? '参数被拒绝：' + msg : '参数不对，服务端拒绝了（HTTP 400）';
+  return (msg || '服务端返回异常') + '（HTTP ' + status + '）';
+}
+function humanNet(e) {
+  const m = e && e.message ? e.message : String(e || '未知错误');
+  return '连不上本地服务（' + m + '）——确认程序在运行、端口没被占用';
+}
 
 async function act(path, body, okText) {
-  const r = await api(path, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-local-token': localToken },
-    body: JSON.stringify(body || {}),
-  });
-  $('actionInfo').textContent = r.status === 200 ? okText : '失败：HTTP ' + r.status + ' ' + (r.j?.error?.message || '');
-  $('actionInfo').style.color = r.status === 200 ? 'var(--ok)' : 'var(--err)';
+  try {
+    const token = await ensureToken();
+    const r = await api(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-local-token': token },
+      body: JSON.stringify(body || {}),
+    });
+    if (r.status === 200) say(okText, true);
+    else say('失败：' + humanHttp(r.status, r.j, okText), false);
+  } catch (e) {
+    say('失败：' + humanNet(e), false);
+  }
   setTimeout(() => loadDiag().catch(() => {}), 600);
 }
+
+async function openPath(which, label, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const token = await ensureToken();
+    const r = await api('/api/diag/open-path', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-local-token': token },
+      body: JSON.stringify({ which: which }),
+    });
+    if (r.status === 200) {
+      const p = (r.j && (r.j.path || r.j.dir)) || '';
+      say('已打开' + label + (p ? '：' + p : '（资源管理器窗口）'), true);
+    } else {
+      say('打开' + label + '失败：' + humanHttp(r.status, r.j, '打开目录'), false);
+    }
+  } catch (e) {
+    say('打开' + label + '失败：' + humanNet(e), false);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function doExport() {
+  const btn = $('exportBtn');
+  if (!btn || btn.disabled) return;
+  const oldText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '导出中…';
+  say('正在打包诊断现场（检查项 + 资源 + 日志尾部 + 脱敏配置）…', true);
+  try {
+    const token = await ensureToken();
+    const r = await fetch('/api/diag/export', { method: 'POST', headers: { 'x-local-token': token } });
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      say('导出失败：' + humanHttp(r.status, j, '导出诊断包'), false);
+      return;
+    }
+    const blob = await r.blob();
+    if (!blob || !blob.size) {
+      say('导出失败：服务端返回了空文件——看 logs\\app.log 里的报错再试', false);
+      return;
+    }
+    let name = 'qy-diagnostics-' + stamp() + '.zip';
+    const cd = r.headers.get('content-disposition') || '';
+    const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
+    if (m && m[1]) {
+      const raw = m[1].trim();
+      try { name = decodeURIComponent(raw) || name; } catch { name = raw || name; }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    say('已导出诊断包 ' + name + ' · ' + Math.round(blob.size / 1024) + ' KB（在浏览器「下载」里）', true);
+  } catch (e) {
+    say('导出失败：' + humanNet(e), false);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = oldText || '导出诊断包';
+  }
+}
+
+// ---------------------------------------------------------------- 事件绑定
+$('refresh').onclick = () => loadDiag().then(loadLog).catch(() => {});
+$('logRefresh').onclick = () => loadLog().catch(() => {});
+$('logApp').onclick = () => { logWhich = 'app'; $('logApp').classList.add('sel'); $('logCrash').classList.remove('sel'); loadLog().catch(() => {}); };
+$('logCrash').onclick = () => { logWhich = 'crash'; $('logCrash').classList.add('sel'); $('logApp').classList.remove('sel'); loadLog().catch(() => {}); };
+
+$('filterAll').onclick = () => setFilter('all');
+$('filterErr').onclick = () => setFilter('err');
+$('filterWarn').onclick = () => setFilter('warn');
+
+// 复制键用事件委托：检查列表每次体检都会整体重绘，委托不会丢
+$('checks').addEventListener('click', (ev) => {
+  const btn = ev.target && ev.target.closest ? ev.target.closest('.cp') : null;
+  if (!btn) return;
+  const li = btn.closest('li');
+  const c = li && checkById.get(li.getAttribute('data-id'));
+  if (!c) return;
+  copyText(checkText(c)).then((good) => {
+    // 和「复制报告」保持一致：点了就给已复制反馈；万一剪贴板被系统拒绝，用 title 说明怎么手动复制
+    btn.textContent = '已复制';
+    btn.title = good ? '这一项已复制到剪贴板' : '剪贴板被系统拒绝：请手动选择这一项的文字复制';
+    setTimeout(() => { btn.textContent = '复制'; btn.title = '复制这一项（标题 — 说明 → 建议）'; }, 1200);
+  });
+});
+
+$('copy').onclick = async () => {
+  try {
+    if (!resLast) await loadRes().catch(() => {});
+    const t = reportText();
+    await copyText(t);
+    $('copy').textContent = '已复制';
+    setTimeout(() => { $('copy').textContent = '复制报告'; }, 1200);
+  } catch (e) {
+    $('copy').textContent = '复制失败';
+    setTimeout(() => { $('copy').textContent = '复制报告'; }, 1500);
+  }
+};
+
+$('exportBtn').onclick = () => doExport();
+$('openDir').onclick = (ev) => openPath('dir', '程序目录', ev.currentTarget);
+$('openLogs').onclick = (ev) => openPath('logs', '日志目录', ev.currentTarget);
+$('openModels').onclick = (ev) => openPath('modelDir', '模型目录', ev.currentTarget);
 
 $('clearCrash').onclick = () => act('/api/diag/clear-crash', {}, '崩溃记录已清空：下次启动会重新尝试 Vulkan');
 $('ragRebuild').onclick = () => act('/api/rag/rebuild', {}, '文档索引已重建');
 $('unload').onclick = () => act('/api/unload', {}, '模型已卸载，内存已释放');
 
+window.addEventListener('resize', () => { drawSpark(); drawHistSpark(); });
+// 标签页重新可见时立刻补一次，别让「切回来还是旧数据」
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  loadDiag().catch(() => {});
+  loadRes().catch(() => {});
+  loadHist().catch(() => {});
+});
+
 loadDiag().then(loadLog).catch(() => {});
 loadRes().catch(() => {});
+loadHist().catch(() => {});
 setInterval(() => { if (document.visibilityState === 'visible') loadDiag().catch(() => {}); }, 5000);
 setInterval(() => { if (document.visibilityState === 'visible') loadRes().catch(() => {}); }, 2000);
+setInterval(() => { if (document.visibilityState === 'visible') loadHist().catch(() => {}); }, 30000);
 </script>
 </body>
 </html>

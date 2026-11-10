@@ -43,6 +43,8 @@ foreach ($need in @(
     (Join-Path $Server 'localai-tui.mjs'),
     (Join-Path $Server 'localai-tui.cmd'),
     # 调试工具：页面 + 独立程序 + 它自己的图标（漏了它，包里「Debug」按钮会 500）
+    # 调试工具导出诊断包用（app.mjs import 了它；漏了 /debug 与导出接口都会 500）
+    (Join-Path $Server 'diag-zip.mjs'),
     (Join-Path $Server 'debug.html'),
     (Join-Path $Server 'localai-debug.mjs'),
     (Join-Path $Server 'localai-debug.cmd'),
@@ -109,6 +111,7 @@ Copy-Item (Join-Path $Server 'localai.cmd') $AppDir -Force
 Copy-Item (Join-Path $Server 'localai-tui.mjs') $AppDir -Force
 Copy-Item (Join-Path $Server 'localai-tui.cmd') $AppDir -Force
 # 调试工具（Debugging Tool）：独立程序 + 调试页 + 它自己的图标
+Copy-Item (Join-Path $Server 'diag-zip.mjs') $AppDir -Force
 Copy-Item (Join-Path $Server 'debug.html') $AppDir -Force
 Copy-Item (Join-Path $Server 'localai-debug.mjs') $AppDir -Force
 Copy-Item (Join-Path $Server 'localai-debug.cmd') $AppDir -Force

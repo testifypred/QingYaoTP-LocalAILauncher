@@ -10,7 +10,7 @@ import http from "node:http";
 import os from "node:os";
 import { randomUUID, createHash } from "node:crypto";
 import { readFile, readdir, stat, statfs, writeFile, mkdir, unlink, link, copyFile, open, mkdtemp, rm, rename, rmdir } from "node:fs/promises";
-import { unlinkSync, existsSync, createWriteStream, watch, statSync } from "node:fs";
+import { unlinkSync, existsSync, createWriteStream, watch, statSync, readdirSync } from "node:fs";
 import https from "node:https";
 import { spawn, spawnSync } from "node:child_process";
 import { extractTextBuffer } from "./doc-extract.mjs";
@@ -18,6 +18,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 import { getLlama, resolveChatWrapper, LlamaChatSession, TokenMeter, defineChatSessionFunction, DraftSequenceTokenPredictor } from "node-llama-cpp";
 import { recommendConfig, CATALOG_MODELS } from "./config-recommend.mjs";
+import { zipStore, sha256 as zipSha256 } from "./diag-zip.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MODEL_DIR = process.env.MODEL_DIR ?? "D:\\LocalModels";
@@ -197,6 +198,166 @@ function logCandidates() {
   ].map((p) => path.resolve(p));
 }
 
+/** 诊断历史：每次体检落一行（节流），回答「这个问题从什么时候开始、是不是刚变坏」 */
+const DIAG_HISTORY = path.join(HERE, "..", "logs", "diag-history.jsonl");
+const DIAG_HISTORY_MAX = 500;
+const DIAG_HISTORY_MIN_MS = 10 * 60 * 1000;
+/** 检查项 → 分组（页面按这六组分节显示；新检查项忘了登记就落到「其他」） */
+const DIAG_GROUP = {
+  server: "服务", bind: "服务", busy: "服务", version: "服务",
+  msvcp: "系统", node: "系统", mem: "系统", disk: "系统", logs: "系统", webview2: "系统", config: "系统",
+  backend: "推理", vkdevices: "推理", crash: "推理", models: "推理", loaded: "推理", kv: "推理", kvquant: "推理", vision: "推理",
+  sessions: "数据", backup: "数据", rag: "数据", ragfresh: "数据",
+  plugins: "扩展",
+  dist: "发布",
+};
+const LV_CODE = { ok: "o", warn: "w", error: "e" };
+const CODE_LV = { o: "ok", w: "warn", e: "error" };
+let diagTrack = new Map();       // id → { level, since, changedAt, count }
+let diagLines = [];              // 历史记录（最近 DIAG_HISTORY_MAX 条）
+let diagLoaded = false;
+let diagLastSig = "";
+let diagLastWriteAt = 0;
+let diagHistoryWrite = Promise.resolve();
+const diagTitles = new Map();    // id → title（历史变更列表用）
+
+function lvOf(code) { return code ? (CODE_LV[code] || "ok") : null; }
+
+/** 读历史尾部，恢复每项「当前 level 从什么时候开始」（重启后徽标不回零） */
+async function loadDiagHistory() {
+  if (diagLoaded) return;
+  diagLoaded = true;
+  try {
+    const raw = await readFile(DIAG_HISTORY, "utf8");
+    const parsed = [];
+    for (const line of raw.split(/\r?\n/).filter(Boolean).slice(-DIAG_HISTORY_MAX)) {
+      try { const r = JSON.parse(line); if (r && r.t && r.l && typeof r.l === "object") parsed.push(r); } catch {}
+    }
+    diagLines = parsed;
+    const cur = new Map();
+    for (let i = diagLines.length - 1; i >= 0; i--) {
+      const rec = diagLines[i];
+      for (const [id, code] of Object.entries(rec.l)) {
+        const level = lvOf(code);
+        if (!level) continue;
+        const prev = cur.get(id);
+        if (!prev) { cur.set(id, { level, since: rec.t, changedAt: rec.t, count: 0 }); continue; }
+        if (prev.level === level) { prev.since = rec.t; prev.changedAt = rec.t; }
+      }
+    }
+    diagTrack = cur;
+  } catch { diagLines = []; }
+}
+
+/** 相邻两次体检对比出来的 level 变化（只报 ok↔warn↔error，不报新增/消失） */
+function diagHistoryChanges(points) {
+  const out = [];
+  let prev = null;
+  for (const r of points) {
+    const l = r.l || {};
+    if (prev) {
+      for (const id of new Set([...Object.keys(prev), ...Object.keys(l)])) {
+        const from = lvOf(prev[id]);
+        const to = lvOf(l[id]);
+        if (!from || !to || from === to) continue;
+        out.push({ t: r.t, id, title: diagTitles.get(id) || id, from, to });
+      }
+    }
+    prev = l;
+  }
+  return out.slice(-8);
+}
+
+function diagHistoryView(hours = 24, limit = 200) {
+  const h = Math.max(1, Math.min(24 * 30, Number(hours) || 24));
+  const n = Math.max(1, Math.min(DIAG_HISTORY_MAX, Number(limit) || 200));
+  const cut = Date.now() - h * 3600 * 1000;
+  const points = diagLines.filter((r) => Date.parse(r.t) >= cut).slice(-n);
+  return { file: DIAG_HISTORY, exists: diagLines.length > 0, total: diagLines.length, hours: h, points, changes: diagHistoryChanges(points) };
+}
+
+/**
+ * 落一条历史：启动后首次 / 任一检查项 level 变化 / 距上次 ≥10 分钟，三者之一才写。
+ * 页面 5 秒轮询一次，不节流的话一天能写两万行。
+ */
+async function recordDiagHistory(checks, summary) {
+  const sig = checks.map((c) => c.id + ":" + c.level).join("|");
+  const now = Date.now();
+  if (sig === diagLastSig && now - diagLastWriteAt < DIAG_HISTORY_MIN_MS) return;
+  diagLastSig = sig;
+  diagLastWriteAt = now;
+  diagLines.push({
+    t: new Date(now).toISOString(),
+    e: summary.error, w: summary.warn, o: summary.ok,
+    l: Object.fromEntries(checks.map((c) => [c.id, LV_CODE[c.level] || "o"])),
+  });
+  if (diagLines.length > DIAG_HISTORY_MAX) diagLines = diagLines.slice(-DIAG_HISTORY_MAX);
+  diagHistoryWrite = diagHistoryWrite.then(async () => {
+    try {
+      await mkdir(path.dirname(DIAG_HISTORY), { recursive: true });
+      await writeFile(DIAG_HISTORY, diagLines.map((x) => JSON.stringify(x)).join("\n") + "\n", "utf8");
+    } catch {}
+  });
+  await diagHistoryWrite;
+}
+
+/** 「12 分钟前」这种人话；时间戳缺失/未来时间都归到「刚刚」 */
+function fmtAgo(ts) {
+  const t = Number(ts);
+  if (!Number.isFinite(t) || t <= 0) return "—";
+  const ms = Date.now() - t;
+  if (ms < 60 * 1000) return "刚刚";
+  const m = Math.floor(ms / 60000);
+  if (m < 60) return m + " 分钟前";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + " 小时前";
+  return Math.floor(h / 24) + " 天前";
+}
+
+/** 时长人话：「12 分钟」「3.2 小时」「2.1 天」 */
+function fmtSpan(ms) {
+  const v = Math.max(0, Number(ms) || 0);
+  if (v < 60 * 1000) return "不到 1 分钟";
+  const m = Math.round(v / 60000);
+  if (m < 60) return m + " 分钟";
+  const h = v / 3600000;
+  if (h < 48) return h.toFixed(1) + " 小时";
+  return (h / 24).toFixed(1) + " 天";
+}
+
+/** WebView2 运行时（主界面窗口和调试窗口都靠它；没装时只能退化成浏览器标签页） */
+function webview2Runtime() {
+  const roots = [process.env["ProgramFiles(x86)"], process.env.ProgramFiles].filter(Boolean);
+  for (const root of roots) {
+    const dir = path.join(root, "Microsoft", "EdgeWebView", "Application");
+    try {
+      const vs = readdirSync(dir).filter((v) => /^\d+\.\d+\.\d+\.\d+$/.test(v));
+      if (vs.length) {
+        vs.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        return { dir, version: vs[vs.length - 1] };
+      }
+    } catch {}
+  }
+  return { dir: "", version: "" };
+}
+
+/** RAG 新鲜度：workspace 里可索引文件的最新 mtime（节流 60 秒，别每 5 秒扫一遍盘） */
+const ragFreshCache = { at: 0, val: null };
+async function ragFreshness() {
+  // 空结果只缓存 15 秒：服务刚起时索引可能还没从磁盘加载完，别把「0 个文件」缓存一分钟导致 ragfresh 短暂消失
+  if (ragFreshCache.val && Date.now() - ragFreshCache.at < (ragFreshCache.val.files ? 60000 : 15000)) return ragFreshCache.val;
+  try { await ragLoadPersisted(); } catch {} // 索引是从磁盘懒加载的，先确保读进来再报「有几个文件」
+  const rs = ragStatus();
+  let newest = 0;
+  try {
+    for (const f of await ragWalk()) if (f.mtimeMs > newest) newest = f.mtimeMs;
+  } catch {}
+  const val = { files: rs.files, chunks: rs.chunks, builtAt: rs.builtAt, newest };
+  ragFreshCache.at = Date.now();
+  ragFreshCache.val = val;
+  return val;
+}
+
 /**
  * 读文件尾部：只读最后 128KB，别把几百 MB 的日志整份读进内存。
  * 编码要嗅探：启动器写的是 UTF-8，但 PowerShell 重定向（run-server.cmd）写的是 UTF-16LE，
@@ -245,7 +406,9 @@ async function fileHash(p) {
 async function buildDiag() {
   const checks = [];
   const add = (id, level, title, detail, fix) =>
-    checks.push({ id, level, title, detail: detail == null ? "" : String(detail), fix: fix || "" });
+    checks.push({ id, level, title, detail: detail == null ? "" : String(detail), fix: fix || "", group: DIAG_GROUP[id] || "其他" });
+  // 返回体里给页面的三块汇总（检查项里也会重复显示关键信息）
+  let visPublic = null, bkPublic = null, cfgPublic = null;
 
   const totalGB = Number((os.totalmem() / 2 ** 30).toFixed(1));
   const freeGB = Number((os.freemem() / 2 ** 30).toFixed(1));
@@ -369,10 +532,150 @@ async function buildDiag() {
       errs.length ? errs.map((x) => x.file + ": " + x.error).join(" | ") : "");
   } catch {}
 
+
+  // ---- 日志体积（日志只增不减，跑几个月能到几百 MB；调试包只取尾部）----
+  try {
+    const lf = logCandidates().find((p) => existsSync(p));
+    if (!lf) {
+      add("logs", "ok", "日志体积", "还没有 app.log（服务启动后才写第一行）");
+    } else {
+      const st = await stat(lf);
+      const mb = st.size / 1024 / 1024;
+      add("logs", mb > 200 ? "error" : mb > 50 ? "warn" : "ok", "日志体积",
+        lf + " · " + (mb < 1 ? Math.max(1, Math.round(st.size / 1024)) + " KB" : mb.toFixed(1) + " MB") +
+        " · 最后写入 " + new Date(st.mtimeMs).toISOString().slice(0, 16).replace("T", " "),
+        mb > 50 ? "日志偏大：确认没有要回查的内容后可以删掉这个文件（服务重启会新建）；调试工具导出诊断包只取尾部 500 行" : "");
+    }
+  } catch (e) {
+    add("logs", "warn", "日志体积", "读不到日志：" + String(e?.message ?? e));
+  }
+
+  // ---- WebView2 运行时（主界面窗口、调试窗口都靠它）----
+  {
+    const wv2 = webview2Runtime();
+    add("webview2", wv2.version ? "ok" : "warn", "WebView2 运行时",
+      wv2.version ? "v" + wv2.version + " · " + wv2.dir : "没找到 WebView2 运行时（Microsoft Edge WebView2 Runtime）",
+      wv2.version ? "" : "装 Evergreen WebView2 Runtime（aka.ms/webview2）；缺了它主界面窗口和调试窗口都开不了，只能退化成浏览器标签页");
+  }
+
+  // ---- config.ini（便携包的关键配置都在这里；写错了只会表现为「怎么老是 CPU / 端口不对」）----
+  {
+    const cfgFile = path.join(HERE, "..", "config.ini");
+    let cfg = {};
+    try { cfg = await readConfigIni(); } catch {}
+    const problems = [];
+    const notes = [];
+    const exists = existsSync(cfgFile);
+    if (!exists) {
+      notes.push("开发目录没有 config.ini（走环境变量/默认值，模型目录 " + MODEL_DIR + "）");
+    } else {
+      notes.push("modelDir=" + (String(cfg.modelDir || "").trim() || "（空 = 便携默认，实际 " + MODEL_DIR + "）"));
+      notes.push("port=" + (cfg.port || PORT));
+      if (cfg.gpu) notes.push("gpu=" + cfg.gpu);
+      if (cfg.vkDevices) notes.push("vkDevices=" + cfg.vkDevices);
+      const cfgPort = Number(cfg.port);
+      if (Number.isFinite(cfgPort) && cfgPort !== PORT) problems.push("port=" + cfg.port + " 与实际监听 " + PORT + " 不一致（启动器或环境变量覆盖了它）");
+      for (const [k, label] of [["visionModel", "视觉模型"], ["visionMmproj", "视觉投影"]]) {
+        const v = String(cfg[k] || "").trim();
+        if (!v) continue;
+        const abs = path.isAbsolute(v) ? v : path.join(MODEL_DIR, v);
+        if (!existsSync(abs)) problems.push(label + "（config.ini 的 " + k + "）指向不存在的文件：" + v);
+      }
+      const devs = Array.isArray(gpuDeviceNames) ? gpuDeviceNames.length : 0;
+      const picked = String(cfg.vkDevices || "").split(",").map((x) => Number(x.trim())).filter((n) => Number.isFinite(n));
+      if (devs && picked.some((n) => n < 0 || n >= devs)) problems.push("vkDevices=" + cfg.vkDevices + " 超出可用设备（共 " + devs + " 个）");
+    }
+    const missingFile = problems.some((p) => p.indexOf("不存在的文件") >= 0);
+    add("config", missingFile ? "error" : problems.length ? "warn" : "ok", "配置",
+      cfgFile + " · " + notes.join(" · "),
+      problems.length ? problems.join("；") + "（改完要重启应用才生效）" : "");
+    cfgPublic = {
+      file: cfgFile, exists,
+      modelDir: String(cfg.modelDir || ""), port: String(cfg.port || ""), gpu: String(cfg.gpu || ""),
+      vkDevices: String(cfg.vkDevices || ""), visionModel: String(cfg.visionModel || ""), visionMmproj: String(cfg.visionMmproj || ""),
+    };
+  }
+
+  // ---- 视觉 sidecar（v1.3.x 的主打能力；发图 500 时这里是第一现场）----
+  try {
+    const vis = await visionState();
+    const comp = existsSync(LLAMA_SERVER);
+    const pair = vis.selected ? vis.selected.model + " + " + vis.selected.mmproj : "";
+    const detail = "8101 · " +
+      (vis.running ? "运行中 pid " + vis.pid + (vis.model ? " · " + path.basename(vis.model) : "") : "未运行（发图时自动拉起，首图 6–12s）") +
+      " · 配对 " + (pair || "无") + " · 上下文 " + vis.context +
+      (vis.idleExitSec ? " · 闲置 " + vis.idleExitSec + " 秒退出" : " · 闲置不退出") +
+      (vis.autoRestoreSec ? " · 看完图 " + vis.autoRestoreSec + " 秒装回文本模型" : "");
+    let level = "ok", fix = "";
+    if (!comp) {
+      level = "error";
+      fix = "视觉组件缺失：找不到 " + LLAMA_SERVER + "；重装发布包，或把 llama.cpp（llama-server.exe + 同目录 DLL）放进 app\\llama。不看图可以忽略";
+    } else if (!pair) {
+      level = "warn";
+      fix = "没有可用的「模型 + mmproj」组合：把 mmproj 放到 " + path.join(MODEL_DIR, "mmproj") + " 下，或在 config.ini 指定 visionModel / visionMmproj";
+    } else if (vis.error) {
+      level = "warn";
+      fix = "上次视觉启动/请求失败：" + String(vis.error).slice(0, 160) + "；点「重读」或查看日志尾部（vision.log）";
+    }
+    add("vision", level, "视觉 sidecar", detail, fix);
+    visPublic = {
+      running: vis.running, port: vis.port, pid: vis.pid || null, model: vis.model, mmproj: vis.mmproj,
+      pairs: Array.isArray(vis.pairs) ? vis.pairs.length : 0, selected: vis.selected || null,
+      context: vis.context, idleExitSec: vis.idleExitSec, autoRestoreSec: vis.autoRestoreSec,
+      error: vis.error || "", component: comp, note: vis.note || "",
+    };
+  } catch (e) {
+    add("vision", "warn", "视觉 sidecar", "读不到状态：" + String(e?.message ?? e));
+  }
+
+  // ---- 会话备份（2026-11-10 修：这里原来调用了不存在的 backupConfig()，
+  //      异常被空 catch 吞掉，导致「会话备份」这项从 11-04 起就没出现在页面上）----
+  try {
+    const bk = await readBackupConfig();
+    let lastAt = backupState.lastRunAt || 0;
+    if (bk.enabled && bk.dir) {
+      try {
+        const meta = JSON.parse(await readFile(path.join(resolveBackupDir(bk.dir), "backup.json"), "utf8"));
+        if (Number(meta.updatedAt) > lastAt) lastAt = Number(meta.updatedAt);
+      } catch {}
+    }
+    const last = backupState.lastResult;
+    if (!bk.enabled || !bk.dir) {
+      add("backup", "warn", "会话备份", "未开启（会话只在这台机器上）",
+        "设置 → 工具 → 会话备份：指向另一块盘/U 盘，防整盘坏或误删");
+    } else if (last && last.ok === false) {
+      add("backup", "warn", "会话备份",
+        bk.dir + " · 上次失败：" + String(last.error || last.skipped || "未知") + (lastAt ? " · " + fmtAgo(lastAt) : ""),
+        "检查备份目录是否可写、网络盘是否在线；备份失败不会打断对话");
+    } else {
+      add("backup", lastAt ? "ok" : "warn", "会话备份",
+        bk.dir + (lastAt ? " · 最近成功 " + fmtAgo(lastAt) : " · 还没跑过第一次") + " · 每 " + bk.intervalMin + " 分钟",
+        lastAt ? "" : "启动后 1 分钟内会自动跑第一次；也可以在设置里点「立即备份」");
+    }
+    bkPublic = { enabled: !!bk.enabled, dir: bk.dir || "", lastRunAt: lastAt, lastOk: last ? last.ok !== false : null, error: String(last?.error || ""), intervalMin: bk.intervalMin };
+  } catch (e) {
+    add("backup", "warn", "会话备份", "读备份配置失败：" + String(e?.message ?? e));
+  }
+
+  // ---- 文档索引新鲜度（有索引才报；ragWalk 结果缓存 60 秒）----
+  try {
+    const fr = await ragFreshness();
+    if (fr.files > 0) {
+      const lag = Number(fr.newest) - Number(fr.builtAt);
+      add("ragfresh", lag > 60 * 1000 ? "warn" : "ok", "索引新鲜度",
+        (fr.builtAt ? "索引 " + new Date(fr.builtAt).toISOString().slice(0, 16).replace("T", " ") : "索引时间未知") +
+        " · 最新文档 " + (fr.newest ? new Date(fr.newest).toISOString().slice(0, 16).replace("T", " ") : "—") +
+        " · " + fr.files + " 文件 / " + fr.chunks + " 段",
+        lag > 60 * 1000 ? "workspace 里有比索引更新的文档（新了 " + fmtSpan(lag) + "）：点「重建文档索引」，或等下一次检索自动增量同步" : "");
+    }
+  } catch (e) {
+    add("ragfresh", "warn", "索引新鲜度", "算不出来：" + String(e?.message ?? e));
+  }
+
   // ---- 源码与发布包一致性 ----
   const distApp = path.join(MODEL_DIR, "dist", "QingYaoTP AILauncher", "app");
   if (existsSync(distApp)) {
-    const pairs = ["app.mjs", "app.html", "doc-extract.mjs"];
+    const pairs = ["app.mjs", "app.html", "doc-extract.mjs", "debug.html", "localai-debug.mjs", "diag-zip.mjs"];
     const drifted = [];
     for (const name of pairs) {
       const a = await fileHash(path.join(HERE, name));
@@ -380,9 +683,31 @@ async function buildDiag() {
       if (a && b && a !== b) drifted.push(name);
     }
     add("dist", drifted.length ? "warn" : "ok", "发布包与源码",
-      drifted.length ? `${drifted.join("、")} 与 dist 不一致` : "三份文件哈希一致",
+      drifted.length ? `${drifted.join("、")} 与 dist 不一致` : "六份文件哈希一致",
       drifted.length ? "改完源码要拷进 dist\\QingYaoTP AILauncher\\app\\，否则发布包跑的是旧代码" : "");
   }
+
+  const summary = {
+    error: checks.filter((c) => c.level === "error").length,
+    warn: checks.filter((c) => c.level === "warn").length,
+    ok: checks.filter((c) => c.level === "ok").length,
+  };
+  // 「这项从什么时候开始坏/好」：进程内追踪 + 历史文件恢复（重启后徽标不回零）
+  await loadDiagHistory();
+  const nowIso = new Date().toISOString();
+  for (const c of checks) {
+    diagTitles.set(c.id, c.title);
+    const prev = diagTrack.get(c.id);
+    if (!prev) diagTrack.set(c.id, { level: c.level, since: nowIso, changedAt: nowIso, count: 1 });
+    else if (prev.level !== c.level) { prev.level = c.level; prev.since = nowIso; prev.changedAt = nowIso; prev.count = 1; }
+    else prev.count = (Number(prev.count) || 0) + 1;
+    const tr = diagTrack.get(c.id);
+    c.since = tr.since;
+    c.changedAt = tr.changedAt;
+    c.streak = tr.count;
+  }
+  await recordDiagHistory(checks, summary);
+  const hist = diagHistoryView(24, 200);
 
   return {
     now: new Date().toISOString(),
@@ -392,12 +717,116 @@ async function buildDiag() {
     system: { totalGB, freeGB, cpus: os.cpus().length, platform: os.platform(), arch: os.arch(), node: process.version },
     paths: { dir: HERE, modelDir: MODEL_DIR, sessions: SESSION_DIR, logs: logCandidates().find((p) => existsSync(p)) || logCandidates()[0], crashLog: CRASH_LOG },
     checks,
-    summary: {
-      error: checks.filter((c) => c.level === "error").length,
-      warn: checks.filter((c) => c.level === "warn").length,
-      ok: checks.filter((c) => c.level === "ok").length,
-    },
+    summary,
+    history: { points: diagLines.length, since: diagLines.length ? diagLines[0].t : null, changes: hist.changes },
+    vision: visPublic,
+    backup: bkPublic,
+    config: cfgPublic,
   };
+}
+
+
+/**
+ * 人话诊断报告：调试页「复制报告」的文本版 + 导出包里 REPORT.txt 用同一份格式。
+ * 重点是每条检查都带 fix —— 拿到报告的人不用再问「那我该怎么办」。
+ */
+function diagReportText(diag, res) {
+  const L = [];
+  const lm = (ts) => new Date(ts).toISOString().slice(0, 16).replace("T", " ");
+  L.push("QingYaoTP AILauncher（本地 AI）· Debugging Tool 诊断报告");
+  L.push("生成时间: " + lm(Date.now()));
+  L.push("版本: v" + diag.version.version + (diag.version.commit ? " (" + diag.version.commit + (diag.version.dirty ? " 未提交" : "") + ")" : diag.version.builtAt ? " 打包 " + diag.version.builtAt.slice(0, 16).replace("T", " ") : ""));
+  L.push("服务: 127.0.0.1:" + diag.server.port + " · pid " + diag.server.pid + " · 已运行 " + fmtSpan((diag.server.uptimeSec || 0) * 1000) + " · 后端 " + diag.server.gpu);
+  L.push("系统: " + diag.system.platform + " " + diag.system.arch + " · " + diag.system.cpus + " 核 · 内存 " + diag.system.totalGB + " GB（可用 " + diag.system.freeGB + "） · node " + diag.system.node);
+  L.push("模型: " + (diag.model.file || "未加载") + " · 上下文 " + diag.model.context + " · " + diag.model.layers + " 层 · KV 常驻 " + diag.model.cachedTokens + " token");
+  if (res) {
+    const c = res.cpu || {}, m = res.mem || {}, p = res.proc || {}, d = res.disk;
+    L.push("实时资源: CPU " + (typeof c.usagePct === "number" ? c.usagePct + "%" : "—") +
+      " · 内存 " + m.usedGB + "/" + m.totalGB + " GB (" + m.usedPct + "%)" +
+      " · 进程 RSS " + p.rssMB + " MB · 磁盘剩余 " + (d && d.path ? d.freeGB + " GB" : "—"));
+  }
+  if (diag.config) L.push("配置: " + diag.config.file + (diag.config.exists ? "（modelDir=" + (diag.config.modelDir || "空=便携默认") + "）" : "（不存在，用默认值）"));
+  if (diag.vision) L.push("视觉: 8101 " + (diag.vision.running ? "运行中 pid " + diag.vision.pid : "未运行") + " · 配对 " + (diag.vision.selected ? diag.vision.selected.model + " + " + diag.vision.selected.mmproj : "无") + " · 上下文 " + diag.vision.context);
+  if (diag.backup) L.push("备份: " + (diag.backup.enabled ? diag.backup.dir + (diag.backup.lastRunAt ? " · 最近成功 " + fmtAgo(diag.backup.lastRunAt) : " · 还没跑过") : "未开启"));
+  L.push("");
+  L.push("--- 检查（错误 " + diag.summary.error + " / 警告 " + diag.summary.warn + " / 正常 " + diag.summary.ok + "）---");
+  for (const c of diag.checks) {
+    const tag = c.level === "error" ? "[错误]" : c.level === "warn" ? "[警告]" : "[正常]";
+    L.push(tag + " " + c.title + " — " + c.detail + (c.fix ? "\n      → " + c.fix : ""));
+  }
+  L.push("");
+  L.push("--- 说明 ---");
+  L.push("这个包由 QingYaoTP AILauncher 的 Debugging Tool 生成，内容：本报告、diag.json（原始数据）、");
+  L.push("app.log/崩溃日志/视觉日志的尾部、消毒后的 config.ini（模型目录替换成 <MODEL_DIR>）。");
+  L.push("排查够用；如果要把包发给别人，自己再看一眼 logs 里有没有私人内容。");
+  return L.join("\n");
+}
+
+/** 导出诊断包：REPORT + diag.json + 日志尾部 + 消毒 config，打成零依赖 store zip */
+async function buildDiagBundle() {
+  const diag = await buildDiag();
+  let resources = null;
+  try { resources = await buildResources(); } catch {}
+  const pad = (n) => String(n).padStart(2, "0");
+  const now = new Date();
+  const stamp = now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + "-" + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
+  const entries = [];
+  const push = (name, data) => entries.push({ name, data: Buffer.isBuffer(data) ? data : Buffer.from(String(data ?? ""), "utf8") });
+
+  push("README.txt", [
+    "QingYaoTP AILauncher · 诊断包",
+    "生成时间: " + now.toISOString(),
+    "版本: v" + APP_VERSION + (BUILD.commit ? " (" + BUILD.commit + ")" : ""),
+    "",
+    "怎么用：把整个 zip 交给维护者（或自己留着回溯）。",
+    "  REPORT.txt   人话报告（先看这个）",
+    "  diag.json    机器可读的完整诊断（检查项 + 实时资源）",
+    "  logs/        应用日志 / 崩溃记录 / 视觉 sidecar 日志的尾部",
+    "  config.ini.sanitized  当前 config.ini（模型目录已替换成 <MODEL_DIR>，本机绝对路径不外泄）",
+    "  manifest.json 文件清单与 sha256",
+    "",
+    "隐私：日志里可能有你的提问片段；发出去前先扫一眼。",
+  ].join("\n"));
+
+  push("REPORT.txt", diagReportText(diag, resources));
+  push("diag.json", JSON.stringify({ diag, resources }, null, 2));
+
+  const appLog = logCandidates().find((p) => existsSync(p));
+  if (appLog) {
+    const t = await tailText(appLog, 500);
+    push("logs/app.tail.txt", "# " + (t.file || appLog) + "\n" + (t.text || ""));
+  }
+  if (existsSync(CRASH_LOG)) {
+    try { push("logs/crash.log", await readFile(CRASH_LOG)); } catch {}
+  }
+  if (existsSync(VISION_LOG)) {
+    const t = await tailText(VISION_LOG, 200);
+    push("logs/vision.tail.txt", "# " + VISION_LOG + "\n" + (t.text || ""));
+  }
+  {
+    const cfgFile = path.join(HERE, "..", "config.ini");
+    if (existsSync(cfgFile)) {
+      let text = await readFile(cfgFile, "utf8");
+      text = text.split(MODEL_DIR).join("<MODEL_DIR>");
+      try { text = text.split(os.homedir()).join("<HOME>"); } catch {}
+      push("config.ini.sanitized", text);
+    } else {
+      push("config.ini.sanitized", "（这份程序目录里没有 config.ini：开发目录或尚未生成）\n实际模型目录: <MODEL_DIR>\n");
+    }
+  }
+
+  const manifest = {
+    app: "QingYaoTP AILauncher",
+    kind: "diagnostics",
+    version: APP_VERSION,
+    commit: BUILD.commit || "",
+    createdAt: now.toISOString(),
+    summary: diag.summary,
+    files: entries.map((e) => ({ name: e.name, bytes: e.data.length, sha256: zipSha256(e.data) })),
+  };
+  push("manifest.json", JSON.stringify(manifest, null, 2));
+
+  return { zip: zipStore(entries, now), name: "qy-diagnostics-" + stamp + ".zip", stamp, entries: entries.length };
 }
 
 /**
@@ -5841,6 +6270,66 @@ async function handle(req, res) {
     const file = which === "crash" ? CRASH_LOG : (logCandidates().find((p) => existsSync(p)) || logCandidates()[0]);
     const t = await tailText(file, lines);
     return sendJson(res, 200, { which, file, ...t });
+  }
+
+
+  // 诊断历史（只读）：页面「诊断历史」卡与 CLI --history 用
+  if (req.method === "GET" && url.startsWith("/api/diag/history")) {
+    const q = new URL(req.url, "http://127.0.0.1");
+    const hours = Number(q.searchParams.get("hours")) || 24;
+    const limit = Number(q.searchParams.get("limit")) || 200;
+    await loadDiagHistory();
+    return sendJson(res, 200, diagHistoryView(hours, limit));
+  }
+
+  // 导出诊断包（zip）：页面「导出诊断包」与 CLI --export 都走这里
+  if (req.method === "POST" && url === "/api/diag/export") {
+    if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
+      return sendJson(res, 403, { error: { message: "缺少或错误的本地令牌，拒绝导出诊断包" } });
+    }
+    try {
+      const bundle = await buildDiagBundle();
+      res.writeHead(200, {
+        "content-type": "application/zip",
+        "content-disposition": 'attachment; filename="' + bundle.name + '"',
+        "content-length": String(bundle.zip.length),
+        "cache-control": "no-store",
+      });
+      log("调试面板：导出诊断包 " + bundle.name + "（" + bundle.zip.length + " 字节 / " + bundle.entries + " 个文件）");
+      return res.end(bundle.zip);
+    } catch (e) {
+      return sendJson(res, 500, { ok: false, error: { message: "导出诊断包失败：" + String(e?.message ?? e) } });
+    }
+  }
+
+  // 打开目录（程序目录 / 日志 / 模型 / 会话 / 工作区）：调试页三个按钮用
+  if (req.method === "POST" && url === "/api/diag/open-path") {
+    if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
+      return sendJson(res, 403, { error: { message: "缺少或错误的本地令牌，拒绝打开目录" } });
+    }
+    let body = {};
+    try { body = await readBody(req); } catch { return sendJson(res, 400, { error: { message: "请求体不是合法 JSON" } }); }
+    const which = String(body?.which || "");
+    const targets = {
+      dir: HERE,
+      logs: path.dirname(logCandidates().find((p) => existsSync(p)) || logCandidates()[0]),
+      modelDir: MODEL_DIR,
+      sessions: SESSION_DIR,
+      workspace: WORKSPACE,
+    };
+    if (!Object.prototype.hasOwnProperty.call(targets, which)) {
+      return sendJson(res, 400, { error: { message: "不认识的目录：" + (which || "（空）") + "；可选 dir / logs / modelDir / sessions / workspace" } });
+    }
+    const target = targets[which];
+    if (!existsSync(target)) return sendJson(res, 404, { error: { message: "目录不存在：" + target } });
+    try {
+      const child = spawn("explorer.exe", [target], { detached: true, stdio: "ignore", windowsHide: true });
+      child.unref();
+      log("调试面板：打开目录 " + which + " → " + target);
+      return sendJson(res, 200, { ok: true, which, path: target });
+    } catch (e) {
+      return sendJson(res, 500, { ok: false, error: { message: "打开目录失败：" + String(e?.message ?? e) } });
+    }
   }
 
   if (req.method === "POST" && url === "/api/diag/clear-crash") {

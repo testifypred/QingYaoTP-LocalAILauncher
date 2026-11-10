@@ -60,11 +60,16 @@ const brandOf = (f) => {
   if (n.includes("gpt") || n.includes("openai") || n.includes("oss")) return "openai";
   return "";
 };
-const wantBrand = brandOf(loadedFile);
+// 页面口径：有已加载模型就显示它的品牌；没有已加载模型时跟随选项卡里选中的模型
+//（userPicked 之前默认选中产物目录第一个）。所以期望品牌要按 loaded || selected 算，
+// 只看 loaded 会在「选了没加载」时误判成应该回退 ∫。
+let selectedFile = "";
+try { selectedFile = await ev("(() => { try { return typeof selectedModel === 'string' ? selectedModel : ''; } catch (e) { return ''; } })()"); } catch {}
+const wantBrand = brandOf(loadedFile || selectedFile);
 const mark = await ev("(() => { const box = document.querySelector('#modelBtn .int'); const img = document.getElementById('modelBtnImg'); const b = box?.querySelector('b'); if (!box || !img) return null; const cs = getComputedStyle(box); const r = img.getBoundingClientRect(); return { glyph: b?.textContent || '', q: box.querySelector('i')?.textContent || '', hasBrand: box.classList.contains('has-brand'), imgShown: !img.hidden && !!img.getAttribute('src'), src: img.getAttribute('src') || '', alt: img.getAttribute('alt') || '', bg: cs.backgroundColor, iw: Math.round(r.width), ih: Math.round(r.height) }; })()");
 if (wantBrand) {
-  ok("模型按钮显示已加载模型的品牌图标", !!mark && mark.hasBrand === true && mark.imgShown === true && mark.src === "/vendor/models/" + wantBrand + ".png",
-    mark ? mark.src : "missing");
+  ok("模型按钮显示（已加载/已选中）模型的品牌图标", !!mark && mark.hasBrand === true && mark.imgShown === true && mark.src === "/vendor/models/" + wantBrand + ".png",
+    (mark ? mark.src : "missing") + " · loaded=" + (loadedFile || "—") + " · selected=" + (selectedFile || "—"));
   ok("品牌图标有实际尺寸", !!mark && mark.iw >= 16 && mark.ih >= 16, mark ? mark.iw + "x" + mark.ih : "");
   ok("品牌图标不套黑底（回退标记此时隐藏）", !!mark && mark.hasBrand === true && /rgba?\(0, 0, 0, 0\)|transparent/.test(mark.bg), mark?.bg || "");
 } else {
@@ -104,9 +109,10 @@ ok("成功后给出提示", /调试窗口/.test(String(clicked?.toast || "")), S
 jsErrors = [];
 await send("Page.navigate", { url: BASE + "/debug" });
 await sleep(2600);
-const ui = await ev("({ checks: document.querySelectorAll('#checks li').length, pills: document.querySelectorAll('#pills .pill').length, log: (document.getElementById('logBox').textContent || '').length, title: document.title, env: document.querySelectorAll('#env b').length, model: document.querySelectorAll('#model b').length })");
+const ui = await ev("({ items: document.querySelectorAll('#checks li[data-id]').length, groups: document.querySelectorAll('#checks li.grp').length, pills: document.querySelectorAll('#pills .pill').length, log: (document.getElementById('logBox').textContent || '').length, title: document.title, env: document.querySelectorAll('#env b').length, model: document.querySelectorAll('#model b').length })");
 ok("调试页标题正确", /Debugging Tool/.test(ui.title || ""), ui.title);
-ok("渲染了检查项（>=12）", ui.checks >= 12, "li=" + ui.checks);
+// v2 起 #checks 里混有组头 li.grp，只数真正的检查项，避免「靠组头凑数」
+ok("渲染了检查项（>=12，不含组头）", ui.items >= 12, "items=" + ui.items + " · 组头=" + ui.groups);
 ok("渲染了三档统计", ui.pills === 3, "pills=" + ui.pills);
 ok("运行环境与模型区有内容", ui.env >= 5 && ui.model >= 4, ui.env + " / " + ui.model);
 ok("日志面板有内容", ui.log > 20, "chars=" + ui.log);
@@ -139,6 +145,79 @@ ok("调试页有实时资源卡与 sparkline", !!resUi && resUi.has && !!resUi.s
   resUi ? resUi.spark.w + "x" + resUi.spark.h + " · painted " + resUi.painted : "missing");
 ok("2.6s 后 CPU/内存有数值且条形有宽度", !!resUi && /^\d+%$/.test(resUi.cpu) && /\d+%/.test(resUi.mem) && resUi.cpuBar > 2 && resUi.memBar > 2,
   resUi ? resUi.cpu + " / " + resUi.mem + " · bars " + resUi.cpuBar + "/" + resUi.memBar + "px · " + resUi.updated : "missing");
+// ---- v2：过滤 chip / 分组 / data-* / 复制键 / 导出键 / 历史卡 ----
+const v2 = await ev(
+  "(() => {" +
+  "const txt = (id) => { const e = document.getElementById(id); return e ? e.textContent.trim() : null; };" +
+  "const items = [...document.querySelectorAll('#checks li[data-id]')];" +
+  "const groups = [...document.querySelectorAll('#checks li.grp')].map((e) => e.textContent.trim());" +
+  "const pills = [...document.querySelectorAll('#pills .pill')].map((e) => e.textContent.trim());" +
+  "const cp = items.filter((li) => li.querySelector('.cp')).length;" +
+  "const eb = document.getElementById('exportBtn');" +
+  "const hsp = document.getElementById('histSpark');" +
+  "const hl = document.getElementById('histList');" +
+  "let painted = -1;" +
+  "if (hsp) { try { const d = hsp.getContext('2d').getImageData(0, 0, hsp.width, hsp.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; painted = n; } catch (e2) {} }" +
+  "return {" +
+  " all: txt('filterAll'), err: txt('filterErr'), warn: txt('filterWarn')," +
+  " n: items.length," +
+  " errs: items.filter((li) => li.getAttribute('data-level') === 'error').length," +
+  " warns: items.filter((li) => li.getAttribute('data-level') === 'warn').length," +
+  " levelsOk: items.length > 0 && items.every((li) => ['ok', 'warn', 'error'].includes(li.getAttribute('data-level')))," +
+  " groupsOk: items.length > 0 && items.every((li) => !!li.getAttribute('data-group'))," +
+  " dataIds: items.filter((li) => !!li.getAttribute('data-id')).length," +
+  " groups: groups, pills: pills, cp: cp," +
+  " eb: eb ? { w: Math.round(eb.getBoundingClientRect().width), h: Math.round(eb.getBoundingClientRect().height), disabled: !!eb.disabled } : null," +
+  " hist: { card: !!document.getElementById('histCard'), spark: !!hsp, list: !!hl, note: !!document.getElementById('histNote') }," +
+  " painted: painted, histW: hsp ? hsp.width : 0, histH: hsp ? hsp.height : 0," +
+  " histKids: hl ? hl.children.length : -1," +
+  " histText: hl ? (hl.textContent || '').trim().slice(0, 100) : ''" +
+  "};" +
+  "})()"
+);
+const numOf = (t) => { const m = String(t == null ? "" : t).match(/\d+/); return m ? Number(m[0]) : null; };
+const pillNum = (kw, i) => { const p = (v2?.pills || []).find((x) => x.includes(kw)); return numOf(p != null ? p : (v2?.pills || [])[i]); };
+ok("3 个过滤 chip 都在（全部 / 错误 / 警告）",
+  !!v2 && /全部/.test(v2.all || "") && /错误/.test(v2.err || "") && /警告/.test(v2.warn || ""),
+  v2 ? [v2.all, v2.err, v2.warn].join(" · ") : "missing");
+ok("chip 计数与检查项/pills 自洽",
+  !!v2 && numOf(v2.all) === v2.n && numOf(v2.err) === v2.errs && numOf(v2.warn) === v2.warns &&
+  numOf(v2.err) === pillNum("错误", 0) && numOf(v2.warn) === pillNum("警告", 1),
+  v2 ? "全部 " + numOf(v2.all) + "=" + v2.n +
+    " · 错误 " + numOf(v2.err) + "=" + v2.errs + "/pill " + pillNum("错误", 0) +
+    " · 警告 " + numOf(v2.warn) + "=" + v2.warns + "/pill " + pillNum("警告", 1) : "missing");
+const errClick = await ev(
+  "(async () => {" +
+  "const errChip = document.getElementById('filterErr');" +
+  "if (!errChip) return null;" +
+  "errChip.click();" +
+  "await new Promise((r) => setTimeout(r, 250));" +
+  "const left = [...document.querySelectorAll('#checks li[data-id]')];" +
+  "const levels = left.map((li) => li.getAttribute('data-level'));" +
+  "const box = document.getElementById('checks');" +
+  "const clip = box ? (box.textContent || '') : '';" +
+  "const allChip = document.getElementById('filterAll'); if (allChip) allChip.click();" +
+  "await new Promise((r) => setTimeout(r, 250));" +
+  "return { chip: errChip.textContent.trim(), n: left.length, levels: levels, clip: clip.slice(0, 80) };" +
+  "})()"
+);
+const errsBefore = v2 ? v2.errs : -1;
+const filterOk = !!errClick && errClick.levels.every((l) => l === "error") &&
+  (errsBefore > 0 ? errClick.n === errsBefore : (errClick.n === 0 && /错误\s*0/.test(errClick.chip || "")));
+ok("点「错误」过滤后只剩 error 项（无错误项时「错误 0」+ 空列表）", filterOk,
+  errClick ? "errsBefore=" + errsBefore + " · 过滤后 " + errClick.n + " 项 · " +
+    JSON.stringify(errClick.levels.slice(0, 6)) + " · " + errClick.chip : "missing");
+ok("检查项按组分组（组头 >= 4）", !!v2 && v2.groups.length >= 4,
+  v2 ? v2.groups.length + " 个 · " + v2.groups.slice(0, 8).join("/") : "missing");
+ok("每项带 data-id/data-level/data-group", !!v2 && v2.n > 0 && v2.dataIds === v2.n && v2.levelsOk && v2.groupsOk,
+  v2 ? "items=" + v2.n + " · data-id=" + v2.dataIds + " · level合法=" + v2.levelsOk + " · group合法=" + v2.groupsOk : "missing");
+ok("每项都有复制键 .cp", !!v2 && v2.n > 0 && v2.cp === v2.n, v2 ? v2.cp + "/" + v2.n : "missing");
+ok("#exportBtn 存在且可点", !!v2 && !!v2.eb && v2.eb.w > 10 && v2.eb.h > 10 && !v2.eb.disabled,
+  v2 && v2.eb ? v2.eb.w + "x" + v2.eb.h + (v2.eb.disabled ? " · disabled" : "") : "missing");
+ok("历史卡存在且有内容/明确空态（#histCard/#histSpark/#histList）",
+  !!v2 && v2.hist.card && v2.hist.spark && v2.hist.list && v2.histW > 100 &&
+  (v2.painted > 0 || v2.histKids > 0 || /还没有历史|暂无历史|没有历史/.test(v2.histText)),
+  v2 ? "spark " + v2.histW + "x" + v2.histH + " · painted " + v2.painted + " · list kids " + v2.histKids + " · " + v2.histText : "missing");
 ok("调试页无未捕获 JS 异常", jsErrors.length === 0, jsErrors.slice(0, 3).join(" | "));
 
 // 回到主界面，别把共用页面留在调试页
