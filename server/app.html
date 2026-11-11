@@ -243,6 +243,10 @@ header::after{
 .modelRow .meta b{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .modelRow .meta i{font-style:normal;font-size:10.5px;color:var(--dim);font-family:var(--mono)}
 .modelRow .on{margin-left:auto;width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok);flex:none}
+/* 每行右侧的「删」：小字、不换行；有运行绿点时紧跟在绿点右侧 */
+.modelDel{margin-left:auto;flex:none;font-size:10.5px;line-height:1;color:var(--dim);padding:2px 5px;border-radius:4px;border:1px solid transparent;cursor:pointer;user-select:none}
+.modelDel:hover,.modelDel:focus-visible{color:var(--err);border-color:var(--err);background:rgba(251,113,133,.10);outline:none}
+.modelRow .on + .modelDel{margin-left:4px}
 .modelMenuFoot{display:flex;align-items:center;gap:8px;margin-top:6px;padding:8px 8px 4px;border-top:1px solid var(--line)}
 .modelMenuFoot .ctxRow{margin-right:auto;font-size:11px;color:var(--dim);display:flex;align-items:center;gap:6px}
 .modelMenuFoot select{padding:3px 6px;font-size:11px}
@@ -903,6 +907,15 @@ math-field:focus-within{border-color:var(--cyan)}
 .modalFoot{display:flex;align-items:center;gap:10px;padding:13px 18px;border-top:1px solid var(--line)}
 .modalFoot .hintText{flex:1;font-size:11.5px;color:var(--dim);line-height:1.45}
 
+/* 删除模型确认弹窗 */
+.delName{font-size:13.5px;font-weight:600;color:var(--text);font-family:var(--mono);overflow-wrap:anywhere}
+.delMeta{font-size:12px;color:var(--text-2);font-variant-numeric:tabular-nums}
+.delWarn{font-size:12px;line-height:1.6;color:var(--warn);border:1px solid var(--warn);border-radius:5px;padding:8px 10px;background:rgba(251,191,36,.07)}
+/* 删除是破坏性主操作：用红色实心，别沿用蓝色主按钮 */
+#delModelConfirm{background:linear-gradient(145deg,#f43f5e,#be123c);border-color:rgba(251,113,133,.65);color:#fff}
+#delModelConfirm:hover:not(:disabled){filter:brightness(1.1);border-color:var(--err);box-shadow:0 0 16px rgba(251,113,133,.35)}
+#delModelConfirm:focus-visible{outline:2px solid var(--err);outline-offset:1px}
+
 /* 外观自定义 */
 .swatches{display:flex;gap:8px;flex-wrap:wrap}
 .swatch{width:26px;height:26px;border-radius:50%;border:2px solid var(--line);cursor:pointer;transition:transform .12s}
@@ -1266,6 +1279,27 @@ header::before{
       <span class="hintText">以后想恢复提示：设置 → 生成 →「多回答预加载」。</span>
       <button id="preloadCancel" class="ghost">取消</button>
       <button id="preloadOk">仍然开启</button>
+    </div>
+  </div>
+</div>
+
+<!-- 删除模型文件：破坏性操作，先 dryRun 拿清单，再确认 -->
+<div id="delModelModal" class="modal" hidden>
+  <div class="modalBox" style="width:min(480px,92vw)">
+    <div class="modalHead">
+      <b>删除模型</b>
+      <span class="spacer"></span>
+      <button id="delModelClose" class="ghost" title="关闭">✕</button>
+    </div>
+    <div class="settingsBody">
+      <div id="delModelName" class="delName"></div>
+      <div id="delModelMeta" class="delMeta"></div>
+      <div class="delWarn">默认移到回收站，可在回收站还原；回收站不可用时才永久删除、无法恢复。</div>
+    </div>
+    <div class="modalFoot">
+      <span class="hintText">正在运行、视觉 sidecar 在用或下载中的模型不能删。</span>
+      <button id="delModelCancel" class="ghost">取消</button>
+      <button id="delModelConfirm" class="danger">删除</button>
     </div>
   </div>
 </div>
@@ -2955,6 +2989,27 @@ function renderModelTabs(models, loadedFile) {
       row.appendChild(on);
     }
 
+    // 「删」：只删文件，不选中、不加载整行——必须 stopPropagation
+    const del = document.createElement('span');
+    del.className = 'modelDel';
+    del.setAttribute('role', 'button');
+    del.tabIndex = 0;
+    del.title = '删除这个模型文件（默认进回收站）';
+    del.textContent = '删';
+    del.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openDelModel(m.file).catch(() => {});
+    };
+    del.onkeydown = (e) => {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();
+        e.stopPropagation();
+        openDelModel(m.file).catch(() => {});
+      }
+    };
+    row.appendChild(del);
+
     // 点一下就选中并加载（不再有单独的「加载」按钮）
     row.onclick = async () => {
       userPicked = true;
@@ -3023,6 +3078,89 @@ $('modelAddBtn').onclick = () => {
 function syncTabSel() {
   for (const el of modelSel.children) el.classList.toggle('sel', el.dataset.file === selectedModel);
 }
+
+// ---------------------------------------------------------------- 删除模型文件
+// 破坏性操作：先 dryRun 只校验、把「会删哪些文件/多大」摆给用户看，确认后才真删。
+// 回收站与否由后端决定（recycled），这里只如实转述。
+let delPending = null; // 已通过 dryRun、等待确认的文件名
+let delBusy = false;   // 真删请求进行中，防重复点击
+
+function resetDelButtons() {
+  const c = $('delModelConfirm'), cancel = $('delModelCancel'), close = $('delModelClose');
+  if (c) { c.disabled = false; c.textContent = '删除'; }
+  if (cancel) cancel.disabled = false;
+  if (close) close.disabled = false;
+}
+
+function closeDelModel() {
+  if (delBusy) return; // 删除请求进行中不关，避免状态错乱
+  $('delModelModal').hidden = true;
+  delPending = null;
+}
+
+/** 点「删」：dryRun 校验 → 填弹窗打开（此时文件一个都没动） */
+async function openDelModel(file) {
+  if (delBusy) return;
+  closeModelMenu();
+  try {
+    const j = await apiJson('/api/models/delete', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-local-token': localToken },
+      body: JSON.stringify({ file, dryRun: true }),
+    });
+    delPending = file;
+    const n = Number(j.shardCount) || (j.files || []).length || 1;
+    $('delModelName').textContent = file;
+    $('delModelMeta').textContent =
+      n + ' 个文件 · 共 ' + fmtSize(j.totalBytes) + (n > 1 ? '（分片模型，整组一起删除）' : '');
+    resetDelButtons();
+    $('delModelModal').hidden = false;
+    $('delModelConfirm').focus();
+  } catch (e) {
+    // 400/404/409 等后端已是人话，直接转述
+    showToast(e.message, 'err', 6000);
+  }
+}
+
+/** 确认删除：dryRun:false → toast → 关弹窗 → 清选中 → 刷新 */
+async function confirmDelModel() {
+  const file = delPending;
+  if (!file || delBusy) return;
+  delBusy = true;
+  const confirmBtn = $('delModelConfirm'), cancelBtn = $('delModelCancel'), closeBtn = $('delModelClose');
+  confirmBtn.disabled = true;
+  cancelBtn.disabled = true;
+  closeBtn.disabled = true;
+  confirmBtn.textContent = '删除中…';
+  try {
+    const j = await apiJson('/api/models/delete', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-local-token': localToken },
+      body: JSON.stringify({ file, dryRun: false }),
+    });
+    const n = Number(j.shardCount) || (j.files || []).length || 1;
+    const how = j.recycled ? '已移入回收站' : '已永久删除';
+    delBusy = false;
+    $('delModelModal').hidden = true;
+    delPending = null;
+    resetDelButtons();
+    if (selectedModel === file) selectedModel = '';
+    showToast('已删除 ' + n + ' 个文件，释放 ' + fmtSize(j.totalBytes) + '（' + how + '）', 'ok', 6000);
+    refresh().catch(() => {});
+  } catch (e) {
+    delBusy = false;
+    resetDelButtons();
+    showToast(e.message, 'err', 6000); // 409（正在用）等直接显示后端原文
+  }
+}
+
+$('delModelCancel').onclick = closeDelModel;
+$('delModelClose').onclick = closeDelModel;
+$('delModelConfirm').onclick = () => { confirmDelModel().catch(() => {}); };
+$('delModelModal').addEventListener('click', (e) => { if (e.target === $('delModelModal')) closeDelModel(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('delModelModal').hidden) closeDelModel();
+});
 
 // ---------------------------------------------------------------- 朗读（TTS）
 // 控件都在「设置 → 朗读」里；这里只管播放状态与请求

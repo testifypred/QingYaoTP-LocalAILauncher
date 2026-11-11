@@ -130,6 +130,7 @@ $probes=@(
   @{n='probe-start-screen'; a=@($cdp,$shots); t=150},
   @{n='probe-start-flow'; a=@($cdp,$shots); t=180},
   @{n='probe-model-add'; a=@($cdp); t=150},
+  @{n='probe-model-delete'; a=@($cdp,$base); t=200},
   @{n='probe-menu-stacking'; a=@($cdp); t=150},
   @{n='probe-status'; a=@($cdp); t=150},
   @{n='probe-code-panel'; a=@($base,$cdp); t=150},   # 2026-11-08 修正：该探针签名是 [base] [cdp]，11-02 版驱动只传了 cdp

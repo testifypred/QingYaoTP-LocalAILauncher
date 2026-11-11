@@ -1742,6 +1742,116 @@ async function scanModels() {
   return out.sort((a, b) => a.label.localeCompare(b.label));
 }
 
+// ---------------------------------------------------------------- 模型删除（破坏性）
+/**
+ * 删除模型文件。设计要点：
+ *  - 只允许删 MODEL_DIR 里、名字不带路径的 .gguf（防目录穿越；mmproj 不在模型库里，也删不到）；
+ *  - 分片模型（xxx-00001-of-00002.gguf）删任意一片就把整组删掉，否则会留下「缺片」的残骸；
+ *  - 正在加载的模型 / 视觉 sidecar 在用的模型 / 正在下载的文件，一律拒绝（让用户先卸载/停视觉/取消下载）；
+ *  - 默认走 Windows 回收站（误删能还原），回收站不可用时才永久删除，并在响应里如实告诉前端。
+ */
+function shardGroupOf(name) {
+  const m = /^(.*)-0000\d-of-0000(\d)\.gguf$/i.exec(String(name));
+  if (!m) return [String(name)];
+  const prefix = m[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp("^" + prefix + "-0000\\d-of-0000" + m[2] + "\\.gguf$", "i");
+  return re;
+}
+
+/** 路径 → 回收站（Windows）。返回 true 表示全部成功；失败由调用方回退成永久删除。 */
+function recycleToRecycleBin(paths) {
+  if (process.platform !== "win32" || !paths.length) return false;
+  try {
+    const script = [
+      "$ErrorActionPreference = 'Stop'",
+      "Add-Type -AssemblyName Microsoft.VisualBasic",
+      "$paths = ConvertFrom-Json $env:LOCALAI_RECYCLE_PATHS",
+      "foreach ($p in $paths) { [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p, 'OnlyErrorDialogs', 'SendToRecycleBin') }",
+    ].join("; ");
+    const r = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script], {
+      env: { ...process.env, LOCALAI_RECYCLE_PATHS: JSON.stringify(paths) },
+      windowsHide: true,
+      encoding: "utf8",
+      timeout: 30000,
+    });
+    if (r.status === 0) return true;
+    log("回收站删除失败，将回退永久删除：" + String(r.stderr || r.error || "").slice(0, 200));
+  } catch (e) {
+    log("回收站删除异常，将回退永久删除：" + String(e?.message ?? e));
+  }
+  return false;
+}
+
+const deleteFail = (status, message) => Object.assign(new Error(message), { status });
+
+async function deleteModelFiles(rawFile, opts = {}) {
+  const file = String(rawFile || "").trim();
+  if (!file) throw deleteFail(400, "缺少 file 参数（要删除的模型文件名）");
+  if (file.includes("/") || file.includes("\\") || file.includes("..")) {
+    throw deleteFail(400, "只接受模型目录里的文件名，不能带路径：" + file);
+  }
+  if (!/\.gguf$/i.test(file)) throw deleteFail(400, "只支持删除 .gguf 模型文件：" + file);
+
+  let names;
+  const re = shardGroupOf(file);
+  if (re instanceof RegExp) {
+    const all = (await readdir(MODEL_DIR).catch(() => [])).filter((n) => re.test(n));
+    names = all.length ? all.sort() : [file];
+  } else {
+    names = re;
+  }
+
+  const files = [];
+  let totalBytes = 0;
+  for (const name of names) {
+    if (name.includes("/") || name.includes("\\") || name.includes("..")) throw deleteFail(400, "非法文件名：" + name);
+    const full = path.join(MODEL_DIR, name);
+    const rel = path.relative(MODEL_DIR, full);
+    if (rel.startsWith("..") || path.isAbsolute(rel)) throw deleteFail(400, "路径越界：" + name);
+    let st;
+    try { st = await stat(full); } catch { throw deleteFail(404, "文件不存在（可能已经被删了）：" + name); }
+    if (!st.isFile()) throw deleteFail(400, "不是普通文件，拒绝删除：" + name);
+    files.push({ name, path: full, bytes: st.size });
+    totalBytes += st.size;
+  }
+
+  // 正在用的不能删：文本模型 / 视觉 sidecar / 下载中
+  const loaded = String(state.file || "");
+  if (loaded && files.some((f) => f.name === loaded)) {
+    throw deleteFail(409, "这个模型正在运行（已加载），先点「卸载」或换成别的模型再删");
+  }
+  if (visionRunning() && vision.model) {
+    const visName = path.basename(vision.model);
+    if (files.some((f) => f.name === visName)) {
+      throw deleteFail(409, "视觉 sidecar 正在用这个模型，先去「设置 → 视觉」停掉看图模型再删");
+    }
+  }
+  if (dl.active && dl.file && files.some((f) => f.name === dl.file)) {
+    throw deleteFail(409, "这个文件正在下载中，先取消下载再删");
+  }
+
+  const payload = {
+    file,
+    files: files.map((f) => ({ name: f.name, bytes: f.bytes, mb: Number((f.bytes / 1048576).toFixed(1)) })),
+    shardCount: files.length,
+    totalBytes,
+    totalMB: Number((totalBytes / 1048576).toFixed(1)),
+    totalGB: Number((totalBytes / 1024 ** 3).toFixed(2)),
+  };
+  if (opts.dryRun) return { ok: true, dryRun: true, ...payload };
+
+  let recycled = recycleToRecycleBin(files.map((f) => f.path));
+  if (!recycled) {
+    for (const f of files) {
+      try { await unlink(f.path); } catch (e) { throw deleteFail(500, "删除失败：" + f.name + "（" + String(e?.message ?? e) + "）"); }
+    }
+  }
+  log(`删除模型 ${files.map((f) => f.name).join(", ")}（${(totalBytes / 1024 ** 3).toFixed(2)} GB，${recycled ? "已移入回收站" : "永久删除"}）`);
+  return { ok: true, dryRun: false, ...payload, recycled };
+}
+
+
+
 async function unloadModel() {
   // 常驻会话先放手：它持有序列的引用，顺序错了会碰到已销毁的序列
   if (state.session) {
@@ -6508,6 +6618,23 @@ async function handle(req, res) {
       return sendJson(res, 200, { ok: true, ...r, context: state.contextSize, layers: state.layers });
     } catch (err) {
       return sendJson(res, 500, { error: { message: String(err?.message ?? err) } });
+    }
+  }
+
+  // 删除模型文件（破坏性）：需令牌；dryRun 只做校验并返回「将会删掉哪些文件」
+  if (req.method === "POST" && url === "/api/models/delete") {
+    if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
+      return sendJson(res, 403, { error: { message: "缺少或错误的本地令牌，拒绝删除模型" } });
+    }
+    let body;
+    try { body = await readBody(req); } catch (e) {
+      return sendJson(res, 400, { error: { message: e?.message ?? "JSON 解析失败" } });
+    }
+    try {
+      const r = await deleteModelFiles(body?.file, { dryRun: Boolean(body?.dryRun) });
+      return sendJson(res, 200, r);
+    } catch (e) {
+      return sendJson(res, e?.status || 500, { ok: false, error: { message: String(e?.message ?? e) } });
     }
   }
 
