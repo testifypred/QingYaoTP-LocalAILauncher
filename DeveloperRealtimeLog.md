@@ -3,7 +3,7 @@
 > 原名 `HANDOFF.md`，由上一任开发者写于 **2026-10-18 21:45**。
 > 从 **2026-10-18 21:44** 起，本文件改为**按时间流水记录**：每一笔写清「几点、改了什么、落在哪、怎么验的」。
 > 第一节是日志索引，其后的一~七节是原交接正文（保留原样，仅修正两处日期笔误），八~十节是本次三项需求的详细设计说明。
-> 最新一笔：**2026-11-12 凌晨**（第五十五节，删除模型：dryRun 确认 + 回收站 + 分片整组 + 使用中拒绝 + 新探针；版本仍 1.3.1，未重打 zip）。全部时间均为 China Standard Time，本机时钟。
+> 最新一笔：**2026-11-13 深夜**（第五十六节，交接收口：无代码改动，核对状态 + 重启发布包 + 刷新文档；版本仍 1.3.1，未重打 zip）。全部时间均为 China Standard Time，本机时钟。
 >
 > **接手先读 [`交接文档.md`](交接文档.md)**（一页纸：定位、现状、代码地图、下一步）。
 > 技术专题已抽到 [`technique/`](technique/)：架构、接口、插件、模型、打包、探针、坑。本文件保留**按时间流水**的原始记录，作为「为什么这么做」的证据。
@@ -2632,4 +2632,38 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 - 证据：`server\docs\feature-model-delete-2026-11-11\`（CONTRACT、release-probe-*.out.txt、亮/暗截图）。
 - 口径：全量 **55 条**、断言 **847**。
 - 下一步仍是**打包 v1.4.0 + 重打交付 zip**——源码已领先交付包三个功能（Debugging Tool v2、下载进度条、删除模型）。
+---
+
+## 五十六、2026-11-13 深夜：交接整理（无代码改动）
+
+> 这一笔只是一次「交接收口」：核对真实状态、把停掉的服务拉起来、刷新文档；**产品代码一行没改**。
+
+### 一、交接时实测
+
+- **git**：HEAD `149cc5a`（文档提交），工作区干净；三个产品提交在 `4c698c6`（Debugging Tool v2）/ `1ca6fb0`（下载进度条）/ `b5c0e16`（删除模型）。
+- **服务**：机器重启后 8099 曾停（无 node、无启动器进程）；已重新启动 `dist` 发布包——v1.3.1、5 个模型 / 8 个真实会话 / **未加载模型**、`gpu=vulkan`。
+- **dist**：运行目录 **3500 文件 / 359.5MB**（v1.3.1 打包时 3497 / 359.4MB；之后只同步了三个功能的源码，**未重打包**）；交付 zip 仍是 11-08 的 `QingYaoTP-AILauncher-v1.3.1.zip`（158.5MB / 3998 条）。
+- **探针**：75 个 `probe-*.mjs`；全量驱动 **55 条**（`run-full.ps1` BOM `EF BB BF`、PS5.1 Parser 0 错误）；断言口径 **847**（763 − 58 + 87 = 792 → +35 = 827 → +20 = 847）。
+- **builtAt 口径**：`/api/version` 现在显示 `2026-11-11T15:53:49Z`，那是同步 dist 的文件时间，**不是重打包证据**。
+- **发布包冒烟**（11-13 交接时）：首页 HTTP 200 / 363045 字节且含 `#delModelModal` + `#dlWrap`；`/debug` HTTP 200 / 39603 字节且含 `#filterErr` + `#exportBtn`；`/api/diag` 23 项（error 0 / warn 3 / ok 20）且「发布包与源码」= 六份文件哈希一致；`/api/download/state` 新字段齐全；`/api/state` 5 模型 / loaded 空 / activeChats 0。
+
+### 二、这次更新了哪些文档
+
+| 文档 | 改了什么 |
+|---|---|
+| `交接文档.md` | 最后更新 → 2026-11-13 交接整理轮；当前状态（HEAD `149cc5a`、新增「服务」行、发布包口径 3500/359.5MB 并注明未重打包）、验证块新增 11-13 交接检查；「从零部署」的 zip 名改到 v1.3.1；代码地图行数改为真实值（app.mjs ~7700 / app.html ~7400） |
+| `新会话启动词.md` | 更新于/现状快照（11-13，服务=发布包、5 模型/8 会话/未加载）；探针 75 个 / 55 条 / 847；起服务示例补 `probe-download-ui`、`probe-model-delete`；`run-full` 注释改为 55 条；关键文件索引补两个新探针与两个 feature 目录、日志指到第五十六节；开场块改成「打包 v1.4.0 + 干净全量 55 条」 |
+| `DeveloperRealtimeLog.md` | 本节 + 文件头「最新一笔」 |
+| `technique/` | 上一轮已更新接口与探针口径（`/api/models/delete`、写死端口坑）；本轮无代码改动，不重复改 |
+
+### 三、下一轮（第一件事不变）
+
+1. **打包 v1.4.0 + 重打交付 zip**：三功能（Debugging Tool v2 / 下载进度条 / 删除模型）一次带进交付包；升 `APP_VERSION`/`package.json`/`localai.mjs` 三处 → `build-portable.ps1` → `make-zip.ps1` → 按 `technique\05` 自检（`diag-zip.mjs` 进包、包内 `/api/diag` 23 项、`/debug` 新 UI、模型菜单有「删」、顶栏下载进度条）；再跑一次**干净全量 55 条**。
+2. 之后按 `交接文档.md` 的「下一步」：视觉增强包拆分、图片落盘、7B 分片下载等。
+
+### 四、交接提醒
+
+- **机器重启后服务会停**：双击 `dist\QingYaoTP AILauncher\QingYaoTP AILauncher.exe` 恢复（重启用要先结束启动器，单实例）；服务起来后 `/api/version` 应报 1.3.1。
+- **界面探针需要 headless Edge 9333**；`probe-model-add.mjs` 写死 9333（不读参数），别在别的端口上跑它。
+- 跑全量前备份 `workspace\sessions`，跑完从 `server\docs\session-backups\<时间戳>\` 恢复（`probe-ui-sessions` 会清空）。
 
