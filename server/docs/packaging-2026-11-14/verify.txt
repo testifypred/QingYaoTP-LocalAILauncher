@@ -1,0 +1,55 @@
+﻿=== A. dist 目录 ===
+files=4184  sizeMB=528.4
+=== B. 关键文件 ===
+  app/app.mjs = True  339143
+  app/app.html = True  363045
+  app/doc-extract.mjs = True  10750
+  app/config-recommend.mjs = True  6063
+  app/debug.html = True  39603
+  app/localai-debug.mjs = True  36410
+  app/localai-debug.cmd = True  786
+  app/debug-icon-64.png = True  3371
+  app/package.json = True  304
+  app/localai.cmd = True  304
+  app/localai-tui.cmd = True  258
+  root/localai.ico = True  31308
+  root/QingYaoTP AILauncher.exe = True  57856
+  root/DebugTool.exe = True  42496
+  root/config.ini = True  1688
+  root/使用说明.txt = True  6183
+  app/llama/llama-server.exe = True  0MB
+  app/llama/mtmd.dll = True  2.4MB
+=== C. 源码哈希一致 ===
+  app.mjs SAME
+  app.html SAME
+  doc-extract.mjs SAME
+  debug.html SAME
+  localai-debug.mjs SAME
+  diag-zip.mjs SAME
+=== D. 版本 ===
+  dist app/package.json version = 
+  src package.json version = 
+=== E. zip 条目 ===
+entries=3999
+without-prefix=0
+with-backslash=0
+pid/log/tmp=0
+gguf/mmproj=0
+data-content-entries=0  logs-content-entries=0
+models-entry-prefix=1
+=== F. zip 内文件对照 ===
+  app/app.mjs zipped=339143 src=339143 MATCH
+  exe zipped=57856 (expect 57856)
+  app/llama/llama-server.exe = 0MB
+  --- package config.ini ---
+    port=8099
+    modelDir=
+    autoLoad=
+    contextSize=16384
+    gpu=auto
+    vkDevices=
+    visionModel=
+    visionMmproj=
+  config contains D:\LocalModels ? False
+=== G. 结论 ===
+dist files=4184 ; zip entries=3999

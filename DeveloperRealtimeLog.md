@@ -3,7 +3,7 @@
 > 原名 `HANDOFF.md`，由上一任开发者写于 **2026-10-18 21:45**。
 > 从 **2026-10-18 21:44** 起，本文件改为**按时间流水记录**：每一笔写清「几点、改了什么、落在哪、怎么验的」。
 > 第一节是日志索引，其后的一~七节是原交接正文（保留原样，仅修正两处日期笔误），八~十节是本次三项需求的详细设计说明。
-> 最新一笔：**2026-11-13 深夜**（第五十六节，交接收口：无代码改动，核对状态 + 重启发布包 + 刷新文档；版本仍 1.3.1，未重打 zip）。全部时间均为 China Standard Time，本机时钟。
+> 最新一笔：**2026-11-15 凌晨**（第五十七节，打包轮：版本升 **1.4.0**、重打发布包与交付 zip、55 条回归全绿；产品代码只动了版本号）。全部时间均为 China Standard Time，本机时钟。
 >
 > **接手先读 [`交接文档.md`](交接文档.md)**（一页纸：定位、现状、代码地图、下一步）。
 > 技术专题已抽到 [`technique/`](technique/)：架构、接口、插件、模型、打包、探针、坑。本文件保留**按时间流水**的原始记录，作为「为什么这么做」的证据。
@@ -2667,3 +2667,84 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 - **界面探针需要 headless Edge 9333**；`probe-model-add.mjs` 写死 9333（不读参数），别在别的端口上跑它。
 - 跑全量前备份 `workspace\sessions`，跑完从 `server\docs\session-backups\<时间戳>\` 恢复（`probe-ui-sessions` 会清空）。
 
+
+## 五十七、2026-11-14 → 11-15 凌晨：v1.4.0 打包（三功能入库）+ 重打交付 zip + 55 条回归
+
+> 这一笔是「打包轮」：把 11-10 / 11-11 / 11-12 三个已经进源码的功能（Debugging Tool v2 `4c698c6`、下载进度条 `1ca6fb0`、删除模型 `b5c0e16`）第一次做进交付包。
+> **产品代码只改了版本号与 `make-zip.ps1` 的默认值**，三个功能本身一行没动。
+
+### 一、版本号 1.3.1 → 1.4.0（四处对齐）
+
+| 文件 | 改动 |
+|---|---|
+| `server\app.mjs` | `const APP_VERSION = "1.4.0"`（唯一事实来源） |
+| `server\package.json` | `"version": "1.4.0"`（`probe-version` 拿它对账） |
+| `server\localai.mjs` | `const VERSION = "1.4.0"`（CLI `localai version`） |
+| `server\make-zip.ps1` | 注释两处 + `$Zip` / `$RootName` 默认值改 `...-v1.4.0` |
+
+- `node --check` 过 `app.mjs` / `localai.mjs`（exit 0）。
+- **`make-zip.ps1` 改完 BOM 又丢了**：按字节补回 `EF BB BF`；三个 .ps1（build / make-zip / run-full）过 PS 5.1 Parser **0 错误**。
+
+### 二、发布包与交付 zip
+
+| 项 | 实测 |
+|---|---|
+| `build-portable.ps1` | exit 0 / **23.7s** / 8 步全过（含「编译调试工具」） |
+| 发布包 | **359.5MB / 3498 文件**（`app\` 245.5MB，其中 `app\llama\` 视觉 sidecar 101MB；`data\` 168.8MB 是运行期 WebView2 缓存，可删） |
+| 交付 zip | `dist\QingYaoTP-AILauncher-v1.4.0.zip` = **166,235,420 B / 158.5MB / 3999 条目 / 101.2s** |
+| SHA256 | `35D6B656C66506740F7C4C1D658D33B3BE371B82C124DA9EF931585CF4BA0194` |
+
+### 三、按 `technique\05` 自检（逐条过）
+
+| 检查 | 结果 |
+|---|---|
+| `app\` 关键文件 | app.mjs / app.html / doc-extract.mjs / config-recommend.mjs / debug.html / localai-debug.mjs / localai-debug.cmd / debug-icon-64.png / package.json 全在；根目录 localai.ico、`QingYaoTP AILauncher.exe`(57,856B)、DebugTool.exe(42,496B) 在 |
+| 源码一致 | app.mjs / app.html / doc-extract.mjs / debug.html / localai-debug.mjs / diag-zip.mjs **六份 SHA256 与 `server\` 相同** |
+| 视觉 sidecar | `app\llama\` 54 个文件（`llama-server.exe` 9,728B 壳 + `llama-server-impl.dll` 10MB + `ggml-vulkan.dll` 42MB + `mtmd.dll` 2.5MB，合计 ≈101MB） |
+| zip 条目卫生 | 3999 条目全部带 `QingYaoTP AILauncher-v1.4.0/` 前缀；反斜杠 **0**；`.pid/.log/.tmp` **0**；gguf/mmproj **0**；`data`/`logs` 无实际文件 |
+| zip 配置消毒 | 包内 `config.ini` 的 `modelDir=` / `autoLoad=` / `vkDevices=` / `visionModel=` / `visionMmproj=` **全空**，全文无 `D:\LocalModels` |
+| zip 内容 | `app/app.mjs` 339,143B 与源码字节相同；`app/app.html` 363,045B、`app/debug.html` 39,603B、`app/package.json` 304B 与 dist **哈希相同**（`package.json` = 1.4.0） |
+| 解压冒烟 | 解到空目录 **3498 文件**；关键文件齐；`runtime\node.exe --check app\app.mjs` **exit 0** |
+| 三功能确实在包里 | 首页含 `id="delModelModal"` + `id="dlWrap"`；`/debug` 含 `id="filterErr"` + `id="exportBtn"`；`app/diag-zip.mjs` 在 |
+
+**包内冒烟（发布包跑着时的实测）**
+
+| 项 | 结果 |
+|---|---|
+| `probe-version`（包内 app.mjs 对账） | **14/14** |
+| `probe-debug`（发布包） | **54/54**（含 CLI `--history` / `--export` 19,142B zip / `--watch` 两轮） |
+| `/api/diag` | `checks` **23 项**，error 0 / warn 0 |
+| HTTP | `/` 200 363,045B · `/debug` 200 39,603B · `/api/version` · `/api/state` · `/api/gpus` · `/api/plugins` · `/api/download/state` · `/debug-icon.png` 全 200 |
+| 无令牌 `POST /api/debug/open` | **403** |
+
+证据目录：`server\docs\packaging-2026-11-14\`（`verify.txt` / `release-probe-version.txt` / `release-probe-debug.txt` / `release-http.txt`）。
+
+### 四、55 条回归（本轮分两段跑完，全绿）
+
+**第一段：55 条整跑（`server\docs\probe-full-2026-11-14\`）**——非界面探针 **20/20 全绿**：
+
+`probe-sessions 33` / `workspace-api 9` / `code-run 13` / `code-workspace 21(跳过1)` / `gpu 14` / `backup 38` / `rag 16` / `plugins 11` / `version 14` / `firstrun 22` / `debug 54` / `func` / `ui-metric` / `chat-plain 11` / `tools-agent 24` / `web-tools 19` / `kv-long` / `preload 26` / `second-opinion 11` / `vision-api 25`。
+同一条命令里的 35 条界面探针整批红——**是环境，不是产品**：headless Edge 没起来（见第五节），全部以 `exit 1` 秒退、0 断言。
+
+**第二段：界面探针分批补跑（`server\docs\probe-full-2026-11-14-r2\`）**，逐条全绿：
+
+`ui-new 30` / `menu-stacking 2` / `ui-gpu 7` / `start-screen 12` / `start-flow 8` / `model-add 4` / `model-delete 20` / `status 6` / `code-panel 17(跳过1)` / `settings-tools 9` / `workspace-ui 7` / `hero-modes 11` / `input-extras 8` / `formula-panel 7` / `formula-find 8` / `timestamps 4` / `title-ui 13` / `session-jump 4` / `session-race 3` / `code-run-ui 9` / `ui-version 9` / `ui-rag 6` / `ui-web 39` / `ui-debug 33` / `download-ui 35` / `ui-backup 20` / `auto-title 5` / `context-switch 3` / `ui-preload 35` / `small-features 6` / `ctx-panel 25` / `sidebar-search 11` / `ui-tools 12` / `ui-vision 19` / `ui-sessions 28`。
+
+**四条「假红」的定性（值得记）**：`small-features`(5/6) / `ctx-panel`(18/25) / `sidebar-search`(9/11) / `ui-tools`(10/12) 第一次补跑是红的，原因**全是我自己反复重跑留下的脏会话**——工作区里堆到 18 条会话、还有两条同名的 `SIDEBAR-ALPHA`，页面停在一条巨型会话上于是上下文余量显示 100%、复制的也不是探针自己的正文。把 `workspace\sessions` 恢复成 8 条真实会话后**同样四条一次全绿**（6/6、25/25、11/11、12/12）。→ **全量探针要在干净会话集上跑**，这条以前靠驱动预置会话兜着，这轮是「扫尾补跑」才暴露出来。
+断言口径仍按 **847**（本轮没有新增/删改探针）；个别条目数会随环境浮动（`ui-gpu` 7 而非 8——没有独显设备时的条件断言；`ui-web` 已涨到 39）。
+
+### 五、环境踩坑（这轮新撞出来的两条）
+
+1. **沙箱写入被「旧继承 ACL」挡住**：`server\`、`workspace\`、`dist\`、`technique\`、`plugins\`、`tts\`、`.git` 的 ACL 是 DSH 授权之前缓存的旧继承结果，缺沙箱包 SID `S-1-4-377911666-448210640` 的写授权（`D:\LocalModels` 根、`logs`、`mmproj`、`tools` 有）。受限（workspace-write）模式下 pwsh 连建目录都被拒，`icacls /reset` 也改不动（受限令牌没有 WRITE_DAC）。**处理**：会话切到完全权限即可（本轮就是这么解开的），**没有手工改 ACL**；`D:\LocalModels\.acl-backup-20261114-000010\` 是那次批准中断前留下的空备份，可直接删。若以后切回受限模式，需要把继承重新下发一次。
+2. **headless Edge 的两个坑**：① Edge **157** 上 `--headless=new` 不给 `--no-sandbox` 直接 **exit 13**；② headless Edge 会随「发起它的那个工具进程」一起被回收——**必须把「起 Edge + 跑探针」放在同一条命令里**（写成独立 .ps1 让 `powershell -File` 去起，CDP 起不来）。另外机器中途多次睡眠，长后台任务会被挂起（两次跨了 8 小时），所以本轮改成小批次（4～5 条/批）跑。
+
+### 六、本机运行态收口
+
+- **发布包 `config.ini` 的 `modelDir` 被 `build-portable.ps1` 重置成空**（打包默认就是空＝`<安装目录>\models`），于是重建后第一次起来是 0 模型 / 0 会话。本机运行目录已改回 `modelDir=D:\LocalModels`（**交付 zip 里仍是消毒后的空值**，两回事），重启后：v1.4.0 / 5 个模型 / 8 个真实会话 / `gpu=vulkan` / 未加载模型。
+- 会话：跑全量前备份在 `server\docs\session-backups\20261114-000136\`（8 条），`probe-ui-sessions` 清空后已原样恢复（8/8）。
+
+### 七、下一轮
+
+1. 交付包已经是 v1.4.0（含三个功能），可以发给老笔记本试 1.5B。
+2. 按 `交接文档.md`「下一步」继续：视觉增强包拆分（主包回 ~122MB）、图片落盘、7B 分片下载。
+3. 若要把「干净会话集」这条固化：全量驱动开跑前先备份+清空会话、跑完自动恢复（现在只有探针内置备份，没有整体口径）。

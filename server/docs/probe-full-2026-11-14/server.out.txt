@@ -1,0 +1,151 @@
+16:11:05 初始化 llama.cpp（偏好 auto）...
+16:11:07 Vulkan 设备：0=Intel(R) Arc(TM) Graphics
+16:11:07 QingYaoTP AILauncher v1.4.0 (dfc0015) 已启动（本地 AI）
+16:11:07 界面 http://127.0.0.1:8099/   API http://127.0.0.1:8099/v1
+16:11:07 插件：0 个可用（D:\LocalModels\plugins）
+16:15:42 加载 qwen3-5-4B-Q4_K_M.gguf (context 16384) ...
+16:15:49 就绪: qwen3-5-4B-Q4_K_M.gguf | context 16384 | layers 33 | KV q8_0 | 思考能力支持 | 7.7s
+16:15:50 新建会话 mwf6hwds-76b19c03
+16:15:50 删除会话 mwf6hwds-76b19c03
+16:15:52 运行代码 python exit=0 194ms
+16:15:52 运行代码 javascript exit=0 205ms
+16:15:56 运行代码 cpp exit=0 3300ms
+16:16:06 运行代码 python exit=1 10301ms
+16:16:06 运行代码 python exit=0 62ms
+16:16:06 代码收录 2 个 → code/：ws-probe-mwf6i93t.py、ws-probe-mwf6i93t.js
+16:16:07 代码收录 1 个 → code/：evil-mwf6i93t.js
+16:16:20 会话备份设置：开 → D:\LocalModels\server\docs\probe-full-2026-10-27\backup-target
+16:16:20 新建会话 mwf6ijd9-02ee291d
+16:16:20 会话备份 manual：9 个会话 / 复制 18 个文件 / 历史版本 507 份（新增 507）/ 119 KB → D:\LocalModels\server\docs\probe-full-2026-10-27\backup-target
+16:16:21 会话备份 manual：9 个会话 / 复制 0 个文件 / 历史版本 507 份（新增 0）/ 0 KB → D:\LocalModels\server\docs\probe-full-2026-10-27\backup-target
+16:16:21 会话备份 manual：9 个会话 / 复制 1 个文件 / 历史版本 508 份（新增 1）/ 0 KB → D:\LocalModels\server\docs\probe-full-2026-10-27\backup-target
+16:16:21 清理过期会话备份 2020-01-01
+16:16:21 会话备份 manual：9 个会话 / 复制 0 个文件 / 历史版本 508 份（新增 0）/ 0 KB → D:\LocalModels\server\docs\probe-full-2026-10-27\backup-target
+16:16:21 新建会话 mwf6ik9j-f055ed85
+16:16:35 会话备份 write：10 个会话 / 复制 2 个文件 / 历史版本 508 份（新增 0）/ 0 KB → D:\LocalModels\server\docs\probe-full-2026-10-27\backup-target
+16:16:36 删除会话 mwf6ik9j-f055ed85
+16:16:36 从备份恢复会话 mwf6ijd9-02ee291d ← D:\LocalModels\server\docs\probe-full-2026-10-27\backup-target
+16:16:36 会话备份设置：关 → （未设置）
+16:16:36 删除会话 mwf6ijd9-02ee291d
+16:16:36 会话备份设置：关 → （未设置）
+16:16:37 文档索引重建：6 个文件 / 14 段
+16:16:37 文档索引重建：6 个文件 / 14 段
+16:16:37 文档索引重建：8 个文件 / 16 段
+16:16:37 文档索引重建：7 个文件 / 15 段
+16:16:37 文档索引重建：4 个文件 / 12 段
+16:16:38 插件：1 个可用（D:\LocalModels\plugins）
+16:16:38 插件：0 个可用，1 个已禁用（D:\LocalModels\plugins）
+16:16:38 插件禁用 probe_tmp_plugin.mjs
+16:16:38 插件：1 个可用（D:\LocalModels\plugins）
+16:16:38 插件启用 probe_tmp_plugin.mjs
+16:16:38 插件：0 个可用（D:\LocalModels\plugins）
+16:16:38 插件：0 个可用（D:\LocalModels\plugins）
+16:16:39 调试面板：导出诊断包 qy-diagnostics-20261114-001639.zip（38681 字节 / 8 个文件）
+16:16:41 调试面板：清理崩溃记录 成功
+16:16:42 调试面板：导出诊断包 qy-diagnostics-20261114-001642.zip（38677 字节 / 8 个文件）
+16:17:07 客户端断开，中止生成
+16:17:07 聊天错误: This operation was aborted
+16:17:17 删除模型 probe-del-single.gguf（0.00 GB，已移入回收站）
+16:17:18 删除模型 probe-del-shard-00001-of-00002.gguf, probe-del-shard-00002-of-00002.gguf（0.00 GB，已移入回收站）
+16:17:23 新建会话 mwf6jvwf-14a38dd5
+16:17:24 新建会话 mwf6jwpn-40b36549
+16:17:24 新建会话 mwf6jx8q-eb7977e6
+16:17:24 新建会话 mwf6jx8z-6d120d41
+16:17:25 新建会话 mwf6jxjp-323d0cfb
+16:17:25 新建会话 mwf6jxjz-f7f1a718
+16:17:30 新建会话 mwf6k1hb-a47d9d67
+16:17:30 新建会话 mwf6k1hl-2153c9e5
+16:17:39 加载 qwen3-5-4B-Q4_K_M.gguf (context 8192) ...
+16:17:44 就绪: qwen3-5-4B-Q4_K_M.gguf | context 8192 | layers 33 | KV q8_0 | 思考能力支持 | 6.0s
+16:19:54 加载 qwen3-5-4B-Q4_K_M.gguf (context 8192) ...
+16:20:00 就绪: qwen3-5-4B-Q4_K_M.gguf | context 8192 | layers 33 | KV q8_0 | 思考能力支持 | 6.6s
+16:22:44 加载 qwen3-5-4B-Q4_K_M.gguf (context 4096) ...
+16:22:50 就绪: qwen3-5-4B-Q4_K_M.gguf | context 4096 | layers 33 | KV q8_0 | 思考能力支持 | 6.5s
+16:23:00 预加载 Phi-4-mini-instruct-Q4_K_M.gguf（context 4096，10.6s）
+16:23:16 释放预加载 Phi-4-mini-instruct-Q4_K_M.gguf
+16:23:17 加载 qwen3-5-4B-Q4_K_M.gguf (context 8192) ...
+16:23:23 就绪: qwen3-5-4B-Q4_K_M.gguf | context 8192 | layers 33 | KV q8_0 | 思考能力支持 | 5.4s
+16:23:27 加载 Phi-4-mini-instruct-Q4_K_M.gguf (context 8192) ...
+16:23:33 就绪: Phi-4-mini-instruct-Q4_K_M.gguf | context 8192 | layers 33 | KV q8_0 | 思考能力不支持 | 6.9s
+16:23:40 加载 qwen3-5-4B-Q4_K_M.gguf (context 8192) ...
+16:23:45 就绪: qwen3-5-4B-Q4_K_M.gguf | context 8192 | layers 33 | KV q8_0 | 思考能力支持 | 6.4s
+16:23:50 视觉：先卸载文本模型（内存互斥；看完图 15s 后自动装回 qwen3-5-4B-Q4_K_M.gguf）
+16:23:51 视觉：启动 Qwen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf（-ngl 0 CPU，pid 28356），等待 /health ...
+16:24:07 视觉 sidecar 就绪（Qwen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf，ctx 32768 / 线程自动 / mmproj none，15.8s，pid 28356）
+16:24:17 视觉请求 1 张图 json 200 9791ms
+16:24:17 视觉：停止 sidecar（pid 28356）
+16:24:18 视觉 sidecar 退出（code=1）
+16:24:32 视觉：闲置 15s，自动装回文本模型 qwen3-5-4B-Q4_K_M.gguf
+16:24:32 加载 qwen3-5-4B-Q4_K_M.gguf (context 8192) ...
+16:24:41 就绪: qwen3-5-4B-Q4_K_M.gguf | context 8192 | layers 33 | KV q8_0 | 思考能力支持 | 8.9s
+16:24:41 视觉：文本模型已自动装回 qwen3-5-4B-Q4_K_M.gguf
+14:33:12 会话备份设置：关 → （未设置）
+14:33:47 新建会话 mwgiaih0-ca22a884
+14:33:57 删除会话 mwgiaih0-ca22a884
+14:34:07 删除模型 probe-del-single.gguf（0.00 GB，已移入回收站）
+14:34:08 删除模型 probe-del-shard-00001-of-00002.gguf, probe-del-shard-00002-of-00002.gguf（0.00 GB，已移入回收站）
+14:34:15 删除模型 probe-del-ui.gguf（0.00 GB，已移入回收站）
+14:34:35 代码收录 2 个 → code/：probe-py-mwgibgnm.py、probe-js-mwgibgnm.js
+14:34:37 运行代码 python exit=0 233ms
+14:34:56 新建会话 mwgibzn2-6c183513
+14:35:07 删除会话 mwgibzn2-6c183513
+14:35:14 新建会话 mwgicdp0-41d8ffdd
+14:35:22 删除会话 mwgicdp0-41d8ffdd
+14:35:37 新建会话 mwgicvn3-01d89a75
+14:35:42 删除会话 mwgicvn3-01d89a75
+14:35:59 新建会话 mwgidcco-dad8f60b
+14:36:05 删除会话 mwgidcco-dad8f60b
+14:36:06 新建会话 mwgidhsj-e47db9af
+14:36:06 新建会话 mwgidhsu-616c5402
+14:36:24 删除会话 mwgidhsj-e47db9af
+14:36:24 删除会话 mwgidhsu-616c5402
+14:36:24 删除会话 mwgidhsj-e47db9af
+14:36:24 新建会话 mwgidvzk-0778a1f3
+14:36:24 新建会话 mwgidvzx-701f91fb
+14:36:30 删除会话 mwgidvzk-0778a1f3
+14:36:30 删除会话 mwgidvzx-701f91fb
+14:36:47 新建会话 mwgiedby-7a262b67
+14:37:00 删除会话 mwgiedby-7a262b67
+14:37:04 运行代码 python exit=0 92ms
+14:37:15 文档索引重建：4 个文件 / 12 段
+14:37:31 新建会话 mwgifb8d-0831c7d3
+14:38:16 新建会话 mwgigadg-02f3de8e
+14:39:17 嗅探完成：1 个候选，遍历 23013 个文件，788ms
+14:39:47 会话备份设置：开 → D:\LocalModels\server\docs\probe-full-2026-10-27\backup-ui-target
+14:39:49 会话备份 manual：18 个会话 / 复制 36 个文件 / 历史版本 535 份（新增 535）/ 126 KB → D:\LocalModels\server\docs\probe-full-2026-10-27\backup-ui-target
+14:39:50 会话备份设置：开 → D:\LocalModels\server\docs\probe-full-2026-10-27\backup-ui-target
+14:39:51 会话备份设置：关 → （未设置）
+14:39:53 会话备份设置：关 → （未设置）
+14:39:53 新建会话 mwgiidbr-fcf4d78e
+14:39:53 新建会话 mwgiidc3-e165c178
+14:40:03 删除会话 mwgiidbr-fcf4d78e
+14:40:03 删除会话 mwgiidc3-e165c178
+14:40:17 新建会话 mwgiivso-0c04be51
+14:41:28 自动标题 mwgiivso-0c04be51 → 大模型 KV 缓存加速推理原理
+14:41:30 删除会话 mwgiivso-0c04be51
+14:41:36 加载 Phi-4-mini-instruct-Q4_K_M.gguf (context 16384) ...
+14:41:45 就绪: Phi-4-mini-instruct-Q4_K_M.gguf | context 16384 | layers 33 | KV q8_0 | 思考能力不支持 | 9.4s
+14:41:47 加载 qwen3-5-4B-Q4_K_M.gguf (context 16384) ...
+14:41:56 就绪: qwen3-5-4B-Q4_K_M.gguf | context 16384 | layers 33 | KV q8_0 | 思考能力支持 | 10.0s
+14:42:22 预加载 Phi-4-mini-instruct-Q4_K_M.gguf（context 4096，10.4s）
+14:42:24 释放预加载 Phi-4-mini-instruct-Q4_K_M.gguf
+16:47:31 新建会话 mwgn2ht8-845f19b0
+16:47:42 删除会话 mwgn2ht8-845f19b0
+16:47:43 新建会话 mwgn2rfe-32a69d46
+16:47:43 新建会话 mwgn2rft-d21e6127
+16:47:52 删除会话 mwgn2rfe-32a69d46
+16:47:52 删除会话 mwgn2rft-d21e6127
+16:47:59 新建会话 mwgn33p4-4d837d81
+16:48:49 删除会话 mwgn33p4-4d837d81
+16:48:49 删除会话 mw6hhdy0-618944eb
+16:48:49 删除会话 mw6gpaj0-96fc0773
+16:48:49 删除会话 mw6d86wn-b1749049
+16:48:49 删除会话 mw61zewv-cfc46c84
+16:48:49 删除会话 mw5uo61c-fd79c6ac
+16:48:49 删除会话 mw3p7y2n-d09f8d43
+16:48:49 删除会话 mw0uqw42-48286baa
+16:48:49 删除会话 mvn7m7kl-0d9fe764
+16:48:50 新建会话 mwgn46o6-9eb1fffb
+16:48:53 新建会话 mwgn48xk-dc728375
+16:48:57 删除会话 mwgn48xk-dc728375
+16:49:03 TTS edge edge:zh-CN-XiaoxiaoNeural 1.3x 7 字 → 11 KB / 11ms
