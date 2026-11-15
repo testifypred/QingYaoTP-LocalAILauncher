@@ -42,7 +42,7 @@ const DEBUG_UI = path.join(HERE, "debug.html");
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 /** 版本号：发版只改这一处；server\package.json 的 version 必须与它一致（probe-version 会查） */
-const APP_VERSION = "1.7.0";
+const APP_VERSION = "1.7.1";
 /** 产品正式名（2026-11-01 起）：QingYaoTP AILauncher；QingYaoTP = QingYaoTestifypred */
 const APP_NAME = "QingYaoTP AILauncher";
 const APP_SUB = "本地 AI";
@@ -3503,13 +3503,14 @@ const FENCE = "\u0060\u0060\u0060";
 const CODE_REVIEW_THINK_SYSTEM = [
   "你是严格的代码审查员。用户会给出【用户意图】【文件】【语言】【代码行数】和代码本身的围栏块。",
   "这一轮只输出「审查思路」：逐条分析可疑点，每行以 - 开头，写清「行号 + 判断依据 + 可能后果」；",
+  "行号必须逐行数准，只能指向真正包含代码的行（有语句/表达式），不要指向空行、注释行或文件末尾的空行。",
   "不要复述整段代码，不要客套，不要输出 JSON，不要输出代码块。",
 ].join("\n");
 const CODE_REVIEW_JSON_SYSTEM = [
   "你只输出一个 JSON 对象，不要解释、不要客套、不要代码块以外的内容。",
   "对象的格式固定为：",
   '{"summary":"一句话结论","issues":[{"line":12,"endLine":12,"severity":"error","title":"短标题","detail":"为什么是问题","fix":"具体怎么改"}]}',
-  "line/endLine 是 1 起始行号，必须落在给定代码的行数范围内；severity 只能是 error / warn / info；没有问题就是 issues: []。",
+  "line/endLine 是 1 起始行号，必须落在给定代码的行数范围内，且必须指向包含代码的行（有语句/表达式）；不要指向空行或纯注释行（#、//）；severity 只能是 error / warn / info；没有问题就是 issues: []。",
 ].join("\n");
 const CODE_FIX_SYSTEM = [
   "你是代码修复器。用户会给出代码、问题清单（可能为空）和意图。",
@@ -3684,6 +3685,50 @@ function parseFindingsFromText(text, lineCount) {
   };
 }
 
+/** 这一行算不算「含代码的行」：空行、纯注释行（# / // / 块注释）不算（v1.7.1 行号校正用） */
+function isCodeLine(text) {
+  const t = String(text ?? "").trim();
+  if (!t) return false;
+  if (t.startsWith("#")) return false;
+  if (t.startsWith("//")) return false;
+  if (t.startsWith("/*")) return false;
+  if (/^\*[\s*\/]/.test(t)) return false; // 块注释续行 / **/ / */
+  return true;
+}
+
+/**
+ * 把问题行号吸到最近的非空代码行（v1.7.1，契约外补充）。
+ * 小模型常把问题标到空行 / 注释行上，界面高亮落在空行非常误导；
+ * 这里只在 ±2 行内找最近的含代码行并平移 line/endLine，找不到就保持原样（原有 clamp 保留）。
+ */
+function snapIssuesToCodeLines(issues, code) {
+  const lines = String(code ?? "").replace(/\r\n/g, "\n").split("\n");
+  const n = lines.length;
+  if (!n) return issues;
+  const isCode = lines.map(isCodeLine);
+  // 同距离时先向下找：注释行通常注释的是下一行，空行也多半是模型数偏了一行
+  const nearestCode = (ln) => {
+    for (let d = 0; d <= 2; d += 1) {
+      const down = ln + d;
+      const up = ln - d;
+      if (down >= 1 && down <= n && isCode[down - 1]) return down;
+      if (up !== down && up >= 1 && up <= n && isCode[up - 1]) return up;
+    }
+    return 0;
+  };
+  for (const it of issues) {
+    const line = Math.max(1, Math.min(n, Math.round(Number(it.line) || 1)));
+    if (isCode[line - 1]) continue;
+    const hit = nearestCode(line);
+    if (!hit) continue;
+    const delta = hit - line;
+    const end = Math.max(line, Math.min(n, Math.round(Number(it.endLine) || line)));
+    it.line = hit;
+    it.endLine = Math.max(hit, Math.min(n, end + delta));
+  }
+  return issues;
+}
+
 /** 从模型输出里取最长的那个围栏代码块（修正接口用）；没有围栏就返回空串（调用方退化成全文） */
 function extractFencedCode(text) {
   const src = String(text ?? "");
@@ -3766,6 +3811,16 @@ async function handleCodeReviewStream(req, res) {
   const file = String(body?.file ?? "").trim().slice(0, 120);
   const intent = String(body?.intent ?? "").trim().slice(0, 500);
 
+  // v1.7.1：客户端断开（点「停止」/关面板）就把生成掐掉，别再把整段跑完白烧 CPU
+  let clientGone = false;
+  let ac = null;
+  const onClientClose = () => {
+    if (clientGone) return;
+    clientGone = true;
+    try { if (ac) ac.abort(codeJobError(499, "客户端已断开（已停止）")); } catch {}
+  };
+  res.on("close", onClientClose);
+
   return codeJobLocked(async () => {
     const t0 = Date.now();
     let send = null;
@@ -3773,6 +3828,10 @@ async function handleCodeReviewStream(req, res) {
       const pick = await pickCodeJobModel(body?.model);
       const { ctx, size } = await openReviewContext();
       try {
+        if (clientGone) {
+          log("代码审查(流式) " + (file || "未命名") + " 客户端已断开，跳过生成");
+          return;
+        }
         send = sseOpen(res);
         send({ type: "meta", model: path.basename(pick.file), modelFile: pick.file, contextSize: size, switchedModel: pick.switched, startedAt: t0 });
         const session = new LlamaChatSession({
@@ -3783,7 +3842,7 @@ async function handleCodeReviewStream(req, res) {
         });
         // 第一阶段：只流式输出「审查思路」（小模型一次要两样经常给不出合法 JSON，所以拆成两轮）
         let thinkText = "";
-        const ac = new AbortController();
+        ac = new AbortController();
         const watchdog = setTimeout(() => ac.abort(codeJobError(504, "审查超时（" + Math.round(CODE_JOB_TIMEOUT_MS / 1000) + "s 没有跑完）：换个模型或分段审查")), CODE_JOB_TIMEOUT_MS);
         let meta;
         try {
@@ -3802,6 +3861,7 @@ async function handleCodeReviewStream(req, res) {
           clearTimeout(watchdog);
         }
         const thinking = String(meta?.responseText ?? "") || thinkText;
+        if (clientGone) throw codeJobError(499, "客户端已断开（已停止）");
         // 第二阶段：把这一轮审查整理成 JSON（同一个 context 里问，很便宜）
         send({ type: "phase", phase: "findings" });
         const jsonPrompt = [
@@ -3812,23 +3872,32 @@ async function handleCodeReviewStream(req, res) {
           "审查思路原文（供你归纳，不要复述）：",
           String(thinking).slice(-2000),
         ].join("\n");
-        const ac2 = new AbortController();
-        const watchdog2 = setTimeout(() => ac2.abort(codeJobError(504, "审查结论整理超时")), Math.min(120000, CODE_JOB_TIMEOUT_MS));
+        ac = new AbortController();
+        const watchdog2 = setTimeout(() => ac.abort(codeJobError(504, "审查结论整理超时")), Math.min(120000, CODE_JOB_TIMEOUT_MS));
         let jm;
         try {
-          jm = await session.promptWithMeta(jsonPrompt, { maxTokens: 700, temperature: 0.1, signal: ac2.signal });
+          jm = await session.promptWithMeta(jsonPrompt, { maxTokens: 700, temperature: 0.1, signal: ac.signal });
         } finally {
           clearTimeout(watchdog2);
         }
         const findings = parseFindingsFromText(String(jm?.responseText ?? ""), lineCount);
+        // v1.7.1：模型常把问题标到空行/注释行，落高亮前先吸到最近的真代码行
+        snapIssuesToCodeLines(findings.issues, code);
         const seconds = +((Date.now() - t0) / 1000).toFixed(1);
         send({ type: "findings", summary: findings.summary, issues: findings.issues, parsed: findings.parsed, lineCount });
         send({ type: "done", seconds, model: path.basename(pick.file) });
+        // v1.7.1：done 之后立刻结束 SSE（浏览器读到流结束就恢复按钮），
+        // 别让 ctx.dispose() 的耗时把界面卡在「审查中」，否则这时点「一键纠正」会被当成「停止」。
+        try { if (!res.writableEnded) res.end(); } catch {}
         log("代码审查(流式) " + (file || "未命名") + " 上下文 " + size + " 问题 " + findings.issues.length + " " + seconds + "s" + (pick.switched ? "（切换模型）" : ""));
       } finally {
         await ctx.dispose().catch(() => {});
       }
     } catch (e) {
+      if (clientGone) {
+        log("代码审查(流式) " + (file || "未命名") + " 已停止（客户端断开）");
+        return;
+      }
       const status = e?.status || 500;
       if (!send) {
         return sendJson(res, status, { error: { message: String(e?.message ?? e) } });
@@ -3836,6 +3905,7 @@ async function handleCodeReviewStream(req, res) {
       send({ type: "error", message: String(e?.message ?? e) });
       log("代码审查(流式) 失败 " + (file || "未命名") + ": " + String(e?.message ?? e));
     } finally {
+      res.off("close", onClientClose);
       try { if (!res.writableEnded) res.end(); } catch {}
     }
   });
@@ -3872,6 +3942,16 @@ async function handleCodeFix(req, res) {
   const rawMax = Number(body?.max_tokens);
   const maxTokens = Math.max(256, Math.min(3000, Number.isFinite(rawMax) && rawMax > 0 ? Math.round(rawMax) : 1800));
 
+  // v1.7.1：客户端断开（点「停止」/关面板）就把生成掐掉，别再把整段跑完白烧 CPU
+  let clientGone = false;
+  let ac = null;
+  const onClientClose = () => {
+    if (clientGone) return;
+    clientGone = true;
+    try { if (ac) ac.abort(codeJobError(499, "客户端已断开（已停止）")); } catch {}
+  };
+  res.on("close", onClientClose);
+
   return codeJobLocked(async () => {
     const t0 = Date.now();
     let send = null;
@@ -3879,6 +3959,10 @@ async function handleCodeFix(req, res) {
       const pick = await pickCodeJobModel(body?.model);
       const { ctx, size } = await openReviewContext();
       try {
+        if (clientGone) {
+          log("代码修正 " + (file || "未命名") + " 客户端已断开，跳过生成");
+          return;
+        }
         send = sseOpen(res);
         send({ type: "meta", model: path.basename(pick.file), modelFile: pick.file, contextSize: size, switchedModel: pick.switched, startedAt: t0, scope, issues: issues.length });
         const session = new LlamaChatSession({
@@ -3902,7 +3986,7 @@ async function handleCodeFix(req, res) {
           FENCE,
         ].join("\n");
         let streamed = "";
-        const ac = new AbortController();
+        ac = new AbortController();
         const watchdog = setTimeout(() => ac.abort(codeJobError(504, "修正超时（" + Math.round(CODE_JOB_TIMEOUT_MS / 1000) + "s 没有跑完）")), CODE_JOB_TIMEOUT_MS);
         let meta;
         try {
@@ -3927,16 +4011,23 @@ async function handleCodeFix(req, res) {
         const seconds = +((Date.now() - t0) / 1000).toFixed(1);
         send({ type: "result", code: fixed, changes: diff.changes, added: diff.added, removed: diff.removed, lineCount: diff.lineCount, coarse: Boolean(diff.coarse) });
         send({ type: "done", seconds, model: path.basename(pick.file) });
+        // v1.7.1：done 之后立刻结束 SSE，别等 ctx.dispose()（原因同 review/stream）
+        try { if (!res.writableEnded) res.end(); } catch {}
         log("代码修正 " + (file || "未命名") + " 范围 " + scope + " 改 " + diff.added + " 行/删 " + diff.removed + " 行 " + seconds + "s" + (pick.switched ? "（切换模型）" : ""));
       } finally {
         await ctx.dispose().catch(() => {});
       }
     } catch (e) {
+      if (clientGone) {
+        log("代码修正 " + (file || "未命名") + " 已停止（客户端断开）");
+        return;
+      }
       const status = e?.status || 500;
       if (!send) return sendJson(res, status, { error: { message: String(e?.message ?? e) } });
       send({ type: "error", message: String(e?.message ?? e) });
       log("代码修正 失败 " + (file || "未命名") + ": " + String(e?.message ?? e));
     } finally {
+      res.off("close", onClientClose);
       try { if (!res.writableEnded) res.end(); } catch {}
     }
   });

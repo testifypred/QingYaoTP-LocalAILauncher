@@ -796,6 +796,14 @@ math-field:focus-within{border-color:var(--cyan)}
 .cwIssueDetail{margin-top:3px;font-size:11.5px;line-height:1.6;color:var(--text-2);white-space:pre-wrap}
 .cwIssueFix{margin-top:4px;font-size:11.5px;line-height:1.6;color:var(--ok);white-space:pre-wrap}
 .cwIssueApply{margin-top:5px;padding:2px 8px;font-size:11px}
+.cwIssueCode{margin-top:3px;line-height:1.4}
+.cwIssueCode code{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:pre;font:11px/1.55 var(--mono);background:var(--code-bg);border:1px solid var(--line);border-radius:4px;padding:0 5px;color:var(--code-ink);vertical-align:top}
+.cwIssueEmpty{border:1px dashed var(--line-2);border-radius:6px;background:var(--panel);padding:9px 11px;font-size:12px;line-height:1.65;color:var(--text-2)}
+.cwIssueEmpty b{display:block;color:var(--ok);font-size:12.5px;margin-bottom:3px}
+.cwIssueEmpty ul{margin:0;padding-left:18px}
+.cwIssueEmpty li{margin:2px 0}
+.cwReviewHeadHint{flex:1 1 100%;font-size:10.5px;font-weight:400;color:var(--dim);line-height:1.5}
+.cwReviewHeadHint[hidden]{display:none}
 .cwReviewState{margin-top:8px;font-size:11.5px;line-height:1.6;color:var(--dim)}
 .cwReviewState.err{color:var(--err)}
 .cwReviewState.ok{color:var(--ok)}
@@ -1594,6 +1602,7 @@ header::before{
           <select id="cwReviewModel" title="用哪个模型审查：默认本对话已加载的模型">
             <option value="">本对话模型（未加载）</option>
           </select>
+          <span id="cwReviewModelHint" class="cwReviewHeadHint" hidden>已隐藏 Phi-4-mini（已知会卡死应用）</span>
         </div>
         <textarea id="cwIntent" placeholder="用户意图（留空 = 自动取当前会话最后一条提问）"></textarea>
         <div class="cwReviewActions">
@@ -4613,6 +4622,11 @@ let cwTabs = [];        // 打开过的标签（按打开顺序）
 let cwLangs = null;     // /api/run/langs 结果：判断本机能不能运行
 let cwReviewTimer = null;
 let cwReviewBusy = false;
+let cwAbortCtl = null;        // 当前审查/纠正的 AbortController（「停止」按钮用）
+let cwStopRequested = false;  // 用户点了停止：收尾时显示「已停止」而不是失败
+let cwReviewT0 = 0;           // 当前审查/纠正的开始时间（秒数计时用）
+let cwReviewMode = '';        // 'review' | 'fix'
+let cwReviewStage = '';       // 'think'（第一阶段）| 'findings'（第二阶段）
 let cwIssues = [];            // 最近一次审查的问题（Claude/契约字段：line/endLine/severity/title/detail/fix）
 let cwChangedRanges = [];     // 最近一次修正 changes（新代码里的行号区间，1 起始闭区间）
 let cwFixInfo = null;         // 最近一次修正的 added/removed
@@ -4977,6 +4991,41 @@ function cwLineRangeText(it) {
   return it.endLine > it.line ? '行 ' + it.line + '–' + it.endLine : '行 ' + it.line;
 }
 
+/** 取编辑器里第 line 行的代码片段：trim、空行显示「（空行）」、超 60 字截断（v1.7.1） */
+function cwLineSnippet(line) {
+  const n = Math.max(1, Math.round(Number(line) || 1));
+  let text = '';
+  try {
+    if (cwCM && n <= cwCM.lineCount()) text = cwCM.getLine(n - 1);
+    else if (!cwCM) text = String(cwEditorEl.value || '').split('\n')[n - 1] || '';
+  } catch {}
+  const t = String(text == null ? '' : text).trim();
+  if (!t) return '（空行）';
+  return t.length > 60 ? t.slice(0, 60) + '…' : t;
+}
+
+/** 0 问题空态（v1.7.1）：告诉用户「没发现问题」以及接下来可以怎么试 */
+function cwRenderIssueEmpty() {
+  if (!cwIssuesEl) return;
+  const box = document.createElement('div');
+  box.className = 'cwIssueEmpty';
+  const t = document.createElement('b');
+  t.textContent = '✓ 这次没有发现问题';
+  box.appendChild(t);
+  const ul = document.createElement('ul');
+  for (const s of [
+    '换个模型再查一次（不同模型看到的点不一样）',
+    '在「用户意图」里写更具体的要求，再审查',
+    '点「运行」看实际输出，确认行为是否符合预期',
+  ]) {
+    const li = document.createElement('li');
+    li.textContent = s;
+    ul.appendChild(li);
+  }
+  box.appendChild(ul);
+  cwIssuesEl.appendChild(box);
+}
+
 /** 渲染 #cwIssues 问题卡片；卡片本身可点（跳行选中），「一键更改」按钮单独处理 */
 function cwRenderIssues(list) {
   if (!cwIssuesEl) return;
@@ -4997,6 +5046,13 @@ function cwRenderIssues(list) {
     head.appendChild(sev);
     head.appendChild(document.createTextNode(' · ' + it.title));
     card.appendChild(head);
+    // v1.7.1：标题下面带上该行代码，一眼能看出问题标在哪（空行会显示「（空行）」）
+    const codeRow = document.createElement('div');
+    codeRow.className = 'cwIssueCode';
+    const codeEl = document.createElement('code');
+    codeEl.textContent = cwLineSnippet(it.line);
+    codeRow.appendChild(codeEl);
+    card.appendChild(codeRow);
     if (it.detail) {
       const d = document.createElement('div');
       d.className = 'cwIssueDetail';
@@ -5103,7 +5159,17 @@ function cwResetReviewView() {
 }
 
 function cwRefreshActionButtons() {
-  if (cwFixAllEl) cwFixAllEl.disabled = cwReviewBusy || !cwIssues.length;
+  if (cwFixAllEl) {
+    // 审查/纠正进行中不再禁用：变成「停止」；空闲时没有可改的问题才禁用（v1.7.1）
+    cwFixAllEl.disabled = !cwReviewBusy && !cwIssues.length;
+    cwFixAllEl.textContent = cwReviewBusy ? '停止' : '一键纠正';
+    cwFixAllEl.title = cwReviewBusy
+      ? '停止当前的审查 / 纠正'
+      : (cwIssues.length ? '把审查发现的问题一次性改掉' : '没有可修改的问题');
+  }
+  if (cwReviewEl) {
+    cwReviewEl.title = cwReviewBusy ? '停止当前的审查 / 纠正' : '让模型审查当前代码';
+  }
   if (cwReReviewEl) cwReReviewEl.disabled = cwReviewBusy;
   if (cwSendChatEl) cwSendChatEl.disabled = false;
   if (cwIssuesEl) for (const b of cwIssuesEl.querySelectorAll('.cwIssueApply')) b.disabled = cwReviewBusy;
@@ -5112,9 +5178,18 @@ function cwRefreshActionButtons() {
 /** 审查模型下拉：首项「本对话模型（当前）」，其余来自 /api/state.models 的 file（契约 2.2） */
 function cwPopulateReviewModels() {
   if (!cwReviewModelEl) return;
-  const files = (modelsCache || []).map((m) => m && m.file).filter(Boolean);
+  const baseOf = (f) => String(f || '').split(/[\\/]/).pop();
+  const allFiles = (modelsCache || []).map((m) => m && m.file).filter(Boolean);
+  // v1.7.1：Phi-4-mini 做审查模型偶发卡死整个应用（已知产品风险），下拉里直接隐藏
+  const files = allFiles.filter((f) => !/^Phi-4-mini/i.test(baseOf(f)));
+  const phiHidden = allFiles.length !== files.length;
+  const hintEl = $('cwReviewModelHint');
+  if (hintEl) {
+    hintEl.textContent = '已隐藏 Phi-4-mini（已知会卡死应用）';
+    hintEl.hidden = !phiHidden;
+  }
   const curName = loaded ? prettyName(loaded) : '未加载';
-  const sig = curName + '|' + files.join(',');
+  const sig = curName + '|' + files.join(',') + '|phi:' + phiHidden;
   if (sig === cwReviewModelSig && cwReviewModelEl.options.length > 0) return;
   cwReviewModelSig = sig;
   const prev = cwReviewModelEl.value || '';
@@ -5134,11 +5209,12 @@ function cwPopulateReviewModels() {
  * 读 SSE：response.body.getReader() + TextDecoder，按空行切事件（契约 2.3）。
  * handler 收到解析后的 JSON 事件；handler 抛错会中断整个读取并向上抛。
  */
-async function cwStreamSSE(url, payload, handler) {
+async function cwStreamSSE(url, payload, handler, signal) {
   const r = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-local-token': localToken },
     body: JSON.stringify(payload),
+    signal,
   });
   if (!r.ok) {
     const j = await r.json().catch(() => ({}));
@@ -5244,6 +5320,49 @@ cwLoadColors();
 
 function cwResetReviewTimer() {
   if (cwReviewTimer) { clearInterval(cwReviewTimer); cwReviewTimer = null; }
+  cwReviewT0 = 0;
+  cwReviewMode = '';
+  cwReviewStage = '';
+}
+
+/** 计时文案：审查第二阶段（整理问题清单）同时刷新 #cwReviewState 与 #cwReview 按钮 */
+function cwReviewPaint() {
+  if (!cwReviewT0) return;
+  const secs = ((Date.now() - cwReviewT0) / 1000).toFixed(1);
+  if (cwReviewMode === 'fix') {
+    cwReviewEl.textContent = '停止纠正（已用 ' + secs + 's）';
+    return;
+  }
+  if (cwReviewStage === 'findings') {
+    cwReviewEl.textContent = '停止（整理问题中 · 已用 ' + secs + 's）';
+    cwSetReviewState('正在整理问题清单…（已用 ' + secs + 's）', '');
+  } else if (cwReviewStage === 'done') {
+    // findings 已到、等 done：状态交给 findings/done 的文案，timer 别再回写
+    cwReviewEl.textContent = '停止（整理完成 · 已用 ' + secs + 's）';
+  } else {
+    cwReviewEl.textContent = '停止审查（已用 ' + secs + 's）';
+  }
+}
+
+function cwReviewStartTimer(mode, t0) {
+  cwResetReviewTimer();
+  cwReviewMode = mode;
+  cwReviewT0 = t0;
+  cwReviewStage = 'think';
+  cwReviewPaint();
+  cwReviewTimer = setInterval(cwReviewPaint, 200);
+}
+
+/** 停止当前审查/纠正：abort fetch（后端 res close 会把生成一起掐掉），清 timer、恢复按钮 */
+function cwStopReview() {
+  if (!cwReviewBusy) return;
+  const isFix = cwReviewMode === 'fix';
+  cwStopRequested = true;
+  try { if (cwAbortCtl) cwAbortCtl.abort(); } catch {}
+  cwResetReviewTimer();
+  cwThinkEnd(isFix ? '修正思路（已停止）' : '审查思路（已停止）');
+  cwSetReviewState('已停止' + (isFix ? '（纠正已中断）' : '（审查已中断）'), '');
+  showToast(isFix ? '已停止纠正' : '已停止审查', 'warn', 3600);
 }
 
 function cwReviewOpenPref() {
@@ -5278,44 +5397,49 @@ async function cwReviewCode() {
   cwApplyReviewOpen(true);
   try { localStorage.setItem(CW_REVIEW_OPEN_KEY, '1'); } catch {}
   cwReviewBusy = true;
+  cwStopRequested = false;
   cwRefreshActionButtons();
   const old = cwReviewEl.textContent;
-  cwReviewEl.disabled = true;
+  cwAbortCtl = new AbortController();
   const t0 = Date.now();
-  cwReviewEl.textContent = '审查中…（已用 0.0s）';
   cwReviewMetaEl.textContent = '';
   cwResetReviewView();
   cwSetReviewBody('<span class="cwReviewEmpty">模型正在结合意图读代码…</span>');
   cwThinkBegin('审查思路（思考中…）');
   if (modelSel && modelSel !== loaded) cwSetReviewState('正在切换模型…' + prettyName(modelSel), '');
-  cwResetReviewTimer();
-  cwReviewTimer = setInterval(() => {
-    cwReviewEl.textContent = '审查中…（已用 ' + ((Date.now() - t0) / 1000).toFixed(1) + 's）';
-  }, 200);
+  cwReviewStartTimer('review', t0);
   const payload = { code, lang, file, intent };
   if (modelSel) payload.model = modelSel;
   try {
     try {
-      await cwRunReviewStream(payload);
+      await cwRunReviewStream(payload, cwAbortCtl.signal);
     } catch (e) {
-      if (e && e.status === 404) await cwReviewLegacy(payload); // 流式接口还没上线
+      if (e && e.status === 404) await cwReviewLegacy(payload, cwAbortCtl.signal); // 流式接口还没上线
       else throw e;
     }
   } catch (e) {
-    cwSetReviewBody('<div class="cwReviewErr">审查失败：' + escapeHtml(e.message) + '</div>');
-    cwSetReviewState('审查失败：' + e.message, 'err');
-    cwThinkEnd('审查思路（中断）');
-    showToast('审查失败：' + e.message, 'err', 5200);
+    if (cwStopRequested || (e && e.name === 'AbortError')) {
+      // 用户点了「停止」：不算失败
+      cwSetReviewState('已停止（审查已中断）', '');
+      cwThinkEnd('审查思路（已停止）');
+    } else {
+      cwSetReviewBody('<div class="cwReviewErr">审查失败：' + escapeHtml(e.message) + '</div>');
+      cwSetReviewState('审查失败：' + e.message, 'err');
+      cwThinkEnd('审查思路（中断）');
+      showToast('审查失败：' + e.message, 'err', 5200);
+    }
   } finally {
     cwResetReviewTimer();
+    cwAbortCtl = null;
     cwReviewBusy = false;
+    cwStopRequested = false;
     cwReviewEl.disabled = false;
     cwReviewEl.textContent = old;
     cwRefreshActionButtons();
   }
 }
 
-async function cwRunReviewStream(payload) {
+async function cwRunReviewStream(payload, signal) {
   let gotFindings = false;
   await cwStreamSSE('/api/code/review/stream', payload, (ev) => {
     if (ev.type === 'meta') {
@@ -5325,8 +5449,11 @@ async function cwRunReviewStream(payload) {
     } else if (ev.type === 'delta') {
       cwThinkAppend(ev.text);
     } else if (ev.type === 'phase') {
-      // 后端两阶段：思路流完之后再单独要 JSON，这里只提示进度（契约外补充事件，忽略也不影响）
-      if (ev.phase === 'findings') cwSetReviewState('审查思路已生成，正在整理问题清单…', '');
+      // 后端两阶段：思路流完之后再单独要 JSON（契约外补充事件）。v1.7.1：第二阶段也要有实时秒数
+      if (ev.phase === 'findings') {
+        cwReviewStage = 'findings';
+        cwReviewPaint();
+      }
     } else if (ev.type === 'findings') {
       gotFindings = true;
       cwApplyFindings(ev);
@@ -5335,33 +5462,37 @@ async function cwRunReviewStream(payload) {
       const n = cwIssues.length;
       const secTxt = Number.isFinite(secs) ? ' · ' + secs.toFixed(1) + 's' : '';
       if (ev.model) cwReviewMetaEl.textContent = prettyName(ev.model) + secTxt;
+      cwResetReviewTimer(); // 先停表再写最终状态，避免计时器把「审查完成」覆盖回「正在整理」
       cwSetReviewState('审查完成 · ' + n + ' 个问题' + secTxt, 'ok');
     } else if (ev.type === 'error') {
       throw new Error(ev.message || '审查失败');
     }
-  });
+  }, signal);
   if (!gotFindings) throw new Error('审查流没有返回问题列表（模型输出可能被截断）');
 }
 
 /** findings 到达：摘要 markdown + 问题卡片 + 行高亮（契约 2.3 / 2.4） */
 function cwApplyFindings(ev) {
+  cwReviewStage = 'done'; // 第二阶段已拿到结果：timer 之后只更新按钮文字，别再覆盖状态行
   const issues = Array.isArray(ev && ev.issues) ? ev.issues.map(cwNormIssue) : [];
   cwIssues = issues;
   const summary = String((ev && ev.summary) || '').trim();
   cwSetReviewBody(renderMarkdown(summary || (issues.length ? '审查发现问题。' : '没有发现问题。')));
   cwRenderIssues(issues);
+  if (!issues.length) cwRenderIssueEmpty();
   cwApplyIssueHighlights(issues);
   const chars = cwThinkTextEl.textContent.length;
   cwThinkEnd('审查思路（已完成' + (chars ? ' · ' + chars + ' 字' : '') + '）');
-  cwSetReviewState(issues.length ? '发现 ' + issues.length + ' 个问题 · 点卡片跳转到对应行' : '没有发现问题', issues.length ? '' : 'ok');
+  cwSetReviewState(issues.length ? '发现 ' + issues.length + ' 个问题 · 点卡片跳转到对应行' : '审查完成 · 0 个问题（没有发现问题）', issues.length ? '' : 'ok');
 }
 
 /** 旧的非流式审查（后端还没升级时的兜底，渲染进入 #cwReviewBody） */
-async function cwReviewLegacy(payload) {
+async function cwReviewLegacy(payload, signal) {
   const r = await fetch('/api/code/review', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ code: payload.code, lang: payload.lang, file: payload.file, intent: payload.intent }),
+    signal,
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
@@ -5393,19 +5524,16 @@ async function cwFixIssues(scope, issues) {
   cwApplyReviewOpen(true);
   try { localStorage.setItem(CW_REVIEW_OPEN_KEY, '1'); } catch {}
   cwReviewBusy = true;
+  cwStopRequested = false;
   cwRefreshActionButtons();
   const old = cwReviewEl.textContent;
-  cwReviewEl.disabled = true;
+  cwAbortCtl = new AbortController();
   const t0 = Date.now();
-  cwReviewEl.textContent = '纠正中…（已用 0.0s）';
   cwSetReviewState('正在生成修正代码…', '');
   cwThinkBegin(scope === 'all'
     ? '一键纠正（全部 ' + list.length + ' 个问题）· 思考中…'
     : '一键更改（' + cwLineRangeText(list[0]) + '）· 思考中…');
-  cwResetReviewTimer();
-  cwReviewTimer = setInterval(() => {
-    cwReviewEl.textContent = '纠正中…（已用 ' + ((Date.now() - t0) / 1000).toFixed(1) + 's）';
-  }, 200);
+  cwReviewStartTimer('fix', t0);
   const payload = { code, lang, file, intent, issues: list, scope };
   if (modelSel) payload.model = modelSel;
   try {
@@ -5421,15 +5549,23 @@ async function cwFixIssues(scope, issues) {
       } else if (ev.type === 'error') {
         throw new Error(ev.message || '修改失败');
       }
-    });
+    }, cwAbortCtl.signal);
   } catch (e) {
-    const msg = e && e.status === 404 ? '后端接口还没就绪（/api/code/fix 未实现）' : e.message;
-    cwSetReviewState('修改失败：' + msg, 'err');
-    cwThinkEnd('修正思路（中断）');
-    showToast('修改失败：' + msg, 'err', 6000);
+    if (cwStopRequested || (e && e.name === 'AbortError')) {
+      // 用户点了「停止」：不算失败
+      cwSetReviewState('已停止（纠正已中断）', '');
+      cwThinkEnd('修正思路（已停止）');
+    } else {
+      const msg = e && e.status === 404 ? '后端接口还没就绪（/api/code/fix 未实现）' : e.message;
+      cwSetReviewState('修改失败：' + msg, 'err');
+      cwThinkEnd('修正思路（中断）');
+      showToast('修改失败：' + msg, 'err', 6000);
+    }
   } finally {
     cwResetReviewTimer();
+    cwAbortCtl = null;
     cwReviewBusy = false;
+    cwStopRequested = false;
     cwReviewEl.disabled = false;
     cwReviewEl.textContent = old;
     cwRefreshActionButtons();
@@ -5490,7 +5626,7 @@ function cwSendChat() {
   const hi = document.getElementById('heroInput');
   if (hi) hi.value = input.value;
   // 回到对话：面板收起，但绝不自动保存修正后的代码（契约 2.5「不落盘」）
-  cwResetReviewTimer();
+  if (!cwReviewBusy) cwResetReviewTimer();
   codeModal.hidden = true;
   input.focus();
   showToast('已把当前代码填入输入框（未发送，可补一句说明再回车）', 'ok', 5200);
@@ -5671,10 +5807,10 @@ $('cwNew').onclick = () => cwNewFile();
 $('cwSave').onclick = () => cwSaveFile();
 $('cwDelete').onclick = () => cwDeleteFile();
 $('cwRun').onclick = () => cwRunFile();
-$('cwReview').onclick = () => cwReviewCode();
+$('cwReview').onclick = () => { if (cwReviewBusy) cwStopReview(); else cwReviewCode(); };
 $('cwReviewToggle').onclick = () => cwToggleReviewPanel();
 // v1.7.0：一键纠正 / 重新审查 / 发回对话 / 新建语言 / 审查模型
-$('cwFixAll').onclick = () => cwFixIssues('all', cwIssues);
+$('cwFixAll').onclick = () => { if (cwReviewBusy) cwStopReview(); else cwFixIssues('all', cwIssues); };
 $('cwReReview').onclick = () => cwReReview();
 $('cwSendChat').onclick = () => cwSendChat();
 if (cwNewLangEl) cwNewLangEl.addEventListener('change', cwSyncNewLangUI);

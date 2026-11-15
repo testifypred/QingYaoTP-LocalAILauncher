@@ -3145,3 +3145,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 1. **发布包冒烟固定带 `PROBE_SKIP_SWITCH=1`**（Phi 切换在发布包上也会把 8099 卡死，已复现）；Phi 的深测只在 dev 隔离跑（48/48）。同时在冒烟脚本里把这个开关写死，别靠人记。
 2. 打包脚本加一条前置自检：**发现 dist 被占用/启动器在跑直接报错退出**（现在是人肉先杀，容易忘）。
 3. 把「版本号变了必须重打包」写进发版 checklist（README 没有、`交接文档.md` 五条铁律可补一条）。
+
+## 六十四、2026-11-15 深夜：v1.7.1 代码审查体验补丁（按用户实测截图反馈）
+
+### 一、为什么
+用户用 Qwen3.5-9B 审一段 Python 后截图反馈：功能跑通，但 134.6s 里约 2 分钟卡在「正在整理问题清单…」的静止文案（以为卡死）；0 问题时空态难看、一键纠正灰着没解释；我照同流程复现时 9B 把问题标到**空行**（第 12 行），高亮落在空行上极易被当成 bug。四项一起修。
+
+### 二、改了什么（只动 server\app.html + server\app.mjs）
+1. **第二阶段进度 + 可停止**：`phase:findings` 后状态行与按钮都带实时秒数；审查/纠正进行中按钮变「停止」→ abort fetch；后端 `res.on('close')` 调 `ac.abort()` 掐生成（实测日志「已停止（客户端断开）」）。顺手修竞态：`done` 后立即 `res.end()`，否则 `ctx.dispose()` 期间仍 busy，点一键纠正会被当成停止。
+2. **0 问题空态**：`.cwIssueEmpty`「✓ 这次没有发现问题」+ 三条建议；`#cwFixAll` 保持 disabled 但 title 说明原因。
+3. **问题行号校正**：后端 `snapIssuesToCodeLines`（空行/纯注释行 ±2 行内吸到含代码的行，同距离先向下，越界 clamp）；两处提示词都要求行号指向含代码行；前端卡片标题下显示该行原文（空行显示「（空行）」、60 字截断）。
+4. **审查模型下拉隐藏 Phi-4-mini**（/^Phi-4-mini/i），hint 注明原因；后端仍允许显式指定（探针要切它）。
+
+### 三、验证（dev 8099 + 真 4B）
+`probe-code-review-stream` **48/48**、`probe-code-panel-v2` **40/40**、`probe-code-panel` **17/17**（skip 1）、`probe-code-workspace` **21/21**（skip 1）、额外手验 **20/20**（0 问题空态 / 审查中停止 / 卡片代码片段 / Phi 隐藏）、snap 自测 13/13。证据 `server\docs\feature-code-review-terminal-2026-11-15\v171-*.txt` + v171-empty-state.png / v171-stopped.png。
+
+### 四、交付
+版本 1.7.0 → **1.7.1**（app.mjs / package.json / localai.mjs）；重打 dist + 主包 zip：`dist\QingYaoTP-AILauncher-v1.7.1.zip` **121.96MB / 127,880,459B / 3947 条目 / SHA256 EB15041DD8A95337AB7F304DB86C487928CDCB34F1A46646030731FCD6DF18B0**（v1.7.0 = 853C61B9… 留证）；视觉增强包沿用 v1.6.0 那份、装回 dist（53 文件）。发布包冒烟：probe-version **14/14**、probe-debug **54/54**、probe-code-review-stream **45/45**（PROBE_SKIP_SWITCH=1）。8099 切回发布包实例 v1.7.1。
+
+### 五、下一轮
+1) Phi 在后端也拦截（或只在 dev 探针允许）；2) 审查结论另存 .review.md、整个工作区多文件审查；3) 发布包冒烟固定带 PROBE_SKIP_SWITCH=1。

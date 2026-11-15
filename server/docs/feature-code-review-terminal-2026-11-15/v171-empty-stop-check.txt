@@ -1,0 +1,39 @@
+
+== 目标 http://127.0.0.1:8099，CDP http://127.0.0.1:9333，模型 qwen3-5-4B-Q4_K_M.gguf ==
+
+== A. 审查模型下拉隐藏 Phi-4-mini ==
+ok   下拉里没有 Phi-4-mini  [options=5]
+ok   下拉下方 hint 说明已隐藏 Phi-4-mini  [{"text":"已隐藏 Phi-4-mini（已知会卡死应用）","hidden":false}]
+
+== B. 0 问题空态 ==
+ok   新建空态测试文件  [code/probe-empty-mwhw1g24.js]
+  第 1 次审查: 完成=true 空态=true 卡片=0 状态=审查完成 · 0 个问题 · 18.6s
+ok   0 问题时 #cwIssues 出现 .cwIssueEmpty 空态  [✓ 这次没有发现问题换个模型再查一次（不同模型看到的点不一样）在「用户意图」里写更具体的要求，再审查点「运行」看实际输出，确认行为是否符合预期]
+ok   空态含「✓ 这次没有发现问题」
+ok   空态含 3 条建议  [li=3]
+ok   状态行「审查完成 · 0 个问题」  [审查完成 · 0 个问题 · 18.6s]
+ok   #cwFixAll disabled 且 title=「没有可修改的问题」  [disabled=true title=没有可修改的问题]
+ok   按钮恢复：审查可点、文字回到「模型审查」  [text=模型审查]
+    截图: D:\LocalModels\server\docs\feature-code-review-terminal-2026-11-15\v171-empty-state.png
+
+== C. 审查中「停止」 ==
+ok   新建停止测试文件  [code/probe-stop-mwhw1g24.js]
+ok   审查中 #cwReview 变「停止」且不再 disabled  [{"r":"停止审查（已用 0.0s）","rd":false,"f":"停止","fd":false}]
+ok   停止前模型已在流式输出（测的是掐断生成）  [thinkLen=34]
+ok   点「停止」后状态行显示「已停止」  [已停止（审查已中断）]
+ok   停止后 #cwReview 恢复「模型审查」可点  ["模型审查"]
+ok   停止后 #cwFixAll 恢复「一键纠正」  [一键纠正]
+ok   停表：700ms 后状态仍是「已停止」（不再被计时覆盖）  [已停止（审查已中断）]
+ok   停止后思考块标为已停止  [审查思路（已停止）]
+  停止前状态: 
+    截图: D:\LocalModels\server\docs\feature-code-review-terminal-2026-11-15\v171-stopped.png
+
+== C2. 问题卡片附带的该行代码片段（UI 渲染，合成一条 findings，不花模型时间） ==
+ok   卡片标题仍是「行 6 · 警告 · 标题」  [行 6 · 警告 · 合成测试]
+ok   标题下方一行带该行代码片段（.cwIssueCode code）  [{"has":true,"head":"行 6 · 警告 · 合成测试","code":"total += values[i];","want":"total += values[i];"}]
+
+== D. 收尾 ==
+ok   探针文件已删除  [clean]
+
+== 结果: 20 通过 / 0 失败 ==
+

@@ -1,0 +1,21 @@
+ok   顶栏有「代码」入口 #codeBtn  [代码]
+ok   点击后 #codeModal 打开
+ok   代码列表已加载（空态或已有条目）  [{"empty":false,"count":3}]
+ok   capture 收录 2 个文件（200）  [HTTP 200 saved=2]
+ok   刷新后 python 文件出现在列表  [code/probe-py-mwhw2a24.py]
+ok   刷新后 js 文件出现在列表  [code/probe-js-mwhw2a24.js]
+ok   点文件后出现 .cwTab[data-path]  [code/probe-py-mwhw2a24.py]
+ok   CodeMirror 载入文件内容  [len=32 内容="print(\"cw probe \" + str(40 + 2))"]
+ok   改内容 → #cwSave → 服务端读回一致  [HTTP 200 len=39]
+ok   #cwNew 新建后列表 +1  [5 -> 6]
+ok   新建文件已落盘（服务端可读）  [HTTP 200]
+ok   #cwRun 运行 python 输出「cw probe 42」  [✓ exit 0 · 738 mscw probe 42 ]
+ok   运行结果带 exit 0  [✓ exit 0 · 738 mscw probe 42 ]
+ok   #cwReview 与 #cwIntent 存在
+  skip 无模型 409 断言（当前已加载 qwen3-5-4B-Q4_K_M.gguf）
+  截图: D:/LocalModels/server/docs/feature-code-workspace-2026-11-07/logs/code-panel-mwhw2a24.png
+ok   删除后列表 -1 且文件读不到  [6 -> 5 HTTP 400]
+ok   Esc 关闭 #codeModal
+ok   自复位：探针创建的文件已全部删除  [clean]
+
+RESULT 17/17（跳过 1 条）
