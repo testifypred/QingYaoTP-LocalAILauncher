@@ -1,0 +1,115 @@
+【读法说明（backend-api，2026-11-15）】
+本文件 = backend-smoke.mjs 最新一次完整输出：22:39~22:41 在「最终源码」（8299 pid 38020，/api/version=1.8.0 dirty=true）上跑，85/85 全绿、无并发。
+同一脚本在同一实例上的历史（按时间顺序，方便对照，别看错口径）：
+  run1 79/85 —— 6 条失败全部是**脚本自身 bug**（agree 断言口径写错 1 条；日志文件路径写成单反斜杠、被 JS 的 identity escape 吃掉 4 条 + 连带 1 条），另有 1 条真问题（stub 瞬时返回时 done.seconds=0）→ 已在 app.mjs 里夹到 Math.max(0.1, …)，脚本 bug 已修。
+  run2 83/85 —— 只剩 2 条「cross 模型不存在 404 / 显式 Phi-4-mini 400」，是 probe-verify run2 整跑并发占用 codeJob 串行锁、请求排队 30s 超时（HTTP 0）；run1 与 run3 这两条都通过 → **与探针并发的锁等待假红，非产品缺陷**。
+  run3 85/85 —— 本文件（最终源码、无并发）。
+== v1.8.0 后端自测 · 目标 http://127.0.0.1:8299 · 模型 qwen3-5-4B-Q4_K_M.gguf ==
+
+-- 0. 前置（服务 / 令牌 / 模型） --
+  ok   GET /api/state -> 200  [HTTP 200 {"models":[{"file":"DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf","path":"D:\\LocalModels\\DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf","sizeGB":4.68,"label":"DeepSeek-R1-05]
+  ok   拿到本机令牌  [len=36]
+  ok   版本已是 1.8.0  [version=1.8.0]
+  .. 预加载 qwen3-5-4B-Q4_K_M.gguf
+  ok   预加载模型 qwen3-5-4B-Q4_K_M.gguf
+
+-- A. POST /api/code/review/challenge（质询） --
+  ok   无令牌 -> 403  [HTTP 403]
+  ok   缺 code -> 400  [HTTP 400]
+  ok   question 空白 -> 400  [HTTP 400]
+  ok   code 超 20000 -> 413  [HTTP 413]
+  ok   模型不存在 -> 404  [HTTP 404]
+  .. 真跑一轮质询（4B，真模型）
+  ok   真跑质询 -> 200 text/event-stream  [HTTP 200 ct=text/event-stream; charset=utf data: {"type":"meta","model":"qwen3-5-4B-Q4_K_M.gguf","modelFile":"qwen3-5-4B-Q4_K_M.gguf","contextSize":8192,"switchedModel":false,"startedAt":1794753543192,"t]
+  ok   事件顺序 meta 第一  [meta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,done]
+  ok   有 delta 段  [delta=159]
+  ok   done 最后（无 error 事件）  [delta,delta,done]
+  ok   delta 拼接非空  [len=305]
+  ok   meta 字段齐全（model/modelFile/contextSize/switchedModel/startedAt/turn）  [{"model":"qwen3-5-4B-Q4_K_M.gguf","ctx":8192,"turn":2}]
+  ok   done 有 seconds / model  [seconds=21.5 model=qwen3-5-4B-Q4_K_M.gguf]
+  ok   delta 里没有裸 JSON 围栏
+  .. 质询耗时 21.5s，回答 305 字
+
+-- B. POST /api/code/review/cross（他人复审） --
+  ok   无令牌 -> 403  [HTTP 403]
+  ok   缺 code -> 400  [HTTP 400]
+  ok   code 超 20000 -> 413  [HTTP 413]
+  ok   模型不存在 -> 404  [HTTP 404]
+  ok   显式指定 Phi-4-mini -> 400（永不使用）  [HTTP 400 Phi-4-mini 不能用作审查模型（Vulkan 上会偶发卡死）：换一个模型]
+  .. 真跑一轮他人复审（同模型 sameModel=true 分支，真模型）
+  ok   真跑复审 -> 200 text/event-stream  [HTTP 200 data: {"type":"meta","model":"qwen3-5-4B-Q4_K_M.gguf","modelFile":"qwen3-5-4B-Q4_K_M.gguf","contextSize":8192,"switchedModel":false,"sameModel":true,"startedAt"]
+  ok   事件顺序 meta -> delta* -> (phase) -> findings -> compare -> done  [meta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,phase,findings,compare,done]
+  ok   meta.sameModel === true（指定当前模型）  [sameModel=true file=qwen3-5-4B-Q4_K_M.gguf]
+  ok   phase 事件 phase=findings  [{"type":"phase","phase":"findings"}]
+  ok   delta（审查思路）非空  [len=522]
+  ok   findings 有 summary/issues/parsed/lineCount  [parsed=true issues=2 lineCount=9]
+  ok   findings.issues 字段齐全且行号在 1..lineCount
+  ok   compare.verdict ∈ {consistent,differs,contradicts}  [verdict=differs]
+  ok   stats 自洽：matched=agree+conflicts  [{"primary":1,"second":2,"matched":1,"agree":1,"onlyPrimary":0,"onlySecond":1,"conflicts":0}]
+  ok   stats 自洽：matched+onlySecond===second  [{"primary":1,"second":2,"matched":1,"agree":1,"onlyPrimary":0,"onlySecond":1,"conflicts":0}]
+  ok   stats 自洽：matched+onlyPrimary===primary  [{"primary":1,"second":2,"matched":1,"agree":1,"onlyPrimary":0,"onlySecond":1,"conflicts":0}]
+  ok   stats 计数与数组长度一致  [{"primary":1,"second":2,"matched":1,"agree":1,"onlyPrimary":0,"onlySecond":1,"conflicts":0}]
+  ok   agree / onlyPrimary / onlySecond / conflicts 都是数组且项有 line  [agree=1 onlyP=0 onlyS=1 conflict=0]
+  ok   done 有 seconds / model  [seconds=47.8]
+  .. 复审耗时 47.9s，判定 differs，第二审查员问题 2 条，parsed=true
+
+-- C. GET / POST /api/cloud/config --
+  ok   GET 形状（ok/enabled/baseURL/model/hasKey/keyMasked/host/ready）  [{"ok":true,"enabled":false,"baseURL":"http://127.0.0.1:10006/fail/v1","model":"stub-model","hasKey":false,"keyMasked":"","host":"127.0.0.1:10006","ready":false,"file":"data\\cloud-review.json"}]
+  ok   POST 无令牌 -> 403  [HTTP 403]
+  ok   http 非回环 -> 400 INSECURE_URL  [HTTP 400 code="INSECURE_URL"]
+  ok   非法 URL -> 400  [HTTP 400 baseURL 不是合法 URL（例：https://api.openai.com/v1）]
+  ok   model 空 -> 400  [HTTP 400]
+  ok   dryRun -> 200 + dryRun:true  [HTTP 200]
+  ok   dryRun 不落盘（GET 不变）  [baseURL=http://127.0.0.1:10006/fail/v1 enabled=false]
+  .. 本地云端 stub 端口 13221
+  ok   保存 -> 200 ok:true  [HTTP 200 {"ok":true,"enabled":true,"baseURL":"http://127.0.0.1:13221/v1","model":"stub-model","hasKey":true,"keyMasked":"sk-***3210","host":"127.0.0.1:13221","ready":tru]
+  ok   保存后 hasKey=true / ready=true  [{"hasKey":true,"ready":true}]
+  ok   baseURL 末尾 / 被去掉  [baseURL=http://127.0.0.1:13221/v1]
+  ok   host 正确  [host=127.0.0.1:13221]
+  ok   keyMasked 形状（前 3 + *** + 后 4）  [keyMasked=sk-***3210]
+  ok   保存响应里没有明文 apiKey
+  ok   GET 也拿不到明文 apiKey
+
+-- D. POST /api/code/review/cloud（云端复审，本地 stub） --
+  ok   无令牌 -> 403  [HTTP 403]
+  ok   confirm 缺失 -> 409 CONFIRM_REQUIRED  [HTTP 409 code=CONFIRM_REQUIRED]
+  ok   confirm 不匹配 -> 409  [HTTP 409]
+  ok   code 超 20000 -> 413  [HTTP 413]
+  ok   云端复审 -> 200 SSE  [HTTP 200 data: {"type":"meta","provider":"cloud","host":"127.0.0.1:13221","model":"stub-model","sentChars":304,"redactions":6,"startedAt":1794753614914}
+
+data: {"type":"]
+  ok   事件顺序 meta -> delta* -> findings -> done  [meta,delta,delta,delta,delta,delta,findings,done]
+  ok   meta.provider=cloud / host / model  [{"type":"meta","provider":"cloud","host":"127.0.0.1:13221","model":"stub-model","sentChars":304,"redactions":6,"startedAt":1794753614914}]
+  ok   meta.sentChars > 0  [sentChars=304]
+  ok   meta.redactions > 0  [redactions=6]
+  ok   delta 拼起来 == stub 文本  [len=358]
+  ok   findings 解析出 issues（parsed=true）  [parsed=true issues=2]
+  ok   findings 行号在 1..lineCount  [[9,10]]
+  ok   done 有 seconds / model  [seconds=0.1]
+  ok   stub 收到请求（body 非空）  [len=959]
+  ok   上游请求体不含原 apiKey
+  ok   上游请求体不含原邮箱
+  ok   上游请求体不含原 Windows 路径
+  ok   上游请求体不含原 IP
+  ok   上游请求体不含原长 hex
+  ok   上游请求体含脱敏占位符
+  ok   上游请求体不含配置里的 apiKey 明文
+  ok   上游模型 / 参数正确（stream:false）  [{"model":"stub-model","stream":false,"max_tokens":600}]
+  ok   上游 Authorization 头是 Bearer <key>  [auth=Bearer sk-BA…]
+  ok   stub 只被调用 1 次  [hits=1]
+  ok   上游 500 -> 502 CLOUD_UPSTREAM  [HTTP 502 code=CLOUD_UPSTREAM msg=上游 500：stub upstream boom]
+  ok   502 的 message 带上游状态  [上游 500：stub upstream boom]
+  ok   apiKey:"" 清除 -> hasKey=false  [hasKey=false]
+  ok   停用 -> ready=false  [{"enabled":false,"ready":false}]
+  ok   清 key 后 keyMasked 为空  [keyMasked=]
+
+-- E. 日志红线（明文 apiKey / 代码正文） --
+  ok   能读到 dev 日志 D:\LocalModels\logs\dev-8299.out.log  [len=800]
+  ok   日志里没有明文配置 apiKey
+  ok   日志里没有明文代码里的 sk-
+  ok   日志里没有代码正文标记（backendSmokeSecretFn）
+  ok   日志里有「云端复审 <host> 模型 … / 脱敏 N 处 …s」
+  ok   日志里没有 Bearer 明文
+
+关键数字：质询 21.5s / 回答 305 字 / ctx 8192 / delta 159 段 | 复审 47.9s / 判定 differs / 第二审查员 issues 2 条 / parsed=true / sameModel=true | 云端 发出 304 字符 / 脱敏 6 处 / delta 5 段 / seconds=0.1 / 上游 500->502 已验证 | 日志红线=日志 800 字 / 无明文 key / 无代码正文
+结果: 85/85 通过（失败 0，耗时 80.5s）

@@ -1,0 +1,2 @@
+# 合成 compare 校验（不跑模型；验 verdict 徽标 .ok/.warn/.err 与四类差异清单）
+通过 6 / 失败 0

@@ -1,0 +1,77 @@
+# v1.8.0 前端 UI 联调结果（临时脚本 2026-11-15T15:21:05.772Z）
+通过 70 / 失败 1
+
+ok   开头云端配置已复位（ready=false，便于验 toast）  [{"ready":false,"hasKey":false,"enabled":false}]
+ok   拿到本地令牌 localToken
+ok   有已加载的文本模型  [qwen3-5-4B-Q4_K_M.gguf]
+ok   Edge 视口宽度 ~1408（1440 窗口）  [innerWidth=1408]
+ok   样例代码已写入 code/  [{"path":"code/probe-v180.js","size":248}]
+ok   #codeModal 已打开
+ok   编辑器载入样例代码  [len=218]
+ok   #cwChallenge 存在
+ok   #cwCross 存在
+ok   #cwCrossModel 存在
+ok   #cwCloud 存在
+ok   #cwCrossModel 首项 value=""「自动（换一个模型）」
+ok   #cwCrossModel 无 Phi-4-mini 选项
+ok   #cwChallengeBox 默认隐藏
+ok   #cwCrossPanel 默认隐藏
+ok   审查完成且拿到 primary 问题  [state=审查完成 · 4 个问题 · 47.1s n=4]
+ok   审查摘要已记录（primary.summary）  [summaryChars=23]
+ok   点 #cwChallenge 展开 #cwChallengeBox
+ok   质询进行中：(typeof cwReviewBusy !== 'undefined' ? cwReviewBusy : null) = true（单锁）  [{"busy":true,"review":true,"fix":true,"cross":true,"cloud":true,"chal":true,"send":"停止（已用 0.8s）"}]
+ok   质询进行中：其余按钮全 disabled  [{"busy":true,"review":true,"fix":true,"cross":true,"cloud":true,"chal":true,"send":"停止（已用 0.8s）"}]
+ok   质询进行中：#cwChallengeSend 变「停止」  [停止（已用 0.8s）]
+ok   质询完成（状态行）  [质询完成 · 15.1s · 已记录 1 轮（发送时带最近 4 轮）]
+ok   质询记录卡片落 #cwChallengeLog（.cwChalCard/.cwChalQ/.cwChalA）  [{"q":"第 3 行不是 bug，因为测试期望就是减法","a":"不成立。依据：第 3 行注释明确声明“第 2 行应该是加法”，而代码实际执行减法，且第 2 行注释“第 2 行应该是加法”暗示了预]
+ok   质询卡片有回答正文（流式填进去的）  [answerLen=204]
+ok   进行中点 #cwChallengeSend 触发停止  [ok]
+ok   停止后状态行「已停止」  [已停止（质询已中断）]
+ok   停止后单锁释放、按钮恢复可用  [{"busy":false,"review":false,"cross":false,"cloud":false,"send":"发送质询"}]
+ok   质询「停止」真的 abort 了流式请求（Network canceled）  [[{"id":"26680.204","url":"http://127.0.0.1:8099/api/code/review/challenge","err":"net::ERR_ABORTED"}]]
+ok   复审进行中：单锁 + 其余按钮 disabled  [{"busy":true,"review":true,"cloud":true,"crossText":"停止（已用 0.8s）","thinkOpen":true}]
+ok   复审进行中：#cwCross 变「停止」、复用 #cwThink 流式  [{"busy":true,"review":true,"cloud":true,"crossText":"停止（已用 0.8s）","thinkOpen":true}]
+ok   compare 到达后 #cwCrossVerdict 渲染判定  [{"t":"互相矛盾 · 原审查 4 · 他人 0 · 一致 0 · 仅原审查 4 · 仅他人 0 · 矛盾 0","cls":"cwVerdict err"}]
+FAIL 判定徽标带 .ok/.warn/.err  cwVerdict err
+ok   判定徽标带 stats 计数  [互相矛盾 · 原审查 4 · 他人 0 · 一致 0 · 仅原审查 4 · 仅他人 0 · 矛盾 0]
+ok   他人复审完成（状态行）  [他人复审完成：互相矛盾 · 258.2s · 点条目可跳行]
+ok   并列两栏渲染（#cwCrossColPrimary / #cwCrossColSecond）  [{"panel":true,"cols":2,"p":4,"s":0}]
+ok   差异清单渲染（.cwDiffItem）  [{"n":4,"cls":{"onlyP":4},"head":["仅原审查行 2 · 错误 · 缺少输入验证","仅原审查行 3 · 错误 · 逻辑错误","仅原审查行 4 · 错误 · 敏感信息泄露"]}]
+ok   差异清单带 .agree/.onlyP/.onlyS/.conflict 类别  [{"onlyP":4}]
+ok   点差异清单条目跳到对应代码行  [{"want":2,"got":2}]
+ok   窄窗(<1100px) 两栏换行且不横向溢出  [{"innerW":1000,"basis":"100%","overflow":0}]
+ok   审查进行中（此时才点停止）  [busy=true]
+ok   审查进行中点 #cwReview 触发停止（进行中按钮可点）  [ok]
+ok   审查「停止」后状态行显示已停止  [已停止（审查已中断）]
+ok   审查「停止」真的 abort 了流式请求（Network canceled）  [[{"id":"26680.549","url":"http://127.0.0.1:8099/api/code/review/stream","err":"net::ERR_ABORTED"}]]
+ok   停止后按钮恢复原样（文案 + 可点）  [{"reviewText":"模型审查","fixText":"一键纠正","crossText":"他人复审","cloudText":"云端复审","sendText":"发送质询","reviewDisabled":false,"crossDisabled":false,"chalDisabled":false}]
+ok   配置未就绪时 stub 未被调用  [hits=0]
+ok   云端未配置：toast 指到 设置 → 代码  [["已停止审查","云端复审还没配置好：去 设置 → 代码 填 baseURL / 模型 / API Key，并勾选「启用云端复审」"]]
+ok   云端未配置：不弹确认窗
+ok   云端未配置：不发请求  [hits=0]
+ok   云端配置保存到 stub（ready=true）  [{"ok":true,"enabled":true,"baseURL":"http://127.0.0.1:12189/v1","model":"stub-model","hasKey":true,"keyMasked":"sk-***0001","host":"127.0.0.1:12189","ready":true,"file":"data\\cloud-review.json"}]
+ok   ready 时点 #cwCloud 弹 #cloudConfirmModal
+ok   #cloudConfirmHost 写明「已脱敏」+ 目标域名  [会把当前文件的代码（已脱敏）发到 127.0.0.1:12189]
+ok   点 #cloudConfirmCancel：什么都不发  [hits=0]
+ok   点取消后弹窗关闭
+ok   确认后才发云端复审并完成  [云端复审完成 · 1 个问题 · 0.1s（代码已脱敏，可一键纠正）]
+ok   云端请求只发了 1 次（取消那次没发）  [hits=1]
+ok   meta 显示「云端 · host · 模型 · 秒数」  [云端 · 127.0.0.1:12189 · stub-model · 0.1s]
+ok   云端 findings 写回 #cwIssues 卡片  [n=1 head=行 3 · 错误 · stub 问题：减法应为加法]
+ok   云端结论可用「一键纠正」（#cwFixAll 可用）
+ok   发到上游的请求是 OpenAI 形状（model/messages）  [model=stub-model]
+ok   请求体里的代码已脱敏（不含原 API Key / 邮箱 / 本机路径 / IP）  [sentChars=755]
+ok   请求体出现脱敏占位符（<API_KEY> / <REDACTED> / <EMAIL> / <PATH>）  [sentChars=755]
+ok   设置 → 代码页签可点  [ok]
+ok   打开设置回填云端配置（#cloudState「已启用（host）」）  [已启用（127.0.0.1:12189）]
+ok   回填 baseURL / model / enabled  [{"base":"http://127.0.0.1:12189/v1","model":"stub-model"}]
+ok   #cloudKey 不回显明文（type=password，空值 + masked 占位）  [已保存：sk-***0001（要改就重新输入）]
+ok   #cloudHint 写明 apiKey 只存本机 / 不进日志  [配置文件：data\cloud-review.json · apiKey 只存本机，不进日志、不上传、不打进交付包。]
+ok   保存失败把 {code,message} 显示到 #cloudState  [保存失败（INSECURE_URL）：云端复审只允许 https（本机回环可用 http）]
+ok   保存成功 #cloudState「已启用（host）」  [已启用（127.0.0.1:12189）]
+ok   清除已存 Key 后 #cloudState 有文案  [已清除 Key · 已启用但配置不完整]
+ok   清除后 GET 里 hasKey=false、ready=false  [{"hasKey":false,"ready":false}]
+ok   #cloudKey 占位回到「只存本机」
+
+云端 stub：http://127.0.0.1:12189/v1
+# 补记 23:30：唯一 FAIL「判定徽标带 .ok/.warn/.err」是测试脚本正则写错（要求 class 内带字面量点），产品实际 class 为 "cwVerdict err"；已用合成 compare 校验补证 6/6（见 ui-v180-synthetic-compare.txt / ui-v180-cross-verdicts.png）。

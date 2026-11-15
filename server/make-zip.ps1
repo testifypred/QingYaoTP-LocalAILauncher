@@ -59,6 +59,11 @@ if (Test-Path $stageCfg) {
     $t = $t -replace '(?m)^vkDevices=.*$', 'vkDevices='
     $t = $t -replace '(?m)^visionModel=.*$', 'visionModel='
     $t = $t -replace '(?m)^visionMmproj=.*$', 'visionMmproj='
+    # 云端复审（v1.8.0）：配置本该只落在 data\cloud-review.json（data\ 整目录不进包）；
+    # 但 config.ini 里若被手工写过这几个键，也一律清掉，绝不把 key / 私有地址带进交付包。
+    $t = $t -replace '(?m)^cloudApiKey=.*$', 'cloudApiKey='
+    $t = $t -replace '(?m)^cloudBaseURL=.*$', 'cloudBaseURL='
+    $t = $t -replace '(?m)^cloudModel=.*$', 'cloudModel='
     [System.IO.File]::WriteAllText($stageCfg, $t, (New-Object System.Text.UTF8Encoding($true)))
 }
 
@@ -95,9 +100,15 @@ $zipRead = [System.IO.Compression.ZipFile]::OpenRead($Zip)
 $n = $zipRead.Entries.Count
 # 自检：交付 zip 里绝不允许有 app/llama/ 条目（视觉已拆分；robocopy /XD 之外再兜一层）
 $llamaEntries = @($zipRead.Entries | Where-Object { $_.FullName -match '(^|/)app/llama/' })
+# 自检：云端复审配置（含 API Key）只存本机 data\cloud-review.json，绝不许进交付包
+$cloudEntries = @($zipRead.Entries | Where-Object { $_.FullName -match '(^|/)data/cloud-review' })
 $zipRead.Dispose()
 if ($llamaEntries.Count -gt 0) {
     Write-Host ("!! 自检失败：交付 zip 里有 {0} 条 app/llama/ 条目（例如 {1}）——主包不应带视觉 sidecar；检查 build-portable.ps1 是否加了 -BundleVision、dist 是否有残留" -f $llamaEntries.Count, $llamaEntries[0].FullName) -ForegroundColor Red
+    exit 1
+}
+if ($cloudEntries.Count -gt 0) {
+    Write-Host ("!! 自检失败：交付 zip 里有 {0} 条 data/cloud-review* 条目（例如 {1}）——云端复审的 API Key 只准存本机 data\，不能随包发出" -f $cloudEntries.Count, $cloudEntries[0].FullName) -ForegroundColor Red
     exit 1
 }
 Write-Host ('完成：{0}' -f $z.FullName) -ForegroundColor Green

@@ -1,0 +1,27 @@
+ok   面板默认可见  [hidden=false]
+ok   贴在顶栏下方  [top=241 headerBottom=231]
+ok   靠右悬空  [right=18]
+ok   默认窗口 16K  [已用 0 / 16,384]
+ok   上下文下拉含 8K/16K/32K/64K/128K  [["8192","16384","32768","65536","131072"]]
+ok   初始用量与百分比自洽  [used=0 pct=0%]
+ok   已用 = prompt + completion  [已用 10,420 / 16,384]
+ok   剩余正确  [剩余 5,964 tok]
+ok   百分比 64%  [64%]
+ok   进度条宽度  [64%]
+ok   常态不告警  [ctxPanel]
+ok   超 85% 进入告警  [ctxPanel danger]
+ok   告警文案  [本轮 ↓600 tok · Qwen3-5-4B · 接近上限：建议「新对话」或调大上下文]
+ok   点按钮可隐藏  [{"h":true,"on":false}]
+ok   隐藏后记住选择
+ok   刷新后仍隐藏  [hidden=true]
+ok   再点可显示
+ok   显示后记住选择
+ok   刷新后仍显示  [hidden=false]
+ok   ✕ 可隐藏
+ok   真跑一轮：浮窗出现本轮用量  [本轮 ↓2 tok · Qwen3-5-4B]
+ok   真跑一轮：已用量 > 0  [已用 34 / 16,384]
+ok   真跑一轮：未超过窗口  [已用 34 / 16,384]
+ok   测试会话已清理  [剩 1 个会话]
+ok   窄窗仍贴顶栏  [top=117 hb=107]
+
+RESULT 25/25 passed

@@ -1,0 +1,7 @@
+# probe-verify run3 收尾：删 data\cloud-review.json + GET 默认值（2026-11-15T14:42:51.125Z）
+GET /api/cloud/config -> {"ok":true,"enabled":false,"baseURL":"","model":"","hasKey":false,"keyMasked":"","host":"","ready":false,"file":"data\\cloud-review.json"}
+state: version=1.8.0 loaded=qwen3-5-4B-Q4_K_M.gguf activeChats=0
+version api: {"version":"1.8.0","commit":"f412f25","commitAt":"2026-11-15T22:07:36+08:00","builtAt":"","buildSource":"git","dirty":true,"startedAt":"2026-11-15T14:38:00.010Z","node":"v24.17.0","dir":"D:\\LocalModels\\server","pid":38020,"port":8299}
+
+删除的文件: D:\LocalModels\data\cloud-review.json（已不存在）
+run3 探针结果: == 结果: 61/61 通过（跳过 12 项） ==

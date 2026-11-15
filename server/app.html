@@ -807,6 +807,60 @@ math-field:focus-within{border-color:var(--cyan)}
 .cwReviewState{margin-top:8px;font-size:11.5px;line-height:1.6;color:var(--dim)}
 .cwReviewState.err{color:var(--err)}
 .cwReviewState.ok{color:var(--ok)}
+/* ---- v1.8.0 二次验证：质询 / 他人复审 / 云端复审（契约 §2.3） ---- */
+.cwVerifyActions{padding-top:0}
+.cwVerifyActions button{padding:3px 9px;font-size:11.5px}
+.cwCrossModelRow{display:flex;align-items:center;gap:6px;padding:0 10px 8px;flex-wrap:wrap}
+.cwCrossModelRow .hintText{font-size:10.5px;color:var(--dim);font-family:var(--mono)}
+#cwCrossModel{flex:1 1 100%;min-width:0;height:25px;padding:1px 5px;border-radius:5px;border:1px solid var(--line);background:var(--panel);color:var(--text-2);font:400 11px var(--mono);outline:none}
+#cwCrossModel:focus{border-color:var(--cyan)}
+.cwChallengeBox[hidden]{display:none}
+#cwChallengeText{width:100%;height:64px;padding:7px 9px;resize:vertical;border-radius:6px;border:1px solid var(--line);background:var(--code-bg);color:var(--text);font:12px/1.55 var(--mono);outline:none;box-sizing:border-box}
+#cwChallengeText:focus{border-color:var(--cyan)}
+.cwChallengeActions{display:flex;align-items:center;gap:8px;padding:6px 0;flex-wrap:wrap}
+.cwChallengeActions button{padding:3px 10px;font-size:11.5px}
+.cwChallengeLog{display:flex;flex-direction:column;gap:7px;margin:4px 0 8px}
+.cwChalCard{border:1px solid var(--line);border-left:3px solid var(--violet);border-radius:6px;background:var(--panel);padding:7px 9px}
+.cwChalQ{font-size:12px;font-weight:600;color:var(--text);line-height:1.55;white-space:pre-wrap;word-break:break-word}
+.cwChalQ::before{content:'问 ';color:var(--violet);font-weight:700}
+.cwChalA{margin-top:4px;font-size:11.5px;line-height:1.66;color:var(--text-2);white-space:pre-wrap;word-break:break-word}
+.cwChalA::before{content:'答 ';color:var(--cyan);font-weight:700}
+.cwCrossPanel[hidden]{display:none}
+.cwCrossPanel{padding:2px 0 6px;border-top:1px dashed var(--line-2);margin-top:8px}
+.cwVerdictRow{display:flex;align-items:center;gap:8px;margin:6px 0;flex-wrap:wrap}
+.cwVerdict{display:inline-block;padding:1px 8px;border-radius:999px;border:1px solid var(--line-2);font-size:11px;color:var(--text-2);line-height:1.6}
+.cwVerdict.ok{color:var(--ok);border-color:var(--ok);background:rgba(52,211,153,.10)}
+.cwVerdict.warn{color:var(--warn);border-color:var(--warn);background:rgba(251,191,36,.10)}
+.cwVerdict.err{color:var(--err);border-color:var(--err);background:rgba(251,113,133,.10)}
+.cwCrossCols{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+.cwCrossCol{flex:1 1 132px;min-width:0;border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:6px 8px}
+.cwCrossColTitle{font-size:11px;font-weight:600;color:var(--cyan);margin-bottom:5px}
+.cwCrossItem{border:1px solid var(--line);border-radius:5px;background:var(--panel-2);padding:4px 6px;margin-bottom:4px;font-size:11px;line-height:1.5;color:var(--text-2);cursor:pointer;word-break:break-word}
+.cwCrossItem:hover{border-color:var(--cyan);color:var(--text)}
+.cwCrossItem[data-severity="error"]{border-left:2px solid var(--err)}
+.cwCrossItem[data-severity="warn"]{border-left:2px solid var(--warn)}
+.cwCrossItem[data-severity="info"]{border-left:2px solid var(--cyan)}
+.cwCrossEmpty{font-size:11px;color:var(--dim);line-height:1.6}
+.cwCrossDiff{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+.cwDiffItem{border:1px solid var(--line);border-left:3px solid var(--line-2);border-radius:5px;background:var(--panel);padding:4px 7px;font-size:11px;line-height:1.5;color:var(--text-2);cursor:pointer;word-break:break-word}
+.cwDiffItem:hover{border-color:var(--cyan)}
+.cwDiffItem.agree{border-left-color:var(--ok)}
+.cwDiffItem.onlyP{border-left-color:var(--warn)}
+.cwDiffItem.onlyS{border-left-color:var(--cyan)}
+.cwDiffItem.conflict{border-left-color:var(--err)}
+.cwDiffTag{font-weight:600;margin-right:4px}
+.cwDiffItem.agree .cwDiffTag{color:var(--ok)}
+.cwDiffItem.onlyP .cwDiffTag{color:var(--warn)}
+.cwDiffItem.onlyS .cwDiffTag{color:var(--cyan)}
+.cwDiffItem.conflict .cwDiffTag{color:var(--err)}
+/* 云端复审：确认弹窗文案 + 设置卡片输入框 */
+.cloudConfirmText{display:block;padding:9px 11px;border-radius:5px;border:1px solid var(--warn);background:rgba(251,191,36,.07);color:var(--warn);font-size:12.5px;line-height:1.6;word-break:break-all}
+.cloudConfirmText b{color:var(--text)}
+#cloudBase,#cloudModel,#cloudKey{width:100%;padding:6px 9px;border-radius:5px;border:1px solid var(--line);background:var(--panel-2);color:var(--text);font:12px var(--mono);outline:none;box-sizing:border-box}
+#cloudBase:focus,#cloudModel:focus,#cloudKey:focus{border-color:var(--cyan)}
+#cloudState{font-size:11px;color:var(--dim);font-family:var(--mono);word-break:break-all}
+#cloudHint{font-size:11px;color:var(--dim);line-height:1.5;word-break:break-all}
+@media (max-width:1100px){.cwCrossCol{flex:1 1 100%}}
 /* CodeMirror 行背景：审查问题（error/warn/info）与改动行（changed），颜色走 CSS 变量 */
 .CodeMirror .cwLineErr{background:var(--cw-err-bg)}
 .CodeMirror .cwLineWarn{background:var(--cw-warn-bg)}
@@ -1610,13 +1664,60 @@ header::before{
           <button id="cwReReview" class="ghost" title="清空本次结论与高亮，重新审查">重新审查</button>
           <button id="cwSendChat" class="ghost" title="把当前编辑器里的代码包成代码块填进聊天输入框（不自动发送）">发回对话</button>
         </div>
+        <div class="cwReviewActions cwVerifyActions">
+          <button id="cwChallenge" class="ghost" type="button" title="质询：让模型反驳或自证当前审查结论">质询</button>
+          <button id="cwCross" class="ghost" type="button" title="换一个模型独立再审一次，并列对照">他人复审</button>
+          <button id="cwCloud" class="ghost" type="button" title="把脱敏后的代码发到云端服务复审（每次都要确认）">云端复审</button>
+        </div>
+        <div class="cwCrossModelRow">
+          <span class="hintText">复审模型</span>
+          <select id="cwCrossModel" title="他人复审用哪个模型：默认自动挑一个与当前不同的（不会选 Phi-4-mini）">
+            <option value="">自动（换一个模型）</option>
+          </select>
+        </div>
         <div id="cwReviewBody" class="cwReviewBody">
           <div id="cwReviewSummary" class="cwReviewSummary"></div>
           <details id="cwThink" class="cwThink" hidden><summary id="cwThinkSum">审查思路（思考中…）</summary><pre id="cwThinkText"></pre></details>
           <div id="cwIssues" class="cwIssues"></div>
+          <div id="cwChallengeBox" hidden>
+            <textarea id="cwChallengeText" spellcheck="false" placeholder="例如：第 3 行不是 bug，因为…"></textarea>
+            <div class="cwChallengeActions">
+              <button id="cwChallengeSend" class="ghost" type="button">发送质询</button>
+              <span class="hintText">模型会逐条回答：成立 / 不成立 / 需验证</span>
+            </div>
+            <div id="cwChallengeLog" class="cwChallengeLog"></div>
+          </div>
+          <div id="cwCrossPanel" hidden>
+            <div class="cwVerdictRow"><span id="cwCrossVerdict" class="cwVerdict">尚未复审</span></div>
+            <div class="cwCrossCols">
+              <div class="cwCrossCol"><div class="cwCrossColTitle">原审查</div><div id="cwCrossColPrimary"></div></div>
+              <div class="cwCrossCol"><div class="cwCrossColTitle">他人复审</div><div id="cwCrossColSecond"></div></div>
+            </div>
+            <div id="cwCrossDiff" class="cwCrossDiff"></div>
+          </div>
           <div id="cwReviewState" class="cwReviewState"></div>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- 云端复审确认：每次外发都必须先确认目标域名（契约 §2.2 第 4 条） -->
+<div id="cloudConfirmModal" class="modal" hidden>
+  <div class="modalBox" style="width:min(480px,92vw)">
+    <div class="modalHead">
+      <b>云端复审确认</b>
+      <span class="spacer"></span>
+      <button id="cloudConfirmClose" class="ghost" title="关闭">✕</button>
+    </div>
+    <div class="settingsBody">
+      <span id="cloudConfirmHost" class="cloudConfirmText">会把当前文件的代码（已脱敏）发到 —</span>
+      <em class="hintText">发送前会脱敏 API Key、邮箱、本机路径、IP、长十六进制串；代码会离开本机，请确认目标服务可信。取消则什么都不发。</em>
+    </div>
+    <div class="modalFoot">
+      <span class="hintText">每次云端复审都要你确认。</span>
+      <button id="cloudConfirmCancel" class="ghost">取消</button>
+      <button id="cloudConfirmOk">确认发送</button>
     </div>
   </div>
 </div>
@@ -1889,6 +1990,20 @@ header::before{
       <div class="field">
         <span class="lbl">审查与修正</span>
         <em>代码面板的「模型审查」会先流式显示审查思路，再列出问题卡片；点卡片跳到对应行，可以「一键纠正」全部问题或单条「一键更改」。改完的行会高亮，代码仍处于未保存状态——点「保存」才落盘，点「发回对话」则把当前代码包成代码块填进聊天输入框（不会自动发送）。审查 / 纠正默认用本对话已加载的模型，也可以在审查面板顶上指定另一个模型。</em>
+      </div>
+      <div class="field" id="cloudCard">
+        <span class="lbl">云端复审 <i>OpenAI 兼容 API</i></span>
+        <label class="chk"><input type="checkbox" id="cloudEnabled">启用云端复审（把代码发到外部服务）</label>
+        <input id="cloudBase" spellcheck="false" placeholder="https://api.openai.com/v1">
+        <input id="cloudModel" spellcheck="false" placeholder="模型名，例如 gpt-4o-mini">
+        <input id="cloudKey" type="password" spellcheck="false" autocomplete="off" placeholder="API Key（只存本机）">
+        <div class="exportRow">
+          <button id="cloudSave" class="ghost" type="button">保存配置</button>
+          <button id="cloudClearKey" class="ghost" type="button">清除已存 Key</button>
+          <span id="cloudState">未配置</span>
+        </div>
+        <span id="cloudHint">apiKey 只存本机，不进日志、不上传、不打进交付包。</span>
+        <em>代码面板的「云端复审」会先弹确认框，确认后才把当前代码脱敏外发；返回的问题同样写回问题卡片，可以继续「一键纠正」。改完这一卡片要点上面的「保存配置」单独保存，底部的「保存」只保存生成/朗读等设置。</em>
       </div>
     </div>
     <div class="settingsBody" id="paneAbout" data-pane="about" hidden>
@@ -3553,7 +3668,7 @@ async function refresh() {
   // 代码面板开着时，让「审查模型」下拉跟上当前模型 / 模型列表变化（契约 2.2）
   try {
     const cmEl = document.getElementById('codeModal');
-    if (cmEl && !cmEl.hidden) cwPopulateReviewModels();
+    if (cmEl && !cmEl.hidden) { cwPopulateReviewModels(); cwPopulateCrossModels(); }
   } catch {}
   return s;
 }
@@ -4552,6 +4667,16 @@ const cwThinkEl = $('cwThink'), cwThinkSumEl = $('cwThinkSum'), cwThinkTextEl = 
 const cwIssuesEl = $('cwIssues');
 const cwNewLangEl = $('cwNewLang'), cwReviewModelEl = $('cwReviewModel');
 const cwFixAllEl = $('cwFixAll'), cwReReviewEl = $('cwReReview'), cwSendChatEl = $('cwSendChat');
+// v1.8.0 二次验证：质询 / 他人复审 / 云端复审（契约 §2.1 固定 id）
+const cwChallengeEl = $('cwChallenge'), cwChallengeBoxEl = $('cwChallengeBox'), cwChallengeTextEl = $('cwChallengeText');
+const cwChallengeSendEl = $('cwChallengeSend'), cwChallengeLogEl = $('cwChallengeLog');
+const cwCrossEl = $('cwCross'), cwCrossModelEl = $('cwCrossModel'), cwCrossVerdictEl = $('cwCrossVerdict');
+const cwCrossPanelEl = $('cwCrossPanel'), cwCrossColPrimaryEl = $('cwCrossColPrimary'), cwCrossColSecondEl = $('cwCrossColSecond');
+const cwCrossDiffEl = $('cwCrossDiff');
+const cwCloudEl = $('cwCloud'), cloudConfirmModalEl = $('cloudConfirmModal'), cloudConfirmHostEl = $('cloudConfirmHost');
+const cloudConfirmOkEl = $('cloudConfirmOk'), cloudConfirmCancelEl = $('cloudConfirmCancel'), cloudConfirmCloseEl = $('cloudConfirmClose');
+const cloudEnabledEl = $('cloudEnabled'), cloudBaseEl = $('cloudBase'), cloudModelEl = $('cloudModel'), cloudKeyEl = $('cloudKey');
+const cloudSaveEl = $('cloudSave'), cloudClearKeyEl = $('cloudClearKey'), cloudStateEl = $('cloudState'), cloudHintEl = $('cloudHint');
 
 const CW_DIR = 'code';                             // 代码文件统一放工作区 code/ 下（契约第二节）
 const CW_OPEN_KEY = 'localai.cwOpen';              // 上次打开的文件
@@ -4633,6 +4758,15 @@ let cwFixInfo = null;         // 最近一次修正的 added/removed
 let cwLineMarks = [];         // 已加到 CodeMirror 行上的 {h, cls}，用于下一次清掉
 let cwReviewModelSig = '';    // 审查模型下拉的「当前内容签名」，避免 refresh 每 3 秒重建
 let cwColors = Object.assign({}, CW_COLOR_DEF); // 行高亮颜色（localStorage localai.cwColors）
+// v1.8.0：质询 / 他人复审 / 云端复审的状态
+const CW_CHAL_HISTORY_MAX = 4;   // 质询 history 最多带 4 轮（后端也会再截断）
+let cwLastReviewSummary = '';    // 最近一次审查的摘要（质询 / 他人复审的 primary.summary）
+let cwChalHistory = [];          // 质询历史 [{question,answer}]，只放内存
+let cwCrossSecondIssues = [];    // 他人复审：第二审查员报告的问题
+let cwCrossVerdictLabel = '';    // compare 的判定中文（done 时拼进状态行）
+let cwCrossModelSig = '';        // 复审模型下拉的签名，避免 refresh 每 3 秒重建
+let cwCloudConfirmHost = '';     // 弹窗里确认过、随请求发回的 host
+let cwCloudCfgCache = null;      // GET /api/cloud/config 的最近结果
 
 function cwExt(p) { return (String(p || '').split('.').pop() || '').toLowerCase(); }
 function cwModeFor(p) { return CW_MODES[cwExt(p)] || 'text/plain'; }
@@ -5150,29 +5284,55 @@ function cwResetReviewView() {
   cwIssues = [];
   cwChangedRanges = [];
   cwFixInfo = null;
+  cwLastReviewSummary = ''; // v1.8.0：质询 / 复审的 primary 跟着失效
   cwRenderIssues([]);
   cwClearLineClass(null);
   cwSetReviewBody('');
   cwThinkHide();
+  cwResetCrossView();
   cwSetReviewState('');
   cwRefreshActionButtons();
 }
 
+/**
+ * 五项（审查 / 纠正 / 质询 / 他人复审 / 云端复审）共用一把锁 cwReviewBusy：
+ * 进行中的那一项变「停止」，其余按钮 disabled（契约 §2.2 第 1 条）。
+ */
 function cwRefreshActionButtons() {
+  const busy = cwReviewBusy;
+  const mode = cwReviewMode; // '' | review | fix | challenge | cross | cloud
   if (cwFixAllEl) {
-    // 审查/纠正进行中不再禁用：变成「停止」；空闲时没有可改的问题才禁用（v1.7.1）
-    cwFixAllEl.disabled = !cwReviewBusy && !cwIssues.length;
-    cwFixAllEl.textContent = cwReviewBusy ? '停止' : '一键纠正';
-    cwFixAllEl.title = cwReviewBusy
+    const mine = mode === 'review' || mode === 'fix';
+    cwFixAllEl.disabled = busy ? !mine : !cwIssues.length;
+    cwFixAllEl.textContent = busy && mine ? '停止' : '一键纠正';
+    cwFixAllEl.title = busy && mine
       ? '停止当前的审查 / 纠正'
-      : (cwIssues.length ? '把审查发现的问题一次性改掉' : '没有可修改的问题');
+      : (busy ? '其它任务进行中，先停止它' : (cwIssues.length ? '把审查发现的问题一次性改掉' : '没有可修改的问题'));
   }
   if (cwReviewEl) {
-    cwReviewEl.title = cwReviewBusy ? '停止当前的审查 / 纠正' : '让模型审查当前代码';
+    cwReviewEl.disabled = busy && mode !== 'review';
+    cwReviewEl.textContent = busy && mode === 'review' ? '停止审查' : '模型审查';
+    cwReviewEl.title = busy && mode === 'review' ? '停止当前的审查' : '让模型审查当前代码';
   }
-  if (cwReReviewEl) cwReReviewEl.disabled = cwReviewBusy;
+  if (cwReReviewEl) cwReReviewEl.disabled = busy;
   if (cwSendChatEl) cwSendChatEl.disabled = false;
-  if (cwIssuesEl) for (const b of cwIssuesEl.querySelectorAll('.cwIssueApply')) b.disabled = cwReviewBusy;
+  if (cwIssuesEl) for (const b of cwIssuesEl.querySelectorAll('.cwIssueApply')) b.disabled = busy;
+  // 新增三项：进行中变「停止」（收回调用 cwStopReview），其余时候 disabled
+  if (cwChallengeEl) cwChallengeEl.disabled = busy;
+  if (cwCrossEl) {
+    cwCrossEl.disabled = busy && mode !== 'cross';
+    cwCrossEl.textContent = busy && mode === 'cross' ? '停止' : '他人复审';
+  }
+  if (cwCloudEl) {
+    cwCloudEl.disabled = busy && mode !== 'cloud';
+    cwCloudEl.textContent = busy && mode === 'cloud' ? '停止' : '云端复审';
+  }
+  if (cwChallengeSendEl) {
+    cwChallengeSendEl.disabled = busy && mode !== 'challenge';
+    cwChallengeSendEl.textContent = busy && mode === 'challenge' ? '停止' : '发送质询';
+  }
+  if (cwChallengeTextEl) cwChallengeTextEl.disabled = busy;
+  if (cwCrossModelEl) cwCrossModelEl.disabled = busy;
 }
 
 /** 审查模型下拉：首项「本对话模型（当前）」，其余来自 /api/state.models 的 file（契约 2.2） */
@@ -5218,7 +5378,7 @@ async function cwStreamSSE(url, payload, handler, signal) {
   });
   if (!r.ok) {
     const j = await r.json().catch(() => ({}));
-    const err = new Error((j.error && j.error.message) || ('HTTP ' + r.status));
+    const err = new Error((j.error && j.error.message) || j.message || ('HTTP ' + r.status));
     err.status = r.status;
     throw err;
   }
@@ -5329,6 +5489,22 @@ function cwResetReviewTimer() {
 function cwReviewPaint() {
   if (!cwReviewT0) return;
   const secs = ((Date.now() - cwReviewT0) / 1000).toFixed(1);
+  // v1.8.0：质询 / 他人复审 / 云端复审各自把自己的按钮变成「停止（已用 Xs）」
+  if (cwReviewMode === 'challenge') {
+    if (cwChallengeSendEl) cwChallengeSendEl.textContent = '停止（已用 ' + secs + 's）';
+    cwSetReviewState('模型正在逐条回答你的质疑…（已用 ' + secs + 's）', '');
+    return;
+  }
+  if (cwReviewMode === 'cross') {
+    if (cwCrossEl) cwCrossEl.textContent = '停止（已用 ' + secs + 's）';
+    cwSetReviewState('第二审查员正在独立复审…（已用 ' + secs + 's）', '');
+    return;
+  }
+  if (cwReviewMode === 'cloud') {
+    if (cwCloudEl) cwCloudEl.textContent = '停止（已用 ' + secs + 's）';
+    cwSetReviewState('等待云端回复…（已用 ' + secs + 's）', '');
+    return;
+  }
   if (cwReviewMode === 'fix') {
     cwReviewEl.textContent = '停止纠正（已用 ' + secs + 's）';
     return;
@@ -5349,6 +5525,9 @@ function cwReviewStartTimer(mode, t0) {
   cwReviewMode = mode;
   cwReviewT0 = t0;
   cwReviewStage = 'think';
+  // 各流程都是「先置 busy、再 startTimer」，而 cwReviewMode 到这一步才有值；
+  // 必须再同步一次按钮，否则进行中的那项会被前一次 refresh 设成 disabled（「停止」点不了）。
+  cwRefreshActionButtons();
   cwReviewPaint();
   cwReviewTimer = setInterval(cwReviewPaint, 200);
 }
@@ -5356,10 +5535,28 @@ function cwReviewStartTimer(mode, t0) {
 /** 停止当前审查/纠正：abort fetch（后端 res close 会把生成一起掐掉），清 timer、恢复按钮 */
 function cwStopReview() {
   if (!cwReviewBusy) return;
-  const isFix = cwReviewMode === 'fix';
+  const mode = cwReviewMode;
+  const isFix = mode === 'fix';
   cwStopRequested = true;
   try { if (cwAbortCtl) cwAbortCtl.abort(); } catch {}
   cwResetReviewTimer();
+  if (mode === 'challenge') {
+    cwSetReviewState('已停止（质询已中断）', '');
+    showToast('已停止质询', 'warn', 3600);
+    return;
+  }
+  if (mode === 'cross') {
+    cwThinkEnd('他人复审思路（已停止）');
+    cwSetReviewState('已停止（他人复审已中断）', '');
+    showToast('已停止他人复审', 'warn', 3600);
+    return;
+  }
+  if (mode === 'cloud') {
+    cwThinkEnd('云端复审输出（已停止）');
+    cwSetReviewState('已停止（云端复审已中断）', '');
+    showToast('已停止云端复审', 'warn', 3600);
+    return;
+  }
   cwThinkEnd(isFix ? '修正思路（已停止）' : '审查思路（已停止）');
   cwSetReviewState('已停止' + (isFix ? '（纠正已中断）' : '（审查已中断）'), '');
   showToast(isFix ? '已停止纠正' : '已停止审查', 'warn', 3600);
@@ -5477,6 +5674,7 @@ function cwApplyFindings(ev) {
   const issues = Array.isArray(ev && ev.issues) ? ev.issues.map(cwNormIssue) : [];
   cwIssues = issues;
   const summary = String((ev && ev.summary) || '').trim();
+  cwLastReviewSummary = summary; // v1.8.0：留给质询 / 他人复审当 primary.summary
   cwSetReviewBody(renderMarkdown(summary || (issues.length ? '审查发现问题。' : '没有发现问题。')));
   cwRenderIssues(issues);
   if (!issues.length) cwRenderIssueEmpty();
@@ -5632,10 +5830,569 @@ function cwSendChat() {
   showToast('已把当前代码填入输入框（未发送，可补一句说明再回车）', 'ok', 5200);
 }
 
+// ---------------------------------------------------------------- v1.8.0 二次验证：质询 / 他人复审 / 云端复审
+// 契约 §2：五项共用 cwReviewBusy 这一把串行锁；三条新接口的流式一律走 cwStreamSSE（已带 x-local-token）。
+
+/** 当前代码的基础 payload（code/lang/file） */
+function cwBasePayload() {
+  return {
+    code: cwValue(),
+    lang: cwLangFor(cwCurrent) || cwExt(cwCurrent) || '',
+    file: cwCurrent ? cwCurrent.split('/').pop() : '',
+  };
+}
+
+/** 审查意图：输入框优先，留空回退到当前会话最后一条提问（与审查一致） */
+function cwIntentValue() {
+  let intent = cwIntentEl.value.trim();
+  if (!intent) intent = cwLastUserAsk();
+  return intent.slice(0, 500);
+}
+
+/** 把当前 cwIssues + 摘要打包成契约里的 primary（质询 / 他人复审的对照） */
+function cwPrimarySnapshot() {
+  return {
+    summary: cwLastReviewSummary || '',
+    issues: cwIssues.map((it) => ({
+      line: it.line,
+      endLine: it.endLine,
+      severity: it.severity,
+      title: it.title,
+      detail: it.detail,
+      fix: it.fix,
+    })),
+  };
+}
+
+/** 五项通用的收尾：停表、清 abort、开锁、恢复按钮 */
+function cwEndJob() {
+  cwResetReviewTimer();
+  cwAbortCtl = null;
+  cwReviewBusy = false;
+  cwStopRequested = false;
+  cwRefreshActionButtons();
+}
+
+// ---- 质询（POST /api/code/review/challenge，契约 §1.1） ----
+function cwToggleChallenge() {
+  if (!cwChallengeBoxEl) return;
+  const open = cwChallengeBoxEl.hidden;
+  cwChallengeBoxEl.hidden = !open;
+  if (cwChallengeEl) cwChallengeEl.classList.toggle('on', open);
+  if (open) setTimeout(() => { try { cwChallengeTextEl.focus(); } catch {} }, 40);
+}
+
+/** 先建卡、再逐段填：.cwChalCard > .cwChalQ / .cwChalA */
+function cwChallengeCard(question) {
+  const card = document.createElement('div');
+  card.className = 'cwChalCard';
+  const q = document.createElement('div');
+  q.className = 'cwChalQ';
+  q.textContent = question;
+  const a = document.createElement('div');
+  a.className = 'cwChalA';
+  a.textContent = '（等待模型回答…）';
+  card.appendChild(q);
+  card.appendChild(a);
+  return card;
+}
+
+async function cwSendChallenge() {
+  if (cwReviewBusy) return;
+  const q = cwChallengeTextEl ? cwChallengeTextEl.value.trim() : '';
+  if (!q) { showToast('先写下你的质疑（例如：第 3 行不是 bug，因为…）', 'warn', 3600); return; }
+  if (!cwValue().trim()) { showToast('先打开或写点代码', 'warn', 3200); return; }
+  if (!localToken) { try { await refresh(); } catch {} }
+  const payload = Object.assign(cwBasePayload(), {
+    intent: cwIntentValue(),
+    primary: cwPrimarySnapshot(),
+    question: q,
+    history: cwChalHistory.slice(-CW_CHAL_HISTORY_MAX),
+  });
+  cwApplyReviewOpen(true);
+  try { localStorage.setItem(CW_REVIEW_OPEN_KEY, '1'); } catch {}
+  if (cwChallengeTextEl) cwChallengeTextEl.value = '';
+  cwReviewBusy = true;
+  cwStopRequested = false;
+  cwRefreshActionButtons();
+  cwAbortCtl = new AbortController();
+  cwReviewStartTimer('challenge', Date.now());
+  cwSetReviewState('模型正在逐条回答你的质疑…', '');
+  const card = cwChallengeCard(q);
+  const answerEl = card.querySelector('.cwChalA');
+  if (cwChallengeLogEl) {
+    cwChallengeLogEl.appendChild(card);
+    cwChallengeLogEl.scrollTop = cwChallengeLogEl.scrollHeight;
+  }
+  let answer = '';
+  let answered = false;
+  let lastSecs = '';
+  try {
+    await cwStreamSSE('/api/code/review/challenge', payload, (e) => {
+      if (e.type === 'meta') {
+        const name = prettyName(e.modelFile || e.model || '');
+        cwReviewMetaEl.textContent = name + (e.switchedModel ? ' · 已切换' : '');
+      } else if (e.type === 'delta') {
+        answered = true;
+        answer += String(e.text || '');
+        answerEl.textContent = answer;
+        if (cwChallengeLogEl) cwChallengeLogEl.scrollTop = cwChallengeLogEl.scrollHeight;
+      } else if (e.type === 'done') {
+        const secs = Number(e.seconds);
+        lastSecs = Number.isFinite(secs) ? ' · ' + secs.toFixed(1) + 's' : '';
+        if (e.model) cwReviewMetaEl.textContent = prettyName(e.model) + lastSecs;
+        cwResetReviewTimer();
+        if (!answered) answerEl.textContent = '（模型没有返回内容）';
+      } else if (e.type === 'error') {
+        throw new Error(e.message || '质询失败');
+      }
+    }, cwAbortCtl.signal);
+    if (answered) {
+      cwChalHistory.push({ question: q, answer: answer.slice(0, 4000) });
+      while (cwChalHistory.length > CW_CHAL_HISTORY_MAX) cwChalHistory.shift();
+      cwSetReviewState('质询完成' + lastSecs + ' · 已记录 ' + cwChalHistory.length + ' 轮（发送时带最近 ' + CW_CHAL_HISTORY_MAX + ' 轮）', 'ok');
+    } else if (!cwStopRequested) {
+      cwSetReviewState('质询完成，但模型没有返回内容', 'warn');
+    }
+  } catch (e) {
+    if (cwStopRequested || (e && e.name === 'AbortError')) {
+      answerEl.textContent = (answer ? answer + '\n' : '') + '（模型回答已停止）';
+      cwSetReviewState('已停止（质询已中断）', '');
+    } else {
+      const msg = e && e.message ? e.message : String(e);
+      answerEl.textContent = (answer ? answer + '\n' : '') + '质询失败：' + msg;
+      cwSetReviewState('质询失败：' + msg, 'err');
+      showToast('质询失败：' + msg, 'err', 6000);
+    }
+  } finally {
+    cwEndJob();
+  }
+}
+
+// ---- 他人复审（POST /api/code/review/cross，契约 §1.2） ----
+/** 第二审查员下拉：首项「自动（换一个模型）」，永远过滤 Phi-4-mini（Vulkan 上会卡死） */
+function cwPopulateCrossModels() {
+  if (!cwCrossModelEl) return;
+  const baseOf = (f) => String(f || '').split(/[\\/]/).pop();
+  const allFiles = (modelsCache || []).map((m) => m && m.file).filter(Boolean);
+  const files = allFiles.filter((x) => !/^Phi-4-mini/i.test(baseOf(x)));
+  const sig = files.join(',') + '|' + String(loaded || '');
+  if (sig === cwCrossModelSig && cwCrossModelEl.options.length > 0) return;
+  cwCrossModelSig = sig;
+  const prev = cwCrossModelEl.value || '';
+  cwCrossModelEl.textContent = '';
+  const add = (v, label) => {
+    const o = document.createElement('option');
+    o.value = v;
+    o.textContent = label;
+    cwCrossModelEl.appendChild(o);
+  };
+  add('', '自动（换一个模型）');
+  for (const x of files) add(x, prettyName(x));
+  cwCrossModelEl.value = prev && files.includes(prev) ? prev : '';
+}
+
+/**
+ * 清空他人复审视图。注意：review 结果（cwIssues）不在这里动，
+ * 两栏左列就是当前 cwIssues，右列是第二审查员的问题。
+ */
+function cwResetCrossView() {
+  cwCrossSecondIssues = [];
+  cwCrossVerdictLabel = '';
+  if (cwCrossPanelEl) cwCrossPanelEl.hidden = true;
+  if (cwCrossVerdictEl) { cwCrossVerdictEl.className = 'cwVerdict'; cwCrossVerdictEl.textContent = '尚未复审'; }
+  if (cwCrossColPrimaryEl) cwCrossColPrimaryEl.textContent = '';
+  if (cwCrossColSecondEl) cwCrossColSecondEl.textContent = '';
+  if (cwCrossDiffEl) cwCrossDiffEl.textContent = '';
+}
+
+function cwCrossIssueLabel(it) {
+  return cwLineRangeText(it) + ' · ' + (CW_SEV_LABEL[it.severity] || it.severity) + ' · ' + it.title;
+}
+
+function cwCrossIssueItem(it) {
+  const d = document.createElement('div');
+  d.className = 'cwCrossItem';
+  d.dataset.line = String(it.line);
+  d.dataset.severity = it.severity;
+  d.textContent = cwCrossIssueLabel(it);
+  d.title = it.detail || it.title;
+  d.onclick = () => cwGotoIssue(it);
+  return d;
+}
+
+function cwCrossEmptyNote(text) {
+  const d = document.createElement('div');
+  d.className = 'cwCrossEmpty';
+  d.textContent = text;
+  return d;
+}
+
+/** 并列两栏：左 = 原审查（cwIssues），右 = 他人复审（findings.issues） */
+function cwRenderCrossCols(primary, second) {
+  if (!cwCrossColPrimaryEl || !cwCrossColSecondEl) return;
+  cwCrossColPrimaryEl.textContent = '';
+  cwCrossColSecondEl.textContent = '';
+  const p = primary || [];
+  const s = second || [];
+  for (const it of p) cwCrossColPrimaryEl.appendChild(cwCrossIssueItem(it));
+  if (!p.length) cwCrossColPrimaryEl.appendChild(cwCrossEmptyNote('原审查没有报告问题'));
+  for (const it of s) cwCrossColSecondEl.appendChild(cwCrossIssueItem(it));
+  if (!s.length) cwCrossColSecondEl.appendChild(cwCrossEmptyNote('他人复审没有报告问题'));
+}
+
+/** compare 数组里的项：可能是 {primary,second} 配对，也可能是单条问题（两种形状都兜住） */
+function cwCompareSide(x, side) {
+  if (!x) return null;
+  if (x.primary || x.second) {
+    const pick = side === 'second' ? x.second : x.primary;
+    return pick || x.primary || x.second || null;
+  }
+  return x;
+}
+
+function cwCrossNorm(x, side) {
+  const raw = cwCompareSide(x, side);
+  return raw ? cwNormIssue(raw, 0) : null;
+}
+
+function cwAddDiffItem(kind, tag, text, issue) {
+  if (!cwCrossDiffEl) return;
+  const d = document.createElement('div');
+  d.className = 'cwDiffItem ' + kind;
+  const t = document.createElement('span');
+  t.className = 'cwDiffTag';
+  t.textContent = tag;
+  d.appendChild(t);
+  d.appendChild(document.createTextNode(text));
+  if (issue) {
+    d.dataset.line = String(issue.line);
+    d.onclick = () => cwGotoIssue(issue);
+  }
+  cwCrossDiffEl.appendChild(d);
+}
+
+/** compare 到达：判定徽标（.ok/.warn/.err）+ stats 计数 + 差异清单（契约 §2.2 第 3 条） */
+function cwApplyCompare(ev) {
+  const verdict = String((ev && ev.verdict) || '');
+  const label = verdict === 'consistent' ? '一致'
+    : verdict === 'differs' ? '仅一方提出'
+    : verdict === 'contradicts' ? '互相矛盾' : '判定未知';
+  const kind = verdict === 'consistent' ? 'ok' : verdict === 'differs' ? 'warn' : verdict === 'contradicts' ? 'err' : '';
+  cwCrossVerdictLabel = label;
+  const st = (ev && ev.stats) || {};
+  const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const cnt = '原审查 ' + n(st.primary) + ' · 他人 ' + n(st.second) + ' · 一致 ' + n(st.agree)
+    + ' · 仅原审查 ' + n(st.onlyPrimary) + ' · 仅他人 ' + n(st.onlySecond) + ' · 矛盾 ' + n(st.conflicts);
+  if (cwCrossVerdictEl) {
+    cwCrossVerdictEl.className = 'cwVerdict' + (kind ? ' ' + kind : '');
+    cwCrossVerdictEl.textContent = label + ' · ' + cnt;
+  }
+  if (cwCrossDiffEl) cwCrossDiffEl.textContent = '';
+  const agree = Array.isArray(ev && ev.agree) ? ev.agree : [];
+  const onlyP = Array.isArray(ev && ev.onlyPrimary) ? ev.onlyPrimary : [];
+  const onlyS = Array.isArray(ev && ev.onlySecond) ? ev.onlySecond : [];
+  const conflicts = Array.isArray(ev && ev.conflicts) ? ev.conflicts : [];
+  for (const x of agree) {
+    const p = cwCrossNorm(x, 'primary');
+    const s = cwCrossNorm(x, 'second');
+    let text = '两侧判断一致';
+    if (p && s) text = p.line === s.line && p.title === s.title ? cwCrossIssueLabel(p) : cwCrossIssueLabel(p) + ' ／ ' + cwCrossIssueLabel(s);
+    else if (p) text = cwCrossIssueLabel(p);
+    else if (s) text = cwCrossIssueLabel(s);
+    cwAddDiffItem('agree', '一致', text, p || s || null);
+  }
+  for (const x of onlyP) {
+    const it = cwCrossNorm(x, 'primary');
+    if (it) cwAddDiffItem('onlyP', '仅原审查', cwCrossIssueLabel(it), it);
+  }
+  for (const x of onlyS) {
+    const it = cwCrossNorm(x, 'second');
+    if (it) cwAddDiffItem('onlyS', '仅他人复审', cwCrossIssueLabel(it), it);
+  }
+  for (const x of conflicts) {
+    const p = cwCrossNorm(x, 'primary');
+    const s = cwCrossNorm(x, 'second');
+    const reason = String((x && x.reason) || '严重度不一致');
+    const parts = [];
+    if (p) parts.push('原审查 ' + cwCrossIssueLabel(p));
+    if (s) parts.push('他人复审 ' + cwCrossIssueLabel(s));
+    parts.push(reason);
+    cwAddDiffItem('conflict', '矛盾', parts.join(' ／ '), p || s || null);
+  }
+  if (cwCrossPanelEl) cwCrossPanelEl.hidden = false;
+  cwSetReviewState('他人复审：' + label + '（' + cnt + '）· 点条目跳到对应行', kind === 'ok' ? 'ok' : '');
+}
+
+async function cwCrossReview() {
+  if (cwReviewBusy) return;
+  if (!cwValue().trim()) { showToast('先打开或写点代码', 'warn', 3200); return; }
+  if (!localToken) { try { await refresh(); } catch {} }
+  const modelSel = cwCrossModelEl ? (cwCrossModelEl.value || '') : '';
+  const payload = Object.assign(cwBasePayload(), {
+    intent: cwIntentValue(),
+    primary: cwPrimarySnapshot(),
+  });
+  if (modelSel) payload.model = modelSel;
+  cwApplyReviewOpen(true);
+  try { localStorage.setItem(CW_REVIEW_OPEN_KEY, '1'); } catch {}
+  cwReviewBusy = true;
+  cwStopRequested = false;
+  cwRefreshActionButtons();
+  cwAbortCtl = new AbortController();
+  cwCrossSecondIssues = [];
+  cwCrossVerdictLabel = '';
+  if (cwCrossVerdictEl) { cwCrossVerdictEl.className = 'cwVerdict'; cwCrossVerdictEl.textContent = '正在复审…'; }
+  if (cwCrossColPrimaryEl) cwCrossColPrimaryEl.textContent = '';
+  if (cwCrossColSecondEl) cwCrossColSecondEl.textContent = '';
+  if (cwCrossDiffEl) cwCrossDiffEl.textContent = '';
+  if (cwCrossPanelEl) cwCrossPanelEl.hidden = false;
+  cwThinkBegin('他人复审思路（思考中…）');
+  cwSetReviewState(modelSel ? '正在切换到 ' + prettyName(modelSel) + ' 做他人复审…' : '第二审查员正在独立复审…', '');
+  cwReviewStartTimer('cross', Date.now());
+  let gotFindings = false;
+  try {
+    await cwStreamSSE('/api/code/review/cross', payload, (e) => {
+      if (e.type === 'meta') {
+        const name = prettyName(e.modelFile || e.model || '');
+        cwReviewMetaEl.textContent = name + (e.sameModel ? ' · 与当前相同（对抗式）' : '') + (e.switchedModel ? ' · 已切换' : '');
+        if (e.sameModel) showToast('只有一个可用模型：用当前模型做对抗式复审', 'warn', 5200);
+        else if (e.switchedModel) showToast('他人复审已切换到 ' + name, 'ok', 4600);
+        cwSetReviewState('第二审查员 ' + name + ' 正在读代码…', '');
+      } else if (e.type === 'delta') {
+        cwThinkAppend(e.text);
+      } else if (e.type === 'phase') {
+        if (e.phase === 'findings') cwSetReviewState('第二审查员正在整理问题清单…', '');
+      } else if (e.type === 'findings') {
+        gotFindings = true;
+        cwCrossSecondIssues = (Array.isArray(e.issues) ? e.issues : []).map((it, i) => cwNormIssue(it, i));
+        cwRenderCrossCols(cwIssues, cwCrossSecondIssues);
+        cwThinkEnd('他人复审思路（已完成 · ' + cwThinkTextEl.textContent.length + ' 字）');
+      } else if (e.type === 'compare') {
+        cwApplyCompare(e);
+      } else if (e.type === 'done') {
+        const secs = Number(e.seconds);
+        const secTxt = Number.isFinite(secs) ? ' · ' + secs.toFixed(1) + 's' : '';
+        if (e.model) cwReviewMetaEl.textContent = prettyName(e.model) + secTxt;
+        cwResetReviewTimer();
+        cwSetReviewState('他人复审完成' + (cwCrossVerdictLabel ? '：' + cwCrossVerdictLabel : '') + secTxt + ' · 点条目可跳行', cwCrossVerdictLabel === '一致' ? 'ok' : '');
+      } else if (e.type === 'error') {
+        throw new Error(e.message || '他人复审失败');
+      }
+    }, cwAbortCtl.signal);
+    if (!gotFindings) throw new Error('他人复审没有返回问题列表');
+  } catch (e) {
+    if (cwStopRequested || (e && e.name === 'AbortError')) {
+      cwThinkEnd('他人复审思路（已停止）');
+      cwSetReviewState('已停止（他人复审已中断）', '');
+    } else {
+      const msg = e && e.message ? e.message : String(e);
+      cwThinkEnd('他人复审思路（中断）');
+      cwSetReviewState('他人复审失败：' + msg, 'err');
+      showToast('他人复审失败：' + msg, 'err', 6000);
+    }
+  } finally {
+    cwEndJob();
+  }
+}
+
+// ---- 云端复审（契约 §1.3 / §2.2 第 4 条：先确认域名，再外发脱敏代码） ----
+async function cloudFetchConfig() {
+  const r = await fetch('/api/cloud/config', { cache: 'no-store' });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((j.message || (j.error && j.error.message) || ('HTTP ' + r.status)));
+  return j;
+}
+
+/** 点「云端复审」：ready=false 只 toast 指路（不弹确认窗）；ready 才弹确认 */
+async function cwCloudReview() {
+  if (cwReviewBusy) return;
+  if (!cwValue().trim()) { showToast('先打开或写点代码', 'warn', 3200); return; }
+  let cfg = null;
+  try { cfg = await cloudFetchConfig(); } catch (e) {
+    showToast('读云端配置失败：' + (e && e.message ? e.message : e), 'err', 6000);
+    return;
+  }
+  cwCloudCfgCache = cfg;
+  if (!cfg || !cfg.ready) {
+    showToast('云端复审还没配置好：去 设置 → 代码 填 baseURL / 模型 / API Key，并勾选「启用云端复审」', 'warn', 7200);
+    return;
+  }
+  const host = String(cfg.host || '');
+  if (!host) { showToast('云端 baseURL 不合法，先到 设置 → 代码 修正', 'err', 6000); return; }
+  cwCloudConfirmHost = host;
+  if (cloudConfirmHostEl) cloudConfirmHostEl.textContent = '会把当前文件的代码（已脱敏）发到 ' + host;
+  if (cloudConfirmModalEl) cloudConfirmModalEl.hidden = false;
+}
+
+/** 确认后才真的发（confirm=host）；点取消什么都不发 */
+async function cwCloudSend(host) {
+  if (cloudConfirmModalEl) cloudConfirmModalEl.hidden = true;
+  if (cwReviewBusy) return;
+  const h = String(host || '');
+  if (!h) { showToast('没确认目标域名，已取消（没有发送任何代码）', 'warn', 4400); return; }
+  if (!cwValue().trim()) { showToast('先打开或写点代码', 'warn', 3200); return; }
+  if (!localToken) { try { await refresh(); } catch {} }
+  const payload = Object.assign(cwBasePayload(), { intent: cwIntentValue(), confirm: h });
+  cwApplyReviewOpen(true);
+  try { localStorage.setItem(CW_REVIEW_OPEN_KEY, '1'); } catch {}
+  cwReviewBusy = true;
+  cwStopRequested = false;
+  cwRefreshActionButtons();
+  cwAbortCtl = new AbortController();
+  cwResetReviewView(); // 云端结论会整体替换上一次审查（issues 写回 cwIssues，一键纠正同样可用）
+  cwReviewMetaEl.textContent = '云端 · ' + h;
+  cwSetReviewState('正在发往云端 ' + h + '（代码已脱敏）…', '');
+  cwThinkBegin('云端复审输出（等待上游回复…）');
+  cwReviewStartTimer('cloud', Date.now());
+  let gotFindings = false;
+  try {
+    await cwStreamSSE('/api/code/review/cloud', payload, (e) => {
+      if (e.type === 'meta') {
+        const eh = String(e.host || h);
+        cwReviewMetaEl.textContent = '云端 · ' + eh + (e.model ? ' · ' + e.model : '');
+        const chars = Number(e.sentChars) || 0;
+        const red = Number(e.redactions) || 0;
+        if (chars > 0) cwSetReviewState('已发送 ' + chars + ' 字符（脱敏 ' + red + ' 处），等待 ' + eh + ' 回复…', '');
+      } else if (e.type === 'delta') {
+        cwThinkAppend(e.text);
+      } else if (e.type === 'findings') {
+        gotFindings = true;
+        cwApplyFindings(e);
+        cwThinkEnd('云端复审输出（已完成）');
+        cwReviewMetaEl.textContent = '云端 · ' + h;
+        cwSetReviewState('云端复审完成 · ' + cwIssues.length + ' 个问题（可一键纠正）', cwIssues.length ? '' : 'ok');
+      } else if (e.type === 'done') {
+        const secs = Number(e.seconds);
+        const secTxt = Number.isFinite(secs) ? ' · ' + secs.toFixed(1) + 's' : '';
+        const model = e.model || (cwCloudCfgCache && cwCloudCfgCache.model) || '云端模型';
+        cwReviewMetaEl.textContent = '云端 · ' + h + ' · ' + model + secTxt;
+        cwResetReviewTimer();
+        cwSetReviewState('云端复审完成 · ' + cwIssues.length + ' 个问题' + secTxt + '（代码已脱敏，可一键纠正）', cwIssues.length ? '' : 'ok');
+      } else if (e.type === 'error') {
+        throw new Error(e.message || '云端复审失败');
+      }
+    }, cwAbortCtl.signal);
+    if (!gotFindings) throw new Error('云端复审没有返回问题列表');
+  } catch (e) {
+    if (cwStopRequested || (e && e.name === 'AbortError')) {
+      cwThinkEnd('云端复审输出（已停止）');
+      cwSetReviewState('已停止（云端复审已中断）', '');
+    } else {
+      const msg = e && e.message ? e.message : String(e);
+      cwThinkEnd('云端复审输出（中断）');
+      cwSetReviewState('云端复审失败：' + msg, 'err');
+      showToast('云端复审失败：' + msg, 'err', 6800);
+    }
+  } finally {
+    cwEndJob();
+  }
+}
+
+// ---- 设置 → 代码：云端复审配置（GET/POST /api/cloud/config，契约 §1.3.2 / §1.3.3） ----
+function cloudStateLabel(cfg) {
+  if (!cfg) return '未配置';
+  const host = String(cfg.host || '');
+  const hasAny = !!(cfg.baseURL || cfg.model || cfg.hasKey);
+  if (!hasAny) return '未配置';
+  if (cfg.enabled) return cfg.ready ? '已启用（' + host + '）' : '已启用但配置不完整';
+  return '未启用' + (host ? '（' + host + '）' : '');
+}
+
+/** 回填设置卡片。key 永远不回显明文：只改 placeholder 显示 masked 占位 */
+function cloudApplyConfig(cfg) {
+  cwCloudCfgCache = cfg || null;
+  if (!cfg) return;
+  if (cloudEnabledEl) cloudEnabledEl.checked = !!cfg.enabled;
+  if (cloudBaseEl) cloudBaseEl.value = cfg.baseURL || '';
+  if (cloudModelEl) cloudModelEl.value = cfg.model || '';
+  if (cloudKeyEl) {
+    cloudKeyEl.value = '';
+    cloudKeyEl.placeholder = cfg.hasKey ? ('已保存：' + (cfg.keyMasked || '***') + '（要改就重新输入）') : 'API Key（只存本机）';
+  }
+  if (cloudStateEl) {
+    cloudStateEl.textContent = cloudStateLabel(cfg);
+    cloudStateEl.style.color = cfg.ready ? 'var(--ok)' : '';
+  }
+  if (cloudHintEl) {
+    cloudHintEl.textContent = (cfg.file ? '配置文件：' + cfg.file + ' · ' : '') + 'apiKey 只存本机，不进日志、不上传、不打进交付包。';
+  }
+}
+
+async function cloudLoadConfig() {
+  try {
+    cloudApplyConfig(await cloudFetchConfig());
+  } catch (e) {
+    if (cloudStateEl) {
+      cloudStateEl.textContent = '读取失败：' + (e && e.message ? e.message : e);
+      cloudStateEl.style.color = 'var(--err)';
+    }
+  }
+}
+
+async function cloudPostConfig(body) {
+  if (!localToken) { try { await refresh(); } catch {} }
+  const r = await fetch('/api/cloud/config', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-local-token': localToken },
+    body: JSON.stringify(body),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.ok === false) {
+    const err = new Error(String(j.message || (j.error && j.error.message) || ('HTTP ' + r.status)));
+    err.code = String(j.code || '');
+    throw err;
+  }
+  return j;
+}
+
+async function cloudSaveConfig() {
+  const body = {};
+  if (cloudEnabledEl) body.enabled = !!cloudEnabledEl.checked;
+  const baseVal = cloudBaseEl ? cloudBaseEl.value.trim() : '';
+  if (baseVal) body.baseURL = baseVal;
+  const modelVal = cloudModelEl ? cloudModelEl.value.trim() : '';
+  if (modelVal) body.model = modelVal;
+  // 用户没改 key 输入框就不提交 apiKey（别把 masked 占位写回去）
+  const keyVal = cloudKeyEl ? cloudKeyEl.value.trim() : '';
+  if (keyVal) body.apiKey = keyVal;
+  try {
+    const j = await cloudPostConfig(body);
+    if (cloudKeyEl) cloudKeyEl.value = '';
+    cloudApplyConfig(j);
+    if (cloudStateEl) {
+      cloudStateEl.textContent = j.enabled && j.ready ? '已启用（' + (j.host || '') + '）' : '已保存' + (j.host ? '（' + j.host + '）' : '');
+      cloudStateEl.style.color = j.ready ? 'var(--ok)' : '';
+    }
+    showToast('云端复审配置已保存', 'ok', 3600);
+  } catch (e) {
+    const txt = '保存失败' + (e && e.code ? '（' + e.code + '）' : '') + '：' + (e && e.message ? e.message : e);
+    if (cloudStateEl) { cloudStateEl.textContent = txt; cloudStateEl.style.color = 'var(--err)'; }
+    showToast('云端复审配置没保存：' + (e && e.message ? e.message : e), 'err', 6800);
+  }
+}
+
+async function cloudClearKey() {
+  try {
+    const j = await cloudPostConfig({ apiKey: '' });
+    cloudApplyConfig(j);
+    if (cloudStateEl) { cloudStateEl.textContent = '已清除 Key · ' + cloudStateLabel(j); cloudStateEl.style.color = ''; }
+    showToast('已清除本机保存的云端 API Key', 'ok', 3600);
+  } catch (e) {
+    const txt = '清除失败' + (e && e.code ? '（' + e.code + '）' : '') + '：' + (e && e.message ? e.message : e);
+    if (cloudStateEl) { cloudStateEl.textContent = txt; cloudStateEl.style.color = 'var(--err)'; }
+    showToast('清除 Key 失败：' + (e && e.message ? e.message : e), 'err', 6800);
+  }
+}
+
+if (cloudSaveEl) cloudSaveEl.onclick = () => cloudSaveConfig();
+if (cloudClearKeyEl) cloudClearKeyEl.onclick = () => cloudClearKey();
+
 async function openCodePanel(path) {
   codeModal.hidden = false;
   cwInitNewLang();
   cwPopulateReviewModels();
+  cwPopulateCrossModels();
   try { await cwLoadLangs(); } catch (e) { cwSetStatus('语言列表读取失败：' + e.message, 'err'); }
   let files = [];
   try { files = await cwLoadList(); } catch (e) { cwSetStatus('列表读取失败：' + e.message, 'err'); }
@@ -5813,6 +6570,23 @@ $('cwReviewToggle').onclick = () => cwToggleReviewPanel();
 $('cwFixAll').onclick = () => { if (cwReviewBusy) cwStopReview(); else cwFixIssues('all', cwIssues); };
 $('cwReReview').onclick = () => cwReReview();
 $('cwSendChat').onclick = () => cwSendChat();
+// v1.8.0 二次验证：质询 / 他人复审 / 云端复审（进行中再点 = 停止）
+if (cwChallengeEl) cwChallengeEl.onclick = () => cwToggleChallenge();
+if (cwChallengeSendEl) cwChallengeSendEl.onclick = () => { if (cwReviewBusy) cwStopReview(); else cwSendChallenge(); };
+if (cwCrossEl) cwCrossEl.onclick = () => { if (cwReviewBusy) cwStopReview(); else cwCrossReview(); };
+if (cwCloudEl) cwCloudEl.onclick = () => { if (cwReviewBusy) cwStopReview(); else cwCloudReview(); };
+if (cwCrossModelEl) cwCrossModelEl.addEventListener('change', () => {
+  const v = cwCrossModelEl.value;
+  showToast(v ? '他人复审会用 ' + prettyName(v) : '他人复审会自动挑一个与当前不同的模型', 'info', 3600);
+});
+// 云端确认弹窗：只有点「确认发送」才真的发（confirm=host）
+if (cloudConfirmOkEl) cloudConfirmOkEl.onclick = () => cwCloudSend(cwCloudConfirmHost);
+if (cloudConfirmCancelEl) cloudConfirmCancelEl.onclick = () => {
+  if (cloudConfirmModalEl) cloudConfirmModalEl.hidden = true;
+  showToast('已取消云端复审，没有发送任何代码', 'info', 3600);
+};
+if (cloudConfirmCloseEl) cloudConfirmCloseEl.onclick = () => { if (cloudConfirmModalEl) cloudConfirmModalEl.hidden = true; };
+if (cloudConfirmModalEl) cloudConfirmModalEl.addEventListener('click', (e) => { if (e.target === cloudConfirmModalEl) cloudConfirmModalEl.hidden = true; });
 if (cwNewLangEl) cwNewLangEl.addEventListener('change', cwSyncNewLangUI);
 if (cwReviewModelEl) cwReviewModelEl.addEventListener('change', () => {
   const v = cwReviewModelEl.value;
@@ -7613,8 +8387,11 @@ function showSettingsTab(name) {
   if (name === 'gpu') loadGpuTab().catch(() => {});
   // 视觉页每次打开都重新读一遍：sidecar 可能被发图请求或别的操作启停了
   if (name === 'vision') loadVisionTab().catch(() => {});
-  // 代码页：把 localStorage 里的高亮颜色同步到取色器（契约 2.7）
-  if (name === 'code') { try { cwSyncColorInputs(); } catch {} }
+  // 代码页：同步高亮颜色（契约 2.7）；v1.8.0 再回填云端复审配置（契约 §2.2 第 5 条）
+  if (name === 'code') {
+    try { cwSyncColorInputs(); } catch {}
+    cloudLoadConfig().catch(() => {});
+  }
 }
 for (const b of settingsTabs) b.onclick = () => showSettingsTab(b.dataset.tab);
 
@@ -8253,6 +9030,7 @@ settingsBtn.onclick = () => {
   refreshPlugins();
   refreshRag();
   refreshBackup();
+  cloudLoadConfig().catch(() => {}); // 云端复审配置：每次打开设置都如实回填
   renderAppearanceControls();
   setMaxTokens.value = genMaxTokens;
   setTemp.value = genTemp;

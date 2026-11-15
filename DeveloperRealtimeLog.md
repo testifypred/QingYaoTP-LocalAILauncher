@@ -3164,4 +3164,77 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 版本 1.7.0 → **1.7.1**（app.mjs / package.json / localai.mjs）；重打 dist + 主包 zip：`dist\QingYaoTP-AILauncher-v1.7.1.zip` **121.96MB / 127,880,459B / 3947 条目 / SHA256 EB15041DD8A95337AB7F304DB86C487928CDCB34F1A46646030731FCD6DF18B0**（v1.7.0 = 853C61B9… 留证）；视觉增强包沿用 v1.6.0 那份、装回 dist（53 文件）。发布包冒烟：probe-version **14/14**、probe-debug **54/54**、probe-code-review-stream **45/45**（PROBE_SKIP_SWITCH=1）。8099 切回发布包实例 v1.7.1。
 
 ### 五、下一轮
-1) Phi 在后端也拦截（或只在 dev 探针允许）；2) 审查结论另存 .review.md、整个工作区多文件审查；3) 发布包冒烟固定带 PROBE_SKIP_SWITCH=1。
+1) Phi 在后端也拦截（或只在 dev 探针允许）；2) 审查结论另存 .review.md、整个工作区多文件审查；3) 发布包冒烟固定带 PROBE_SKIP_SWITCH=1。## 六十五、2026-11-15 深夜 → 11-16 凌晨：代码审查二次验证（质询 / 他人复审 / 云端复审，v1.8.0）
+
+> 需求（2026-11-15 用户拍板的第一优先）：单模型自审有盲区——Web 版 DeepSeek 指出「AI 发现不了自己的问题」；实测 9B 会把问题标到空行、也说「没问题」。所以给审查加三条复核通道：**质询**（让模型反驳/自证）、**他人复审**（换模型独立再审 + 判定一致/仅一方/矛盾）、**云端复审**（可选 OpenAI 兼容 API，脱敏外发、每次确认）。
+> 做法：Lead 先写死契约（`server\docs\feature-code-review-verify-2026-11-15\CONTRACT.md`：接口/字段/DOM id/探针口径/三方写作用域），然后开 3 个 teammate 并行 —— **backend-api**（`server\app.mjs` 三条接口 + 版本 1.8.0）、**frontend-ui**（`server\app.html` 面板与设置）、**probe-verify**（新探针 + 全量驱动），Lead 只做契约、文档、打包、全量与仲裁。三个人写作用域完全不重叠，所以没有一次文件冲突。
+
+### 一、目标与结果
+
+| 项 | 之前（v1.7.1） | 现在（v1.8.0） |
+|---|---|---|
+| 审完不满意 | 只能自己看、或者重审一遍（同一个模型，盲区一样） | **质询**：把「代码 + 原结论 + 你的质疑」再喂回去，模型给「成立 / 不成立 / 需验证」+ 依据 + 最小验证步骤；可连问 4 轮，记录留面板里 |
+| 结论可信度 | 单一模型说了算 | **他人复审**：换一个模型独立再审（默认自动挑一个不同的；只有一个模型就同模型高温+对抗提示），并列两栏 + 判定 **一致 / 仅一方提出 / 互相矛盾** + 计数 |
+| 更大模型兜底 | 无（本机模型就那几个） | **云端复审**（可选）：OpenAI 兼容 API；**每次弹窗确认目标域名**、只发当前文件、发前脱敏（密钥/邮箱/路径/IP/长哈希）；key 只存本机 `data\cloud-review.json` |
+| 成本 | 一轮审查 30–50s | 质询约 16s/轮、复审 60–115s（含换模型）、云端取决于上游 |
+
+### 二、设计（要点）
+
+| 层 | 设计 |
+|---|---|
+| 三条接口 | `POST /api/code/review/challenge`（SSE）、`/cross`（SSE，两阶段）、`/cloud`（SSE）；配置 `GET/POST /api/cloud/config`。全部要求 `x-local-token`（配置 GET 只读免令牌） |
+| 串行锁 | 三条**全部走既有的 `codeJobLocked`**：同一时刻只有一个代码任务；**审查/纠正/质询/复审/云端进行中 `POST /api/load` 仍 409**（复用 `codeJob.busy`，没有另开锁）。前端也共用 `cwReviewBusy` 一个 busy，进行中按钮统一变「停止」 |
+| 质询 stateless | 服务端不存质询会话：每次新建小 context（8192→4096→2048 回退），把最近 4 轮 `history` 逐轮重放后再问。不占主会话 KV、不串会话、探针能确定性复算 |
+| 他人复审 | 两阶段（先流式「审查思路」→ 同一 context 里单独要 JSON），与 v1.7.0 审查同构；第二阶段提示词**不带** primary 的问题清单（避免被带偏）。比对是纯函数 `compareReviewFindings`：行距 ≤2 或区间相交 → 匹配；严重度 rank 相同算 `agree`、不同算 `conflict`；未匹配 → `onlyPrimary/onlySecond`；判定：有冲突或正好一方 0 问题 → `contradicts`，否则有未匹配 → `differs`，全匹配 → `consistent` |
+| 第二审查员 | 指定就用；没指定按 `scanModels()` 挑第一个与当前**不同**的；只有一个模型 → 当前模型 + temperature 0.45 + 对抗式提示，`sameModel=true`。**永远不选 Phi-4-mini**（Vulkan 上偶发原生层卡死），显式指定直接 400 |
+| 云端配置 | 只落 `<程序目录>\data\cloud-review.json`（dev 即仓库根 `data\`）——不写 `config.ini`（dev 目录没有该文件）；文件坏了当全默认、不抛错；GET 只回 `keyMasked`（`sk-***abcd`） |
+| 云端安全 | 只接受 **https**（本机回环可 http）；`confirm` 必须等于当前 `host`，否则 **409 CONFIRM_REQUIRED**（防配置被改后静默外发）；日志只记 host/模型/字符数/脱敏处数/秒数，**不记 key、不记代码正文**；`make-zip.ps1` 兜底清 config 的 cloud 三键 + **断言交付 zip 无 `data/cloud-review*` 条目** |
+| 脱敏 | `sanitizeCodeForCloud` 纯函数，固定顺序：`sk-…` → `key=value` 形式 → 邮箱 → Windows 绝对路径 → IPv4 → 32+ 位 hex，替换成占位符并返回各类计数（界面显示「已脱敏 N 处」） |
+| 云端上游 | `POST {baseURL}/chat/completions`，`stream:false`（收全再按 ~80 字分段推给浏览器），`CLOUD_JOB_TIMEOUT_MS`（默认 60000，夹 5000–180000）→ 超时 504、上游非 2xx → 502 |
+| 云端结论 | 用本地同款 `parseFindingsFromText` + `snapIssuesToCodeLines` 解析 → 写回 `cwIssues`，所以**云端结论也能直接「一键纠正」** |
+
+### 三、改动清单（文件级）
+
+| 文件 | 改动 |
+|---|---|
+| `server\app.mjs` | 新增三条 SSE 接口 + 云端配置两接口；纯函数 `sanitizeCodeForCloud` / `compareReviewFindings` / `pickCrossModel` / `normalizeReviewIssues` / `cloudView` / `normalizeCloudBaseURL` / `cloudFail`；路由注册 5 条；版本 1.8.0 |
+| `server\app.html` | 代码面板新增 17 个 id（质询区 / 复审两栏+判定+差异 / 云端键+确认弹窗）+ 设置 → 代码 8 个 id（云端四项+保存/清 Key/状态/提示）；`cwReviewBusy` 扩到五项；新 CSS 类 `.cwChalCard/.cwCrossCols/.cwDiffItem/.cwVerdict` 等（<1100px 两栏换行） |
+| `server\package.json` / `server\localai.mjs` | 版本 1.8.0（TUI 的 VER 不动） |
+| `server\probe-code-review-verify.mjs`（新，632 行） | **73 条**：A 质询 12 / B 他人复审 18 / C 云端配置 12 / D 云端复审 15（自带 node:http stub，绝不真出网）/ E UI 12 / 前置+收尾 4 |
+| `server\docs\run-full.ps1` | 追加 `probe-code-review-verify`（62 → **63 条**，t=900），BOM 保留、PS5.1 Parser 0 错 |
+| `server\make-zip.ps1` | config.ini 消毒加 `cloudApiKey/cloudBaseURL/cloudModel`；新增自检「交付 zip 无 `data/cloud-review*` 条目」 |
+| 文档 | `README.md` / `交接文档.md` / `新会话启动词.md` / `technique\02-接口.md`（新章）/ `technique\06-探针与验证.md`（新章）/ `technique\07-坑与约定.md`（第九章）/ 本节 |
+
+### 四、实测数字（真机 31.4GB + Intel Arc / Vulkan）
+
+| 项 | 值 |
+|---|---|
+| 新探针（dev 8299，真 4B） | **73/73 通过**（run2，含 UI 段；run1 的 C/D 全红定性为 22:23:40 dev 实例被重启导致 fetch failed，非产品缺陷）：质询 15.9s/轮（2 轮各 ~16s）、他人复审指定模型两阶段 **115.1s**（run1 同段 58.8s）、云端 stub 4 次上游请求、脱敏 4 类标记、上游 500 → 502 |
+| 后端自测（`backend-smoke.mjs`，85 条） | **85/85** |
+| E 段 UI（真跑） | 云端确认弹窗 `#cloudConfirmHost`=「会把当前文件的代码（已脱敏）发到 127.0.0.1:13730」、**点取消 stub 请求数不变**、确认后 meta 出现「云端 · host」+ `#cwIssues` 2 张卡片；截图 `probe-verify-ui-confirm.png` / `probe-verify-ui-cloud.png` |
+| 前端 UI 联调（9334，真跑） | 70/71（唯一失败项是测试脚本自身的正则 bug，产品侧 class 正确；合成 compare 校验 6/6 确定性补证） |
+| 全量驱动 | **63 条（r3）**62 绿 + 1 红**、断言 **1209/1210**——唯一红是 `probe-menu-stacking`「每一行模型都能被点到」（Edge 视口被前序探针缩成 500×320 的**已知假红**，同一个探针重启 Edge 后隔离复跑 **2/2 绿**，`probe-menu-stacking-rerun-r3.txt`）；`probe-code-review-verify` **73/73**、`probe-ctx-panel` **25/25**（新的探针收尾不再污染主模型上下文）** |
+| 交付 | dist 重建 **258.6MB / 3447 文件** → `make-zip.ps1` 出主包 `dist\QingYaoTP-AILauncher-v1.8.0.zip` **121.98MB / 127,901,020B / 3947 条目 / SHA256 F7F3D1EF473D2E6AB776CB69FB5B562BCE40A5C95956BFB933F20596C36A14C0**；自检：无 `app/llama`、无 `data/*`、无 `cloud-review*`；8099 切回发布包实例 v1.8.0（视觉增强包装回 53 文件 / 101.1MB，8 个真实会话恢复）；发布包冒烟 `probe-version` **14/14**、`probe-debug` **54/54**、`probe-tui-tools` **23/23**、`probe-code-review-verify` **61/61**（跳过 12 项 UI） |
+
+### 五、验证
+
+| 项 | 结果 |
+|---|---|
+| 契约先行 | Lead 先写 `CONTRACT.md`（接口/字段/DOM id/探针口径/写作用域），三方各自按契约实现，**零字段返工**；探针发现的两处契约小洞（GET 实际 9 字段含 `file`；stub 用路径前缀而不是 query）记录备查、不改字段名 |
+| 真模型 | 质询 / 复审都是真 4B 跑出来的（复审换模型时切到 DeepSeek-R1-8B，收尾切回）；云端用本地 stub，**全程没有真出网** |
+| 安全红线 | `backend-smoke` 的 6 条日志断言全过：日志 951 字，**无明文 apiKey、无代码正文、无 Bearer**；stub 实收 body 975 字节里没有原 key/邮箱/路径/IP |
+| 并发 | 三条新接口与审查/纠正共用串行锁；`/api/load` 409 语义未改（`concurrency-check.mjs` 7/7 仍是口径） |
+
+### 六、给用户的结论
+
+- **审完不满意，可以「质询」**：输入你的质疑（比如「第 3 行不是 bug，因为这里是空列表分支」），模型会逐条给「成立 / 不成立 / 需验证」+ 依据 + 怎么最小验证；可以连着追问。
+- **想换双眼睛，点「他人复审」**：默认自动换一个模型独立再审，并列两栏、并判定「一致 / 仅一方提出 / 互相矛盾」，点条目能跳到代码行。别选 Phi-4-mini（它会卡死应用，现在也不在列表里）。
+- **云端复审是可选的**：设置 → 代码 里填 OpenAI 兼容 API（baseURL / 模型 / Key）。**Key 只存本机、不进日志、不随包发出**；每次点「云端复审」都会弹窗告诉你「会把当前文件的代码（已脱敏）发到 <域名>」，确认才发；发之前密钥/邮箱/本机路径/内网 IP/长哈希都替换成占位符。
+- 提示：这三条都跟「模型审查」共用一条队列，同时点会排队（不是卡住）；任何一项在跑时都不能切模型（409 是保护）。
+
+### 七、下一轮
+
+1. 质询记录 / 复审结论可导出 `.challenge.md` / `.review.md`，并能存进会话。
+2. 三栏对照（本地审查 / 他人复审 / 云端复审）复用一个比对表。
+3. 云端复审改流式上游、支持「只发选中片段」、把 `CLOUD_JOB_TIMEOUT_MS` 暴露到设置页。
+4. 老账：多文件/整工作区审查、一键纠正结果一键写回文件、`toolEnabled` 同步 1 行修。

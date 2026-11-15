@@ -123,6 +123,8 @@ $probes=@(
   @{n='probe-code-panel-v2'; a=@($base,$cdp,$shots); t=720},
   # v1.7.0：终端 TUI（--hint-test 补全 + --plain 管道跑 /tools、/tool）
   @{n='probe-tui-tools'; a=@($base); t=240},
+  # v1.8.0：质询 / 他人复审 / 云端复审（云端自带本地 stub，绝不真出网；带 cdp 时含 UI 段）
+  @{n='probe-code-review-verify'; a=@($base,$cdp); t=900},
   @{n='probe-gpu'; a=@($base); t=120},
   @{n='probe-ui-gpu'; a=@($cdp); t=180},
   @{n='probe-ui-metric'; a=@('8099'); t=60},

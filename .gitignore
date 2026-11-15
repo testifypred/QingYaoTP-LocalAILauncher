@@ -65,3 +65,7 @@ server/debug-icon-256.png
 # Python 编译产物（make-model-icons.py 的 py_compile）
 __pycache__/
 *.pyc
+
+# 运行期配置（v1.8.0 云端复审）：data\cloud-review.json 里可能有 API Key，绝不入库
+# 发布包里的 data\ 由 make-zip.ps1 整目录排除，并由它断言不出现 data/cloud-review*
+data/

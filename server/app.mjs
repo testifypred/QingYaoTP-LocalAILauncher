@@ -42,7 +42,7 @@ const DEBUG_UI = path.join(HERE, "debug.html");
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 /** 版本号：发版只改这一处；server\package.json 的 version 必须与它一致（probe-version 会查） */
-const APP_VERSION = "1.7.1";
+const APP_VERSION = "1.8.0";
 /** 产品正式名（2026-11-01 起）：QingYaoTP AILauncher；QingYaoTP = QingYaoTestifypred */
 const APP_NAME = "QingYaoTP AILauncher";
 const APP_SUB = "本地 AI";
@@ -4034,6 +4034,802 @@ async function handleCodeFix(req, res) {
 }
 
 
+
+// ---------------------------------------------------------------- 二次验证三件套（v1.8.0：质询 / 他人复审 / 云端复审）
+/**
+ * 为什么要有这三条（CONTRACT.md §1，用户拍板）：
+ * 单模型自审有盲区（Web 版 DeepSeek 的说法：「AI 发现不了自己的问题」；实测 9B 会把问题标到空行、也说「没问题」）。
+ * 本轮补「二次验证」三件套：
+ *  1) 质询     —— 把「代码 + 原审查结论 + 用户的质疑」喂回模型，让它反驳或自证；多轮靠前端回传 history（后端 stateless）。
+ *  2) 他人复审 —— 换一个模型从零再审一遍，两栏并列 + 机器判定「一致 / 仅一方提出 / 互相矛盾」。
+ *  3) 云端复审 —— 把**脱敏后**的代码发到 OpenAI 兼容的外部服务，每次都必须确认目标域名。
+ *
+ * 三条全部走 codeJobLocked（同一把串行锁）：审查/纠正/质询/复审/云端任一进行中，
+ * POST /api/load 必须仍然 409（/api/load 里 codeJob.busy 的既有守卫，语义一行都不用改）——
+ * 否则切模型会把正在用的权重卸掉，原生层直接卡死（v1.7.0 实测）。
+ */
+
+/** 质询的 system 提示词（契约 §1.1）：结论三选一 + 依据 + 最小验证步骤；承认错误不狡辩 */
+const CODE_CHALLENGE_SYSTEM = [
+  "你是代码审查的复核者。用户会给出【原审查结论】【前几轮质询】和代码，最后提出一条新的质疑。",
+  "请针对质疑给出结论：先写「成立 / 不成立 / 需验证」，再写依据（引用具体代码行或片段），最后写最小验证步骤。",
+  "如果你上一轮的说法被指出是错的，直接承认并改正，不要狡辩、不要绕圈子。",
+  "用中文，只输出质询回答本身：不要输出 JSON，不要输出代码块，全文不超过 400 字。",
+].join("\n");
+
+/** 他人复审（独立复核员）的 system 提示词（契约 §1.2）：不给原审查意见，从零审，避免被带偏 */
+const CODE_CROSS_SYSTEM = [
+  "你是独立复核员。原审查意见不会给你（避免被带偏），你要从零审查用户给出的这段代码。",
+  "这一轮只输出「审查思路」：每行以 - 开头，写清「行号 + 判断依据 + 可能后果」；",
+  "行号必须逐行数准，只能指向真正包含代码的行（有语句/表达式），不要指向空行、注释行或文件末尾的空行。",
+  "别客气、别写「整体看起来不错」这类客套结论；不要复述整段代码，不要输出 JSON，不要输出代码块。",
+].join("\n");
+
+/** 同一个模型做「他人复审」时的对抗式提示（契约 §1.2：只有一个模型时 temperature 0.45 + sameModel=true） */
+const CODE_CROSS_SAME_MODEL_NOTE =
+  "注意：这一轮复核由同一个模型完成。请刻意去找你上一轮可能漏掉的问题，换个角度怀疑同一段代码，不要重复上一轮的结论。";
+
+/** 云端复审的 system 提示词：先给审查思路，最后给一个 json 围栏块（这样 parseFindingsFromText 能解析出 issues） */
+const CODE_CLOUD_SYSTEM = [
+  "你是严格的代码审查员。用户会给出【用户意图】【文件】【语言】【代码行数】和一段代码。",
+  "这段代码在发出前已经脱敏：<API_KEY>/<REDACTED>/<EMAIL>/<PATH>/<IP>/<HEX> 都是占位符，按占位符理解，不要当成真实值。",
+  "先输出「审查思路」纯文本：每条以 - 开头，写清「行号 + 判断依据 + 可能后果」；行号必须落在给定代码的行数范围内。",
+  "最后再单独输出一个以三个反引号开头、语言标记为 json 的围栏块，块里只放一个 JSON 对象（不要再夹解释）。",
+  "JSON 对象格式固定为：",
+  '{"summary":"一句话结论","issues":[{"line":12,"endLine":12,"severity":"error","title":"短标题","detail":"为什么是问题","fix":"具体怎么改"}]}',
+  "severity 只能是 error / warn / info；没有问题就是 issues: []。不要复述整段代码，不要输出多个代码块。",
+].join("\n");
+
+// ---------- 云端复审配置（契约 §1.3.1）：落 <程序目录>\data\cloud-review.json ----------
+/**
+ * 为什么不写 config.ini：dev 目录没有 config.ini（updateConfigFile 会跳过），
+ * 而 dist\data\ 被 make-zip.ps1 整体排除（robocopy /XD data），云端配置不可能进交付包。
+ * 注意 HERE = server\，上一级就是程序目录（开发态 = 仓库根）。
+ */
+const CLOUD_CONFIG_FILE = path.join(HERE, "..", "data", "cloud-review.json");
+const CLOUD_CONFIG_REL = "data\\cloud-review.json";
+const CLOUD_CONFIG_DEFAULT = { enabled: false, baseURL: "", model: "", apiKey: "" };
+/** 云端请求超时：CLOUD_JOB_TIMEOUT_MS 默认 60000，夹在 5000..180000（契约 §1.3.4） */
+const CLOUD_JOB_TIMEOUT_MS = Math.max(5000, Math.min(180000, Number(process.env.CLOUD_JOB_TIMEOUT_MS) || 60000));
+
+/** baseURL → host（空 / 非法 → ""）；只用于弹窗确认与日志，不含任何鉴权信息 */
+function cloudHost(baseURL) {
+  try {
+    const u = new URL(String(baseURL ?? "").trim());
+    return u.host;
+  } catch {
+    return "";
+  }
+}
+
+/** 只回遮罩：前 3 + *** + 后 4；≤8 字符全遮（契约 §1.3.2）。明文 apiKey 一个字符都不出接口 */
+function maskApiKey(key) {
+  const s = String(key ?? "");
+  if (!s) return "";
+  if (s.length <= 8) return "***";
+  return s.slice(0, 3) + "***" + s.slice(-4);
+}
+
+/** ready = 启用 && baseURL && model && apiKey（契约 §1.3.2） */
+function cloudReady(cfg) {
+  return Boolean(cfg && cfg.enabled && cfg.baseURL && cfg.model && cfg.apiKey);
+}
+
+/** 读云端配置：文件不存在 / 坏 JSON → 全默认，**不抛错**（契约 §1.3.1） */
+async function cloudConfigRead() {
+  const cfg = { ...CLOUD_CONFIG_DEFAULT, updatedAt: 0 };
+  try {
+    const j = JSON.parse(await readFile(CLOUD_CONFIG_FILE, "utf8"));
+    if (j && typeof j === "object") {
+      cfg.enabled = Boolean(j.enabled);
+      cfg.baseURL = typeof j.baseURL === "string" ? j.baseURL : "";
+      cfg.model = typeof j.model === "string" ? j.model : "";
+      cfg.apiKey = typeof j.apiKey === "string" ? j.apiKey : "";
+      cfg.updatedAt = Number(j.updatedAt) || 0;
+    }
+  } catch (e) {
+    if (e?.code !== "ENOENT") log("云端复审配置读取失败（按未配置处理）：" + String(e?.message ?? e).slice(0, 120));
+  }
+  return cfg;
+}
+
+/** 写云端配置：data\ 不存在就 mkdir -p；写失败由调用方转 500 */
+async function cloudConfigWrite(cfg) {
+  await mkdir(path.dirname(CLOUD_CONFIG_FILE), { recursive: true });
+  const body = {
+    enabled: Boolean(cfg.enabled),
+    baseURL: String(cfg.baseURL ?? ""),
+    model: String(cfg.model ?? ""),
+    apiKey: String(cfg.apiKey ?? ""),
+    updatedAt: Date.now(),
+  };
+  await writeFile(CLOUD_CONFIG_FILE, JSON.stringify(body, null, 2), "utf8");
+  return body;
+}
+
+/** GET /api/cloud/config 的响应形状（契约 §1.3.2）：永远不含明文 key */
+function cloudView(cfg) {
+  const host = cloudHost(cfg.baseURL);
+  return {
+    ok: true,
+    enabled: Boolean(cfg.enabled),
+    baseURL: String(cfg.baseURL ?? ""),
+    model: String(cfg.model ?? ""),
+    hasKey: Boolean(cfg.apiKey),
+    keyMasked: maskApiKey(cfg.apiKey),
+    host,
+    ready: cloudReady(cfg),
+    file: CLOUD_CONFIG_REL,
+  };
+}
+
+/** 云端接口的错误体：顶层 code/message（契约 §1.3.3/§1.3.4 的形状）+ 老风格 error.message */
+function cloudFail(res, status, code, message) {
+  return sendJson(res, status, { ok: false, code, message, error: { code, message } });
+}
+
+/**
+ * 校验并归一 baseURL（契约 §1.3.3）：
+ * 能被 new URL 解析 + 协议 http/https；http 只允许本机回环（127.0.0.1 / localhost / ::1）；
+ * 末尾的 / 去掉；长度 ≤ 500。
+ */
+function normalizeCloudBaseURL(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return { ok: true, value: "" };
+  if (s.length > 500) return { ok: false, code: "BAD_URL", message: "baseURL 太长（上限 500 字符）" };
+  let u;
+  try {
+    u = new URL(s);
+  } catch {
+    return { ok: false, code: "BAD_URL", message: "baseURL 不是合法 URL（例：https://api.openai.com/v1）" };
+  }
+  const proto = u.protocol.toLowerCase();
+  if (proto !== "http:" && proto !== "https:") {
+    return { ok: false, code: "BAD_URL", message: "baseURL 只支持 http / https" };
+  }
+  if (proto === "http:") {
+    const h = u.hostname.toLowerCase();
+    if (h !== "127.0.0.1" && h !== "localhost" && h !== "::1" && h !== "[::1]") {
+      return { ok: false, code: "INSECURE_URL", message: "云端复审只允许 https（本机回环可用 http）" };
+    }
+  }
+  return { ok: true, value: s.replace(/\/+$/, "") };
+}
+
+/**
+ * 云端脱敏（契约 §1.3.5，纯函数）：按固定顺序替换，返回替换后的文本与各类计数。
+ * 顺序：apiKey（sk-… 整体 → key=value 形式）→ email → Windows 绝对路径 → IPv4 → 长 hex。
+ * total = 各类计数之和（同一处被前面的规则命中后，后面的规则自然不再计数）。
+ */
+function sanitizeCodeForCloud(text) {
+  const counts = { apiKey: 0, email: 0, ip: 0, path: 0, hex: 0 };
+  let out = String(text ?? "");
+  const rep = (re, repl, key) => {
+    out = out.replace(re, (...args) => {
+      counts[key] += 1;
+      return typeof repl === "function" ? repl(...args) : repl;
+    });
+  };
+  // 1) apiKey：先替换「长的」（整段 sk- 开头），再替换 key=value 形式
+  rep(/(sk-[A-Za-z0-9_\-]{8,})/g, "<API_KEY>", "apiKey");
+  rep(/((?:api[_-]?key|token|secret|password|passwd|pwd)\s*[:=]\s*)(["']?)([^\s"',;]{6,})/gi, (_m, p1, p2) => p1 + p2 + "<REDACTED>", "apiKey");
+  // 2) email
+  rep(/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/g, "<EMAIL>", "email");
+  // 3) Windows 绝对路径（含 C:\Users\某人）
+  rep(/[A-Za-z]:\\[^\s'"<>|]*/g, "<PATH>", "path");
+  // 4) IPv4
+  rep(/\b\d{1,3}(?:\.\d{1,3}){3}\b/g, "<IP>", "ip");
+  // 5) 长 hex（32 位以上：hash / token / guid 无横线形态）
+  rep(/\b[A-Fa-f0-9]{32,}\b/g, "<HEX>", "hex");
+  const total = counts.apiKey + counts.email + counts.ip + counts.path + counts.hex;
+  return { text: out, counts, total };
+}
+
+/**
+ * 把前端传来的问题列表洗成统一形状（质询对照 / 复审比对共用）：
+ * 行号 clamp 到 1..maxLine、severity 归一、字符串截断。
+ */
+function normalizeReviewIssues(list, maxLine) {
+  const max = Math.max(1, Math.round(Number(maxLine) || 1));
+  const out = [];
+  for (const it of Array.isArray(list) ? list.slice(0, 60) : []) {
+    if (!it || typeof it !== "object") continue;
+    const line = Math.min(Math.max(1, Math.round(Number(it.line) || 1)), max);
+    const endRaw = Math.round(Number(it.endLine) || line);
+    const sev = String(it.severity ?? "").toLowerCase();
+    out.push({
+      line,
+      endLine: Math.min(Math.max(line, endRaw), max),
+      severity: sev === "error" || sev === "warn" || sev === "info" ? sev : "warn",
+      title: String(it.title ?? "").slice(0, 120) || "问题",
+      detail: String(it.detail ?? "").slice(0, 800),
+      fix: String(it.fix ?? "").slice(0, 800),
+    });
+  }
+  return out;
+}
+
+/** 严重度排序权重（契约 §1.2 算法 1）：error=2 / warn=1 / info=0 */
+const SEVERITY_RANK = { error: 2, warn: 1, info: 0 };
+
+/** 两个问题区间的「行距」：区间有交集 → 0，否则为中间隔了几行 */
+function findingDistance(a, b) {
+  return Math.max(0, Math.max(a.line, b.line) - Math.min(a.endLine, b.endLine));
+}
+
+/**
+ * 比对两次审查的结论（契约 §1.2 算法 1-7）：纯函数、可确定性复算。
+ * 返回 { verdict, stats, agree, onlyPrimary, onlySecond, conflicts }。
+ * 匹配口径：对每条 second 问题，在「未被占用、行距 ≤2 或区间有交集」的 primary 里取行距最小的，
+ * 并列取 primary 行号小的；每条 primary 只用一次。
+ * stats 自洽：matched = agree + conflicts；matched + onlySecond === second；matched + onlyPrimary === primary。
+ */
+function compareReviewFindings(primaryIssues, secondIssues, lineCount) {
+  // 没给 lineCount 时用两侧最大行号兜底，保证 clamp 不会把行号压成 1
+  let cap = Math.round(Number(lineCount) || 0);
+  if (!(cap >= 1)) {
+    cap = 1;
+    const scan = (list) => {
+      for (const it of Array.isArray(list) ? list : []) {
+        cap = Math.max(cap, Math.round(Number(it?.line) || 1), Math.round(Number(it?.endLine) || 1));
+      }
+    };
+    scan(primaryIssues);
+    scan(secondIssues);
+  }
+  const P = normalizeReviewIssues(primaryIssues, cap);
+  const S = normalizeReviewIssues(secondIssues, cap);
+  const used = new Array(P.length).fill(false);
+  const agree = [];
+  const conflicts = [];
+  const onlySecond = [];
+  for (const s of S) {
+    let best = -1;
+    let bestDist = Infinity;
+    for (let i = 0; i < P.length; i += 1) {
+      if (used[i]) continue;
+      const d = findingDistance(P[i], s);
+      if (d > 2) continue;
+      if (d < bestDist || (d === bestDist && best >= 0 && P[i].line < P[best].line)) {
+        best = i;
+        bestDist = d;
+      }
+    }
+    if (best < 0) {
+      onlySecond.push(s);
+      continue;
+    }
+    used[best] = true;
+    const p = P[best];
+    // agree / conflicts 都是「一对」：除契约要求的 primary / second（conflicts 另有 reason）外顺手带上行号，
+    // 前端和探针都能直接当列表项渲染（不改契约字段，只加冗余字段）
+    if (SEVERITY_RANK[p.severity] === SEVERITY_RANK[s.severity]) agree.push({ line: p.line, primary: p, second: s });
+    else conflicts.push({ line: p.line, primary: p, second: s, reason: "严重度不一致：" + p.severity + " vs " + s.severity });
+  }
+  const onlyPrimary = P.filter((_it, i) => !used[i]);
+  const stats = {
+    primary: P.length,
+    second: S.length,
+    matched: agree.length + conflicts.length,
+    agree: agree.length,
+    onlyPrimary: onlyPrimary.length,
+    onlySecond: onlySecond.length,
+    conflicts: conflicts.length,
+  };
+  const oneSideEmpty = (P.length === 0 && S.length > 0) || (P.length > 0 && S.length === 0);
+  let verdict = "consistent";
+  if (conflicts.length > 0 || oneSideEmpty) verdict = "contradicts";
+  else if (onlyPrimary.length + onlySecond.length > 0) verdict = "differs";
+  return { verdict, stats, agree, onlyPrimary, onlySecond, conflicts };
+}
+
+/**
+ * 挑第二审查员（契约 §1.2 选模型规则，确定性）：
+ *  - 指定了 model → 用它；与当前相同则 sameModel=true；
+ *  - 没指定 → 按 scanModels() 顺序挑第一个与当前**不同**的可用模型；
+ *  - 只有一个可用模型（或候选只剩 Phi）→ 用当前模型 + temperature 0.45 + sameModel=true；
+ *  - 永远不选 Phi-4-mini*（Vulkan 上偶发原生层卡死，只能重启进程，见硬约束）。
+ * 切模型沿用 pickCodeJobModel 的同款前置检查（loading / activeChats / vision → 409）。
+ */
+async function pickCrossModel(raw) {
+  const before = String(state.file ?? "");
+  const want = String(raw ?? "").trim();
+  if (want) {
+    if (/^Phi-4-mini/i.test(want)) throw codeJobError(400, "Phi-4-mini 不能用作审查模型（Vulkan 上会偶发卡死）：换一个模型");
+    const pick = await pickCodeJobModel(want);
+    return { file: pick.file, switched: pick.switched, sameModel: Boolean(before) && before === pick.file };
+  }
+  const models = await scanModels();
+  const usable = models.filter((m) => !/^Phi-4-mini/i.test(m.file));
+  const other = usable.find((m) => m.file !== before);
+  if (other) {
+    const pick = await pickCodeJobModel(other.file);
+    return { file: pick.file, switched: pick.switched, sameModel: Boolean(before) && before === pick.file };
+  }
+  // 只有一个可用模型：不切、用当前模型做对抗式复审（没有已加载模型时 pickCodeJobModel("") 会抛 409）
+  const pick = await pickCodeJobModel("");
+  return { file: pick.file, switched: false, sameModel: true };
+}
+
+/** 质询的提示词：先摆原审查结论与历史轮次，再放代码，最后问本轮质疑（代码放靠后，模型更容易照着走） */
+function challengePrompt({ code, lang, file, intent, primary, history, question }) {
+  const lines = [];
+  lines.push("【用户意图】" + (String(intent ?? "").trim() || "（未提供，按代码本身判断）"));
+  lines.push("【文件】" + (String(file ?? "").trim() || "未命名") + "　【语言】" + (String(lang ?? "").trim() || "未知"));
+  lines.push("【原审查结论】");
+  if (primary && primary.summary) lines.push("结论：" + primary.summary);
+  if (primary && primary.issues && primary.issues.length) {
+    lines.push("原审查提出的问题：");
+    for (const it of primary.issues.slice(0, 40)) {
+      lines.push("- 行 " + it.line + (it.endLine > it.line ? "-" + it.endLine : "") + " [" + it.severity + "] " + it.title + (it.detail ? "：" + it.detail : ""));
+    }
+  } else {
+    lines.push("（原审查没有给出结构化问题）");
+  }
+  if (Array.isArray(history) && history.length) {
+    lines.push("");
+    lines.push("【前几轮质询（按时间顺序，旧的在前）】");
+    history.forEach((h, i) => {
+      lines.push("第 " + (i + 1) + " 轮质疑：" + h.question);
+      lines.push("第 " + (i + 1) + " 轮你的回答：" + h.answer);
+    });
+  }
+  lines.push("");
+  lines.push("代码：");
+  lines.push(FENCE + String(lang ?? "").trim());
+  lines.push(String(code ?? ""));
+  lines.push(FENCE);
+  lines.push("");
+  lines.push("【本轮质疑】" + question);
+  lines.push("请针对本条质疑给出：成立 / 不成立 / 需验证 + 依据 + 最小验证步骤；承认错误时不狡辩；不输出 JSON、不输出代码块；不超过 400 字。");
+  return lines.join("\n");
+}
+
+/** 云端复审的用户提示词：代码已脱敏（占位符），代码放最后一个围栏 */
+function cloudReviewPrompt({ code, lang, file, intent, lineCount, redactions }) {
+  return [
+    "【用户意图】" + (String(intent ?? "").trim() || "（未提供，按代码本身判断）"),
+    "【文件】" + (String(file ?? "").trim() || "未命名"),
+    "【语言】" + (String(lang ?? "").trim() || "未知"),
+    "【代码行数】" + lineCount,
+    "【脱敏】已把疑似密钥/邮箱/路径/IP/长 hex 替换成占位符，共 " + redactions + " 处",
+    "",
+    "代码：",
+    FENCE + String(lang ?? "").trim(),
+    String(code ?? ""),
+    FENCE,
+  ].join("\n");
+}
+
+/** 拼上游地址：baseURL 已以 /chat/completions 结尾就不再拼（契约 §1.3.4） */
+function cloudUpstreamURL(baseURL) {
+  const base = String(baseURL ?? "").trim().replace(/\/+$/, "");
+  if (/\/chat\/completions$/i.test(base)) return base;
+  return base + "/chat/completions";
+}
+
+/** POST /api/code/review/challenge —— 质询（SSE，令牌必需；stateless：每次新建小 context，靠 history 重放） */
+async function handleCodeChallengeStream(req, res) {
+  if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
+    return sendJson(res, 403, { error: { message: "缺少或错误的本地令牌（x-local-token）" } });
+  }
+  let body;
+  try {
+    body = await readBody(req);
+  } catch (e) {
+    return sendJson(res, e?.code === "BODY_TOO_LARGE" ? 413 : 400, { error: { message: e?.message ?? "JSON 解析失败" } });
+  }
+  const code = typeof body?.code === "string" ? body.code : "";
+  if (!code.trim()) return sendJson(res, 400, { error: { message: "缺少 code" } });
+  if (code.length > CODE_REVIEW_MAX_CHARS) {
+    return sendJson(res, 413, { error: { message: "代码太长（上限 " + CODE_REVIEW_MAX_CHARS + " 字符）" } });
+  }
+  const question = String(body?.question ?? "").trim().slice(0, 1000);
+  if (!question) return sendJson(res, 400, { error: { message: "缺少 question（要质询什么）" } });
+  const lineCount = code.split("\n").length;
+  const lang = String(body?.lang ?? "").trim().slice(0, 40);
+  const file = String(body?.file ?? "").trim().slice(0, 120);
+  const intent = String(body?.intent ?? "").trim().slice(0, 500);
+  // primary 可省略（没有原结论也能质询，只是少了对照）
+  const primary = {
+    summary: String(body?.primary?.summary ?? "").trim().slice(0, 300),
+    issues: normalizeReviewIssues(body?.primary?.issues, lineCount),
+  };
+  // history 最多 4 轮（多传截断到最近 4 轮），每轮 question/answer 各截断到 1500/4000 字符（契约 §1.1）
+  const history = (Array.isArray(body?.history) ? body.history : [])
+    .slice(-4)
+    .map((h) => ({
+      question: String(h?.question ?? "").trim().slice(0, 1500),
+      answer: String(h?.answer ?? "").trim().slice(0, 4000),
+    }))
+    .filter((h) => h.question || h.answer);
+  const rawMax = Number(body?.max_tokens);
+  const maxTokens = Math.max(128, Math.min(2000, Number.isFinite(rawMax) && rawMax > 0 ? Math.round(rawMax) : 1200));
+
+  // v1.7.1 同款：客户端断开（点「停止」/关面板）就把生成掐掉，别再把整段跑完白烧 CPU
+  let clientGone = false;
+  let ac = null;
+  const onClientClose = () => {
+    if (clientGone) return;
+    clientGone = true;
+    try { if (ac) ac.abort(codeJobError(499, "客户端已断开（已停止）")); } catch {}
+  };
+  res.on("close", onClientClose);
+
+  return codeJobLocked(async () => {
+    const t0 = Date.now();
+    let send = null;
+    try {
+      const pick = await pickCodeJobModel(body?.model);
+      const { ctx, size } = await openReviewContext();
+      try {
+        if (clientGone) {
+          log("代码质询 " + (file || "未命名") + " 客户端已断开，跳过生成");
+          return;
+        }
+        send = sseOpen(res);
+        send({ type: "meta", model: path.basename(pick.file), modelFile: pick.file, contextSize: size, switchedModel: pick.switched, startedAt: t0, turn: history.length + 1 });
+        // stateless：这次请求新建的小 context 用完即 dispose，不碰主会话的 KV 缓存
+        const session = new LlamaChatSession({
+          contextSequence: ctx.getSequence(),
+          chatWrapper: state.wrapperNoThink ?? "auto",
+          systemPrompt: CODE_CHALLENGE_SYSTEM,
+        });
+        const prompt = challengePrompt({ code, lang, file, intent, primary, history, question });
+        let streamed = "";
+        ac = new AbortController();
+        const watchdog = setTimeout(() => ac.abort(codeJobError(504, "质询超时（" + Math.round(CODE_JOB_TIMEOUT_MS / 1000) + "s 没有跑完）：换个模型或缩短代码")), CODE_JOB_TIMEOUT_MS);
+        try {
+          await session.promptWithMeta(prompt, {
+            maxTokens,
+            temperature: 0.2,
+            signal: ac.signal,
+            onResponseChunk: (c) => {
+              if (c && c.text) {
+                streamed += c.text;
+                send({ type: "delta", text: c.text });
+              }
+            },
+          });
+        } finally {
+          clearTimeout(watchdog);
+        }
+        if (clientGone) throw codeJobError(499, "客户端已断开（已停止）");
+        const answer = String(streamed).trim();
+        const seconds = +((Date.now() - t0) / 1000).toFixed(1);
+        send({ type: "done", seconds, model: path.basename(pick.file) });
+        // done 之后立刻结束 SSE（原因同 review/stream：别让 ctx.dispose() 把界面卡在「运行中」）
+        try { if (!res.writableEnded) res.end(); } catch {}
+        log("代码质询 " + (file || "未命名") + " 第 " + (history.length + 1) + " 轮 上下文 " + size + " 回答 " + answer.length + " 字 " + seconds + "s" + (pick.switched ? "（切换模型）" : ""));
+      } finally {
+        await ctx.dispose().catch(() => {});
+      }
+    } catch (e) {
+      if (clientGone) {
+        log("代码质询 " + (file || "未命名") + " 已停止（客户端断开）");
+        return;
+      }
+      const status = e?.status || 500;
+      if (!send) return sendJson(res, status, { error: { message: String(e?.message ?? e) } });
+      send({ type: "error", message: String(e?.message ?? e) });
+      log("代码质询 失败 " + (file || "未命名") + ": " + String(e?.message ?? e));
+    } finally {
+      res.off("close", onClientClose);
+      try { if (!res.writableEnded) res.end(); } catch {}
+    }
+  });
+}
+
+/** POST /api/code/review/cross —— 他人复审（SSE，令牌必需）：两阶段（思路流式 → 同 context 要 JSON） */
+async function handleCodeCrossStream(req, res) {
+  if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
+    return sendJson(res, 403, { error: { message: "缺少或错误的本地令牌（x-local-token）" } });
+  }
+  let body;
+  try {
+    body = await readBody(req);
+  } catch (e) {
+    return sendJson(res, e?.code === "BODY_TOO_LARGE" ? 413 : 400, { error: { message: e?.message ?? "JSON 解析失败" } });
+  }
+  const code = typeof body?.code === "string" ? body.code : "";
+  if (!code.trim()) return sendJson(res, 400, { error: { message: "缺少 code" } });
+  if (code.length > CODE_REVIEW_MAX_CHARS) {
+    return sendJson(res, 413, { error: { message: "代码太长（上限 " + CODE_REVIEW_MAX_CHARS + " 字符）" } });
+  }
+  const lineCount = code.split("\n").length;
+  const lang = String(body?.lang ?? "").trim().slice(0, 40);
+  const file = String(body?.file ?? "").trim().slice(0, 120);
+  const intent = String(body?.intent ?? "").trim().slice(0, 500);
+  const role = String(body?.role ?? "").trim().slice(0, 60) || "独立复核员";
+  // primary 只用于「事后比对」，**不进第二阶段提示词**（避免把第二审查员带偏）
+  const primaryIssues = normalizeReviewIssues(body?.primary?.issues, lineCount);
+  const rawMax = Number(body?.max_tokens);
+  const maxTokens = Math.max(128, Math.min(2000, Number.isFinite(rawMax) && rawMax > 0 ? Math.round(rawMax) : 1200));
+
+  let clientGone = false;
+  let ac = null;
+  const onClientClose = () => {
+    if (clientGone) return;
+    clientGone = true;
+    try { if (ac) ac.abort(codeJobError(499, "客户端已断开（已停止）")); } catch {}
+  };
+  res.on("close", onClientClose);
+
+  return codeJobLocked(async () => {
+    const t0 = Date.now();
+    let send = null;
+    try {
+      const pick = await pickCrossModel(body?.model);
+      const temperature = pick.sameModel ? 0.45 : 0.3;
+      const { ctx, size } = await openReviewContext();
+      try {
+        if (clientGone) {
+          log("他人复审 " + (file || "未命名") + " 客户端已断开，跳过生成");
+          return;
+        }
+        send = sseOpen(res);
+        send({ type: "meta", model: path.basename(pick.file), modelFile: pick.file, contextSize: size, switchedModel: pick.switched, sameModel: pick.sameModel, startedAt: t0 });
+        const session = new LlamaChatSession({
+          contextSequence: ctx.getSequence(),
+          chatWrapper: state.wrapperNoThink ?? "auto",
+          systemPrompt: CODE_CROSS_SYSTEM,
+        });
+        // 第一阶段：只流式输出「审查思路」（与 v1.7.0 两阶段同理：小模型一次要两样经常给不出合法 JSON）
+        const stage1 = ["【你的角色】" + role, codeJobPrompt({ code, lang, file, intent, lineCount })];
+        if (pick.sameModel) stage1.push("", CODE_CROSS_SAME_MODEL_NOTE);
+        let thinkText = "";
+        ac = new AbortController();
+        const watchdog = setTimeout(() => ac.abort(codeJobError(504, "他人复审超时（" + Math.round(CODE_JOB_TIMEOUT_MS / 1000) + "s 没有跑完）：换个模型或分段审查")), CODE_JOB_TIMEOUT_MS);
+        let meta;
+        try {
+          meta = await session.promptWithMeta(stage1.join("\n"), {
+            maxTokens,
+            temperature,
+            signal: ac.signal,
+            onResponseChunk: (c) => {
+              if (c && c.text) {
+                thinkText += c.text;
+                send({ type: "delta", text: c.text });
+              }
+            },
+          });
+        } finally {
+          clearTimeout(watchdog);
+        }
+        const thinking = String(meta?.responseText ?? "") || thinkText;
+        if (clientGone) throw codeJobError(499, "客户端已断开（已停止）");
+        // 第二阶段：同一个 context 里只要 JSON。注意：**不要把 primary 的 issues 塞进来**（避免被带偏）
+        send({ type: "phase", phase: "findings" });
+        const jsonPrompt = [
+          "【代码行数】" + lineCount,
+          "把上面这次复核整理成一个 JSON 对象，只输出 JSON，不要解释：",
+          CODE_REVIEW_JSON_SYSTEM.split("\n").slice(2).join("\n"),
+          "",
+          "复核思路原文（供你归纳，不要复述）：",
+          String(thinking).slice(-2000),
+        ].join("\n");
+        ac = new AbortController();
+        const watchdog2 = setTimeout(() => ac.abort(codeJobError(504, "他人复审结论整理超时")), Math.min(120000, CODE_JOB_TIMEOUT_MS));
+        let jm;
+        try {
+          jm = await session.promptWithMeta(jsonPrompt, { maxTokens: 700, temperature: 0.1, signal: ac.signal });
+        } finally {
+          clearTimeout(watchdog2);
+        }
+        const findings = parseFindingsFromText(String(jm?.responseText ?? ""), lineCount);
+        // 行号吸到真代码行（与 v1.7.1 review/stream 一致）
+        snapIssuesToCodeLines(findings.issues, code);
+        const compare = compareReviewFindings(primaryIssues, findings.issues, lineCount);
+        const seconds = +((Date.now() - t0) / 1000).toFixed(1);
+        send({ type: "findings", summary: findings.summary, issues: findings.issues, parsed: findings.parsed, lineCount });
+        send({ type: "compare", verdict: compare.verdict, stats: compare.stats, agree: compare.agree, onlyPrimary: compare.onlyPrimary, onlySecond: compare.onlySecond, conflicts: compare.conflicts });
+        send({ type: "done", seconds, model: path.basename(pick.file) });
+        try { if (!res.writableEnded) res.end(); } catch {}
+        log("他人复审 " + (file || "未命名") + " 上下文 " + size + " 模型 " + path.basename(pick.file) + (pick.sameModel ? "（同模型对抗）" : "") + " 判定 " + compare.verdict + " 问题 " + findings.issues.length + " " + seconds + "s" + (pick.switched ? "（切换模型）" : ""));
+      } finally {
+        await ctx.dispose().catch(() => {});
+      }
+    } catch (e) {
+      if (clientGone) {
+        log("他人复审 " + (file || "未命名") + " 已停止（客户端断开）");
+        return;
+      }
+      const status = e?.status || 500;
+      if (!send) return sendJson(res, status, { error: { message: String(e?.message ?? e) } });
+      send({ type: "error", message: String(e?.message ?? e) });
+      log("他人复审 失败 " + (file || "未命名") + ": " + String(e?.message ?? e));
+    } finally {
+      res.off("close", onClientClose);
+      try { if (!res.writableEnded) res.end(); } catch {}
+    }
+  });
+}
+
+/** GET /api/cloud/config —— 只读、无令牌（契约 §1.3.2）：只回遮罩后的配置 */
+async function handleCloudConfigGet(req, res) {
+  const cfg = await cloudConfigRead();
+  return sendJson(res, 200, cloudView(cfg));
+}
+
+/** POST /api/cloud/config —— 只更新出现的字段；dryRun 只校验不落盘；apiKey:"" 清除（契约 §1.3.3） */
+async function handleCloudConfigPost(req, res) {
+  if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
+    return sendJson(res, 403, { error: { message: "缺少或错误的本地令牌（x-local-token）" } });
+  }
+  let body;
+  try {
+    body = await readBody(req);
+  } catch (e) {
+    return sendJson(res, e?.code === "BODY_TOO_LARGE" ? 413 : 400, { error: { message: e?.message ?? "JSON 解析失败" } });
+  }
+  const cur = await cloudConfigRead();
+  const next = { ...cur };
+  if (body?.baseURL !== undefined) {
+    const r = normalizeCloudBaseURL(body.baseURL);
+    if (!r.ok) return cloudFail(res, 400, r.code, r.message);
+    next.baseURL = r.value;
+  }
+  if (body?.model !== undefined) {
+    const m = String(body.model ?? "").trim();
+    if (m.length > 120 || (!m && body?.enabled !== false)) {
+      return cloudFail(res, 400, "BAD_MODEL", "model 必须是 1..120 个字符");
+    }
+    // 允许「跟着停用一起清空模型名」（探针/用户收尾会整份回填），单独清空 model 仍算非法
+    next.model = m;
+  }
+  if (body?.apiKey !== undefined) {
+    const k = String(body.apiKey ?? "");
+    if (k.length > 400) return cloudFail(res, 400, "BAD_KEY", "apiKey 太长（上限 400 字符）");
+    next.apiKey = k; // "" = 清除已存的 Key
+  }
+  if (body?.enabled !== undefined) {
+    if (typeof body.enabled !== "boolean") return cloudFail(res, 400, "BAD_ENABLED", "enabled 必须是 true / false");
+    next.enabled = body.enabled;
+  }
+  // dryRun：只校验，不落盘（契约 §1.3.3）
+  if (body?.dryRun === true) {
+    return sendJson(res, 200, { ...cloudView(next), dryRun: true });
+  }
+  try {
+    const saved = await cloudConfigWrite(next);
+    // 只记 host / 模型 / 有没有 Key，绝不记 apiKey（契约 §1.3.4 的日志红线）
+    log("云端复审配置：" + (saved.enabled ? "已启用" : "未启用") + " host=" + (cloudHost(saved.baseURL) || "（未配置）") + " 模型=" + (saved.model || "（未配置）") + (saved.apiKey ? " 已存 Key" : " 无 Key"));
+    return sendJson(res, 200, cloudView(saved));
+  } catch (e) {
+    return cloudFail(res, 500, "WRITE_FAILED", "云端配置写盘失败：" + String(e?.message ?? e).slice(0, 160));
+  }
+}
+
+/** POST /api/code/review/cloud —— 云端复审（SSE，令牌必需；每次必须用 confirm 确认目标域名） */
+async function handleCloudReviewStream(req, res) {
+  if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
+    return sendJson(res, 403, { error: { message: "缺少或错误的本地令牌（x-local-token）" } });
+  }
+  let body;
+  try {
+    body = await readBody(req);
+  } catch (e) {
+    return sendJson(res, e?.code === "BODY_TOO_LARGE" ? 413 : 400, { error: { message: e?.message ?? "JSON 解析失败" } });
+  }
+  const code = typeof body?.code === "string" ? body.code : "";
+  if (!code.trim()) return cloudFail(res, 400, "BAD_CODE", "缺少 code");
+  if (code.length > CODE_REVIEW_MAX_CHARS) {
+    return cloudFail(res, 413, "CODE_TOO_LONG", "代码太长（上限 " + CODE_REVIEW_MAX_CHARS + " 字符）");
+  }
+  const cfg = await cloudConfigRead();
+  const host = cloudHost(cfg.baseURL);
+  if (!cloudReady(cfg)) {
+    return cloudFail(res, 400, "CLOUD_NOT_READY", "云端复审还没配置好：到「设置 → 代码 → 云端复审」填 baseURL / 模型 / API Key 并勾选启用");
+  }
+  // 每次必须确认目标域名：confirm 由前端弹窗确认后带回（契约 §1.3.4）
+  const confirm = String(body?.confirm ?? "").trim();
+  if (!confirm || confirm !== host) {
+    return cloudFail(res, 409, "CONFIRM_REQUIRED", "未确认目标域名：请求体 confirm 必须等于当前配置的 host（" + host + "）");
+  }
+  const lineCount = code.split("\n").length;
+  const lang = String(body?.lang ?? "").trim().slice(0, 40);
+  const file = String(body?.file ?? "").trim().slice(0, 120);
+  const intent = String(body?.intent ?? "").trim().slice(0, 500);
+  const rawMax = Number(body?.max_tokens);
+  const maxTokens = Math.max(128, Math.min(2000, Number.isFinite(rawMax) && rawMax > 0 ? Math.round(rawMax) : 1200));
+
+  let clientGone = false;
+  let ac = null;
+  const onClientClose = () => {
+    if (clientGone) return;
+    clientGone = true;
+    try { if (ac) ac.abort(codeJobError(499, "客户端已断开（已停止）")); } catch {}
+  };
+  res.on("close", onClientClose);
+
+  return codeJobLocked(async () => {
+    const t0 = Date.now();
+    let send = null;
+    try {
+      if (clientGone) {
+        log("云端复审 " + host + " 客户端已断开，跳过请求");
+        return;
+      }
+      // 只发脱敏后的代码（契约 §1.3.5）
+      const clean = sanitizeCodeForCloud(code);
+      const prompt = cloudReviewPrompt({ code: clean.text, lang, file, intent, lineCount, redactions: clean.total });
+      const upstream = cloudUpstreamURL(cfg.baseURL);
+      // 上游调用放在开 SSE 之前：这样超时/上游错误能给出真正的 504/502 状态码（契约 §1.3.4）
+      ac = new AbortController();
+      const timeoutSignal = AbortSignal.timeout(CLOUD_JOB_TIMEOUT_MS);
+      const signal = typeof AbortSignal.any === "function" ? AbortSignal.any([timeoutSignal, ac.signal]) : timeoutSignal;
+      let up;
+      try {
+        up = await fetch(upstream, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: "Bearer " + cfg.apiKey },
+          body: JSON.stringify({
+            model: cfg.model,
+            messages: [
+              { role: "system", content: CODE_CLOUD_SYSTEM },
+              { role: "user", content: prompt },
+            ],
+            temperature: 0.2,
+            max_tokens: maxTokens,
+            stream: false,
+          }),
+          signal,
+        });
+      } catch (e) {
+        if (clientGone) {
+          log("云端复审 " + host + " 已停止（客户端断开）");
+          return;
+        }
+        if (timeoutSignal.aborted) throw codeJobError(504, "云端复审超时（" + Math.round(CLOUD_JOB_TIMEOUT_MS / 1000) + "s 没有返回）：" + host);
+        throw codeJobError(502, "云端复审请求失败：" + String(e?.message ?? e).slice(0, 200));
+      }
+      if (!up.ok) {
+        const rawText = await up.text().catch(() => "");
+        throw codeJobError(502, "上游 " + up.status + "：" + String(rawText).slice(0, 200));
+      }
+      let data = null;
+      try {
+        data = await up.json();
+      } catch {}
+      const text = data && Array.isArray(data.choices) && data.choices[0] && data.choices[0].message && typeof data.choices[0].message.content === "string"
+        ? data.choices[0].message.content
+        : "";
+      if (!String(text).trim()) throw codeJobError(502, "上游 " + up.status + " 但没有返回内容（不是 OpenAI 兼容响应？）");
+      if (clientGone) throw codeJobError(499, "客户端已断开（已停止）");
+      send = sseOpen(res);
+      // 日志红线：只记 host / 模型 / 字符数 / 脱敏处数 / 秒数，绝不记 apiKey、绝不记代码正文
+      send({ type: "meta", provider: "cloud", host, model: cfg.model, sentChars: prompt.length, redactions: clean.total, startedAt: t0 });
+      const flat = String(text);
+      const CHUNK = 80;
+      for (let i = 0; i < flat.length; i += CHUNK) {
+        if (clientGone) throw codeJobError(499, "客户端已断开（已停止）");
+        send({ type: "delta", text: flat.slice(i, i + CHUNK) });
+      }
+      const findings = parseFindingsFromText(flat, lineCount);
+      snapIssuesToCodeLines(findings.issues, code);
+      // 上游瞬间返回时 (x/1000).toFixed(1) 会是 0.0，别让 done.seconds 出现 0（前端/探针都按秒数展示）
+      const seconds = Math.max(0.1, +((Date.now() - t0) / 1000).toFixed(1));
+      send({ type: "findings", summary: findings.summary, issues: findings.issues, parsed: findings.parsed, lineCount });
+      send({ type: "done", seconds, model: cfg.model });
+      try { if (!res.writableEnded) res.end(); } catch {}
+      log("云端复审 " + host + " 模型 " + cfg.model + " 发出 " + prompt.length + " 字符 / 脱敏 " + clean.total + " 处 " + seconds + "s");
+    } catch (e) {
+      if (clientGone) {
+        log("云端复审 " + host + " 已停止（客户端断开）");
+        return;
+      }
+      const status = e?.status || 500;
+      const code2 = status === 504 ? "CLOUD_TIMEOUT" : status === 502 ? "CLOUD_UPSTREAM" : (e?.status ? "CLOUD_FAILED" : "CLOUD_INTERNAL");
+      if (!send) return cloudFail(res, status, code2, String(e?.message ?? e));
+      send({ type: "error", message: String(e?.message ?? e) });
+      log("云端复审 失败 " + host + " " + status + ": " + String(e?.message ?? e).slice(0, 200));
+    } finally {
+      res.off("close", onClientClose);
+      try { if (!res.writableEnded) res.end(); } catch {}
+    }
+  });
+}
+
 // ---------------------------------------------------------------- 文档检索（RAG：workspace 文档 → BM25）
 /**
  * 目标：让模型能回答"我的资料里怎么说"，而不是只能读单个文件。
@@ -7574,6 +8370,12 @@ async function handle(req, res) {
   // v1.7.0：流式审查（思路逐段 + findings）与流式修正（改好的代码 + 改动行区间）
   if (req.method === "POST" && url === "/api/code/review/stream") return handleCodeReviewStream(req, res);
   if (req.method === "POST" && url === "/api/code/fix") return handleCodeFix(req, res);
+  // v1.8.0：二次验证三件套（质询 / 他人复审 / 云端复审）+ 云端配置（契约 §1.1 / §1.2 / §1.3）
+  if (req.method === "POST" && url === "/api/code/review/challenge") return handleCodeChallengeStream(req, res);
+  if (req.method === "POST" && url === "/api/code/review/cross") return handleCodeCrossStream(req, res);
+  if (req.method === "POST" && url === "/api/code/review/cloud") return handleCloudReviewStream(req, res);
+  if (req.method === "GET" && url === "/api/cloud/config") return handleCloudConfigGet(req, res);
+  if (req.method === "POST" && url === "/api/cloud/config") return handleCloudConfigPost(req, res);
 
   // ---- 工作区（文件管理） ----
   if (url.startsWith("/api/workspace/")) {
