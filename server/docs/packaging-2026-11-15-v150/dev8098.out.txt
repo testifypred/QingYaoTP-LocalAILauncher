@@ -1,0 +1,5 @@
+01:44:26 初始化 llama.cpp（偏好 auto）...
+01:44:28 Vulkan 设备：0=Intel(R) Arc(TM) Graphics
+01:44:28 QingYaoTP AILauncher v1.5.0 (50e8e72) 已启动（本地 AI）
+01:44:28 界面 http://127.0.0.1:8098/   API http://127.0.0.1:8098/v1
+01:44:28 插件：0 个可用（D:\LocalModels\plugins）

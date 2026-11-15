@@ -3,7 +3,7 @@
 > 原名 `HANDOFF.md`，由上一任开发者写于 **2026-10-18 21:45**。
 > 从 **2026-10-18 21:44** 起，本文件改为**按时间流水记录**：每一笔写清「几点、改了什么、落在哪、怎么验的」。
 > 第一节是日志索引，其后的一~七节是原交接正文（保留原样，仅修正两处日期笔误），八~十节是本次三项需求的详细设计说明。
-> 最新一笔：**2026-11-15 上午**（第五十八节，**可移植性整改**：打包/zip/服务端/开发脚本里的写死路径改成「由脚本位置推导 + 环境变量」，顺带修掉「把 npm 的 `node.cmd` 垫片打进包」的真缺陷；版本升 **1.4.1**、重打发布包与交付 zip）。全部时间均为 China Standard Time，本机时钟。
+> 最新一笔：**2026-11-15 中午**（第五十九节，**README + 首启使用说明弹窗**：仓库根 README.md 一份、打包进 `app\README.md`，首启自动弹一次、设置→关于可重看；新增 `probe-readme` 21 条，全量 55 → **56 条**；版本升 **1.5.0**）。全部时间均为 China Standard Time，本机时钟。
 >
 > **接手先读 [`交接文档.md`](交接文档.md)**（一页纸：定位、现状、代码地图、下一步）。
 > 技术专题已抽到 [`technique/`](technique/)：架构、接口、插件、模型、打包、探针、坑。本文件保留**按时间流水**的原始记录，作为「为什么这么做」的证据。
@@ -2801,3 +2801,55 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 1. 回到主线：**视觉增强包拆分**（主包 158.5MB 里 `app\llama\` 占 101MB，拆出去主包回 ~122MB）。
 2. 顺手清第五节那批草稿脚本 + `server\backup\`（~20min）。
 3. 若还要发 GitHub：README/LICENSE/NOTICE + 移除 `server\vendor\vc_redist.x64.exe`（24MB）仍需处理；可移植性这条**已经不再是阻塞项**。
+
+## 五十九、2026-11-15 中午：README + 首启「使用说明」弹窗（v1.5.0）
+
+> 需求：写一份 README，并让**初次启动时把它弹出来**。
+> 做法：README 只写一份（仓库根 `README.md`），打包时进 `app\README.md`；服务端用 `/api/readme` 读出来，首启弹窗和「设置 → 关于 → 使用说明…」都渲染同一份内容——**不复制文案**。
+
+### 一、README.md（仓库根，118 行）
+
+面向两类人写：
+
+- **使用者**：这是什么、能做什么（表格）、5 分钟跑起来、常见问题（白屏/慢/显存/换模型/数据在哪/怎么卸载）、数据与隐私、第三方组件与许可。
+- **开发者**：从源码运行与打包的四条命令（`npm install` → `node app.mjs` → `build-portable.ps1` → `make-zip.ps1`）、目录结构、版本号单一来源、文档索引。
+
+顺带把「不写死盘符」「模型权重不入库」「视觉 sidecar 可选」这些上一轮整改的事实写进去了。
+
+### 二、首启弹窗怎么做的
+
+| 层 | 改动 |
+|---|---|
+| 服务端 | 新增 `GET /api/readme` → `{ name, version, seen, markdown, source }`；正文按顺序找 `app\README.md`（发布包）→ `..\README.md`（源码目录）。`/api/onboarding` 的 GET/POST 增加 `readmeShown` 字段（POST 用 `...o` 展开，不再丢掉其它字段） |
+| 界面 | 新增 `#readmeModal`（标题 + 可滚动正文 + 「开始使用」），正文用**现有 `renderMarkdown()`** 渲染，外面套 `.bubble` 复用消息区的 Markdown 排版；CSS 只加滚动高度 |
+| 触发 | 启动顺序改成 `bootFirstRun()`：**先弹使用说明**（没看过的话），关掉后再走原来的「准备模型」引导；不会两个弹窗叠一起 |
+| 记住已读 | 关窗时 `POST /api/onboarding {readmeShown:true}` → 写 `workspace\onboarding.json`。**只看服务端状态，不看 localStorage**：换浏览器/清缓存不会又弹一次，探针也能预置 |
+| 再看 | 设置 → 关于 → 「打开使用说明…」（`#setReadme`）；✕ / 「开始使用」/ 点遮罩 / Esc 都能关 |
+| 打包 | `build-portable.ps1` 的依赖清单和复制步骤都加了 `README.md` → `app\README.md`（漏了就首启显示「没找到 README.md」） |
+
+### 三、探针
+
+- 新增 `server\probe-readme.mjs`：**21 条**（接口 8 + 界面 9 + 复位 4）——正文长度/项目名/小节/版本对账/来源路径、onboarding 暴露并可写入 `readmeShown`、首启自动弹出、标题、Markdown 渲染出 h1/h2 与表格、点「开始使用」关闭并落盘、再次启动不再弹、关于页按钮能重开、Esc 能关、跑完复位。
+- 全量驱动 55 → **56 条**；断言口径 847 → **868**（+21）。
+- **驱动必须预置 `readmeShown`**：`run-full.ps1` 的 Seed-Workspace 原来只置 `done`，现在一次置 `{done:true, readmeShown:true}`——否则新弹窗会盖住顶栏，一批界面探针假红（和 11-02 那次「引导面板挡住模型菜单」同一个坑）。
+
+### 四、验证
+
+| 项 | 结果 |
+|---|---|
+| 包内 `probe-readme` | **21/21** |
+| 包内 `probe-version` | **14/14**（pkg=1.5.0） |
+| 包内 `probe-debug` | **54/54** |
+| 回归（受首启流程影响的 UI） | `probe-ui-new` **30/30**、`probe-start-screen` **12/12**、`probe-start-flow` **8/8**（首次跑 6/8 是**没装模型**，装上 4B 后全绿） |
+| 读的是哪一份 | 发布包 `source = <安装目录>\app\README.md`（4017 字符）；源码目录 `PORT=8098` 时 `source = 仓库根\README.md` |
+| 视觉 | 截图 `server\docs\packaging-2026-11-15-v150\readme-modal.png`（标题「使用说明 · QingYaoTP AILauncher v1.5.0」、表格与引用都渲染正常） |
+| 构建/打包 | `build-portable.ps1` exit 0 → **359.5MB / 3499 文件**（+README）；`make-zip.ps1` 自动解析 1.5.0 → `QingYaoTP-AILauncher-v1.5.0.zip` = **166,241,366B / 158.5MB / 4000 条目 / 72.3s**，包内 `app/README.md` 7,278B，SHA256 `EE2ED1D023F8F5F2CEEE05C9E40261C9924448283EAD1831772AEB84AEDE2D38` |
+
+### 五、版本
+
+1.4.1 → **1.5.0**（`app.mjs` / `package.json` / `localai.mjs`；zip 名由 `make-zip.ps1` 自动跟着走）。
+
+### 六、下一轮
+
+1. 视觉增强包拆分（主包回 ~122MB）——主线还没动。
+2. 若 README 要配截图：`.gitignore` 现在屏蔽了 `server/docs/**/*.png`，得单独开一个放行的目录。

@@ -74,6 +74,8 @@ Write-Host ("   C# 编译器：$Csc")
 foreach ($need in @(
     (Join-Path $Server 'app.mjs'),
     (Join-Path $Server 'app.html'),
+    # 首启「使用说明」弹窗读它（打包进 app\README.md）；漏了首启只能看到「没找到 README.md」
+    (Join-Path $Repo 'README.md'),
     # app.mjs 里 import 了它（docx/pdf 抽文本）；漏了整包起不来
     (Join-Path $Server 'doc-extract.mjs'),
     # app.mjs 里 import 了它（首启配置推荐）；漏了整包起不来
@@ -164,6 +166,9 @@ Copy-Item (Join-Path $Server 'localai-debug.cmd') $AppDir -Force
 Copy-Item (Join-Path $Server 'debug-icon-64.png') $AppDir -Force
 Copy-Item (Join-Path $Server 'debug.ico') $AppDir -Force
 # localai.ico 在下面「写图标」那步统一拷到根目录（桌面快捷方式的 IconLocation 指向它）
+
+# 使用说明：首启弹窗与「设置 → 关于 → 使用说明」都读 app\README.md
+Copy-Item (Join-Path $Repo 'README.md') $AppDir -Force
 
 # VC++ 运行库：全新 Windows 必缺，缺了模型根本加载不了，随包带一份让启动器直接装
 $vcRedist = Join-Path $Server 'vendor\vc_redist.x64.exe'

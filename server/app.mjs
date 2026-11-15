@@ -40,7 +40,7 @@ const DEBUG_UI = path.join(HERE, "debug.html");
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 /** 版本号：发版只改这一处；server\package.json 的 version 必须与它一致（probe-version 会查） */
-const APP_VERSION = "1.4.1";
+const APP_VERSION = "1.5.0";
 /** 产品正式名（2026-11-01 起）：QingYaoTP AILauncher；QingYaoTP = QingYaoTestifypred */
 const APP_NAME = "QingYaoTP AILauncher";
 const APP_SUB = "本地 AI";
@@ -5350,6 +5350,21 @@ const ONBOARD_FILE = path.join(MODEL_DIR, "workspace", "onboarding.json");
 async function readOnboarding() {
   try { return JSON.parse(await readFile(ONBOARD_FILE, "utf8")); } catch { return { done: false, scannedAt: 0 }; }
 }
+
+/**
+ * 使用说明（README）从哪儿读：发布包在 app\README.md，开发态在仓库根目录 README.md。
+ * 首启弹窗、设置里的「使用说明…」都走同一份内容，不复制文案。
+ */
+const README_CANDIDATES = [path.join(HERE, "README.md"), path.join(HERE, "..", "README.md")];
+async function loadReadme() {
+  for (const p of README_CANDIDATES) {
+    try {
+      const md = await readFile(p, "utf8");
+      if (md.trim()) return { markdown: md, source: p };
+    } catch {}
+  }
+  return { markdown: "", source: "" };
+}
 // ModelScope 会按 UA 拦人：默认的 Node UA 拿 Range 会 403，换成浏览器 UA 才通（实测 5.8MB/s）
 const DOWNLOAD_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -6830,14 +6845,22 @@ async function handle(req, res) {
     if (req.method === "GET") {
       const o = await readOnboarding();
       const models = await scanModels().catch(() => []);
-      return sendJson(res, 200, { done: Boolean(o.done), scannedAt: o.scannedAt ?? 0, models: models.length });
+      return sendJson(res, 200, {
+        done: Boolean(o.done),
+        readmeShown: Boolean(o.readmeShown),
+        scannedAt: o.scannedAt ?? 0,
+        models: models.length,
+      });
     }
     if (req.method === "POST") {
       let body = {};
       try { body = await readBody(req); } catch {}
       const o = await readOnboarding();
       const next = {
+        ...o,
         done: body.done === undefined ? Boolean(o.done) : Boolean(body.done),
+        // 首启「使用说明」弹窗是否已经看过：只看服务端这份状态，和浏览器 localStorage 无关
+        readmeShown: body.readmeShown === undefined ? Boolean(o.readmeShown) : Boolean(body.readmeShown),
         scannedAt: body.scanned ? Date.now() : (o.scannedAt ?? 0),
         updatedAt: Date.now(),
       };
@@ -6845,6 +6868,19 @@ async function handle(req, res) {
       await writeFile(ONBOARD_FILE, JSON.stringify(next, null, 2), "utf8");
       return sendJson(res, 200, { ok: true, ...next });
     }
+  }
+
+  // ---------------------------------------------------------------- 使用说明（README）
+  if (req.method === "GET" && url === "/api/readme") {
+    const o = await readOnboarding().catch(() => ({}));
+    const r = await loadReadme();
+    return sendJson(res, 200, {
+      name: APP_NAME,
+      version: APP_VERSION,
+      seen: Boolean(o.readmeShown),
+      markdown: r.markdown,
+      source: r.source,
+    });
   }
   if (req.method === "GET" && url === "/api/download/catalog") {
     return sendJson(res, 200, {

@@ -98,14 +98,15 @@ function Seed-Workspace {
     $st = Invoke-RestMethod ($base + '/api/rag/status') -TimeoutSec 15
     if (($st.files -as [int]) -lt 1) { $null = Invoke-RestMethod -Method Post ($base + '/api/rag/rebuild') -TimeoutSec 300 }
   } catch { }
-  # 首启引导：全新安装会弹「准备模型 / 自动检查」面板，它盖在顶栏上（z-index 高于 header），
-  # 「模型菜单每行可点」「Ctrl+F 打开搜索条」这类断言会因此假红（2026-11-02 第三轮的真因）。
-  # 真实用户点过「完成」就不再弹，所以这里替它点掉。
+  # 首启引导 + 使用说明弹窗：全新安装会弹「准备模型」和「使用说明」，它们盖在顶栏上
+  # （z-index 高于 header），「模型菜单每行可点」「Ctrl+F 打开搜索条」这类断言会因此假红
+  # （2026-11-02 第三轮的真因；使用说明弹窗 2026-11-15 新增）。真实用户点过就不再弹，
+  # 所以这里替它点掉——两个标记一起置位，避免只置一个又冒出另一个。
   try {
     $ob = Invoke-RestMethod ($base + '/api/onboarding') -TimeoutSec 10
-    if ($ob.done -ne $true) {
-      $null = Invoke-RestMethod -Method Post -Uri ($base + '/api/onboarding') -ContentType 'application/json' -Body '{"done":true}' -TimeoutSec 15
-      '  [driver] 已标记首启引导完成（否则引导面板会盖住顶栏）' | Tee-Object -Append -FilePath $summary
+    if ($ob.done -ne $true -or $ob.readmeShown -ne $true) {
+      $null = Invoke-RestMethod -Method Post -Uri ($base + '/api/onboarding') -ContentType 'application/json' -Body '{"done":true,"readmeShown":true}' -TimeoutSec 15
+      '  [driver] 已标记首启引导完成 + 使用说明已读（否则这两个面板会盖住顶栏）' | Tee-Object -Append -FilePath $summary
     }
   } catch { }
   ('  [driver] 环境预置完成：' + $ws) | Tee-Object -Append -FilePath $summary
@@ -127,6 +128,7 @@ $probes=@(
   @{n='probe-debug'; a=@($base); t=150},
   @{n='probe-func'; a=@('8099'); t=240},
   @{n='probe-ui-new'; a=@($cdp,$shots); t=150},
+  @{n='probe-readme'; a=@($cdp,$base); t=180},
   @{n='probe-start-screen'; a=@($cdp,$shots); t=150},
   @{n='probe-start-flow'; a=@($cdp,$shots); t=180},
   @{n='probe-model-add'; a=@($cdp); t=150},

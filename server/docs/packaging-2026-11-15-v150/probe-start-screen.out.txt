@@ -1,0 +1,15 @@
+STATE {"hero":true,"greet":"早上好","sid":null,"msgs":0,"tabs":false,"btn":"DeepSeek-R1-0528-Qwen3-8B","sendIco":true,"recent":true,"recentTitle":"这张图里有什么？把文字念出来。"}
+ok   启动进入开场白
+ok   默认新对话（无 sessionId、无消息）  [sid=null]
+ok   问候语按时间  [早上好]
+ok   顶栏无模型列表
+ok   没加载模型时按钮是占位文案  [DeepSeek-R1-0528-Qwen3-8B]
+ok   发送键旁有模型图标
+ok   右下角提示上次对话  [这张图里有什么？把文字念出来。]
+ok   深度思考/联网在输入框下
+ok   模型菜单能打开
+ok   列出全部模型  [5 / 5]
+ok   没加载模型时菜单不标记任何行  [（无）]
+ok   点空白关闭菜单
+
+RESULT 12/12

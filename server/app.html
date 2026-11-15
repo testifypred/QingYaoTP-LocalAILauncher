@@ -906,6 +906,10 @@ math-field:focus-within{border-color:var(--cyan)}
 #promptText:focus{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan) inset,0 0 18px rgba(34,211,238,.12)}
 .modalFoot{display:flex;align-items:center;gap:10px;padding:13px 18px;border-top:1px solid var(--line)}
 .modalFoot .hintText{flex:1;font-size:11.5px;color:var(--dim);line-height:1.45}
+/* 使用说明（README）弹窗：正文复用 .bubble 的 Markdown 排版，这里只约束滚动区域 */
+#readmeBody{max-height:min(62vh,600px);overflow:auto;margin:0 16px;padding:14px 16px;font-size:13px;background:var(--panel-2)}
+#readmeBody>:first-child{margin-top:0}
+#readmeBody>:last-child{margin-bottom:0}
 
 /* 删除模型确认弹窗 */
 .delName{font-size:13.5px;font-weight:600;color:var(--text);font-family:var(--mono);overflow-wrap:anywhere}
@@ -1373,6 +1377,22 @@ header::before{
   </div>
 </div>
 
+<div id="readmeModal" class="modal" hidden>
+  <div class="modalBox" style="width:min(880px,94vw);max-height:90vh">
+    <div class="modalHead">
+      <b id="readmeTitle">使用说明</b>
+      <span class="spacer"></span>
+      <button id="readmeClose" class="ghost" title="关闭">✕</button>
+    </div>
+    <div id="readmeBody" class="bubble readmeDoc">加载中…</div>
+    <div class="modalFoot">
+      <span class="hintText">之后想再看：设置 → 关于 →「使用说明…」</span>
+      <span class="spacer"></span>
+      <button id="readmeOk" class="primary">开始使用</button>
+    </div>
+  </div>
+</div>
+
 <div id="snapModal" class="modal" hidden>
   <div class="modalBox" style="width:min(720px,92vw);height:min(560px,84vh)">
     <div class="modalHead">
@@ -1759,6 +1779,13 @@ header::before{
         <span class="lbl">运行</span>
         <em id="aboutRuntime">—</em>
         <em id="aboutDir" class="mono">—</em>
+      </div>
+      <div class="field">
+        <span class="lbl">使用说明</span>
+        <div class="exportRow">
+          <button id="setReadme" class="ghost">打开使用说明…</button>
+        </div>
+        <em>和首次启动时自动弹出的那份是同一个 README.md（首启只弹一次，看过就不再打扰）。</em>
       </div>
       <div class="field">
         <span class="lbl">更新</span>
@@ -5694,6 +5721,52 @@ function frPoll() {
   frTimer = setInterval(tick, 900);
 }
 
+// ---- 使用说明（README）：首启自动弹一次；设置 → 关于 里可随时再看 ----
+// 是否弹只看服务端 workspace\onboarding.json 的 readmeShown，与浏览器 localStorage 无关，
+// 这样换浏览器/清缓存不会又弹一遍，探针也能通过 API 预置「已看过」。
+async function openReadme() {
+  try {
+    const r = await apiJson('/api/readme');
+    $('readmeTitle').textContent = '使用说明 · ' + (r.name || 'QingYaoTP AILauncher') + (r.version ? ' v' + r.version : '');
+    const body = $('readmeBody');
+    body.innerHTML = r.markdown
+      ? renderMarkdown(r.markdown)
+      : '<p>没找到 README.md（发布包应在 <code>app\\README.md</code>，源码目录在仓库根）。</p>';
+    body.scrollTop = 0;
+    $('readmeModal').hidden = false;
+    return true;
+  } catch (e) {
+    if (!window.__readmeAuto) showToast('打不开使用说明：' + (e && e.message ? e.message : e), 'err', 6000);
+    return false;
+  }
+}
+async function closeReadme() {
+  const wasAuto = Boolean(window.__readmeAuto);
+  window.__readmeAuto = false;
+  $('readmeModal').hidden = true;
+  try {
+    await apiJson('/api/onboarding', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ readmeShown: true }),
+    });
+  } catch {}
+  if (wasAuto) maybeFirstRun().catch(() => {});
+}
+async function maybeReadme() {
+  try {
+    const o = await apiJson('/api/onboarding');
+    if (o.readmeShown) return false;
+    window.__readmeAuto = true;
+    return await openReadme();
+  } catch { return false; }
+}
+/** 启动顺序：先弹使用说明（没看过的话），关掉之后再问要不要准备模型 */
+async function bootFirstRun() {
+  if (await maybeReadme()) return;
+  await maybeFirstRun();
+}
+
 async function maybeFirstRun() {
   try {
     const o = await apiJson('/api/onboarding');
@@ -5705,6 +5778,11 @@ async function maybeFirstRun() {
 $('firstClose').onclick = () => firstRunClose(false);
 $('firstSkip').onclick = () => firstRunClose(false);
 $('firstDone').onclick = () => firstRunClose(true);
+// 使用说明弹窗
+$('readmeOk').onclick = () => closeReadme();
+$('readmeClose').onclick = () => closeReadme();
+$('readmeModal').addEventListener('click', (e) => { if (e.target === $('readmeModal')) closeReadme(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('readmeModal').hidden) closeReadme(); });
 $('snapClose').onclick = () => { $('snapModal').hidden = true; };
 $('snapDone').onclick = () => { $('snapModal').hidden = true; };
 
@@ -6120,6 +6198,7 @@ $('bkModal').addEventListener('click', (e) => { if (e.target === $('bkModal')) c
 
 $('setPromptOpen').onclick = () => { settingsModal.hidden = true; openPrompt(); };
 $('setFirstRun') && ($('setFirstRun').onclick = () => { settingsModal.hidden = true; firstRunOpen().catch(() => {}); });
+$('setReadme') && ($('setReadme').onclick = () => { settingsModal.hidden = true; openReadme(); });
 $('setDiscoverOpen').onclick = () => { settingsModal.hidden = true; openDiscover(false).catch(() => {}); };
 $('setQuitOpen').onclick = () => { settingsModal.hidden = true; quitService(); };
 document.addEventListener('click', () => closeCtxMenu());
@@ -8180,8 +8259,8 @@ setInterval(() => {
   });
 }, 3000);
 input.focus();
-// 首次使用：等首屏稳定后再问要不要准备模型
-setTimeout(() => { maybeFirstRun().catch(() => {}); }, 1200);
+// 首次使用：等首屏稳定后，先弹「使用说明」（没看过的话），关掉后再问要不要准备模型
+setTimeout(() => { bootFirstRun().catch(() => {}); }, 1200);
 </script>
 </body>
 </html>
