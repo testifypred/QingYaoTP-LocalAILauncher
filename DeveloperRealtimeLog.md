@@ -3088,3 +3088,60 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 2. 代码工作区：多文件 / 整工作区一起审查；结论另存 `.review.md`；「一键纠正」的改动**一键写回文件**（现在要手动保存）；`scope=single` 补一次真模型跑。
 3. TUI：`localai.mjs` 放行 `--hint-test`；`/tool` 长结果支持分页/翻页；`/tools` 支持按关键词过滤。
 4. 全量已跑完（**62 条全绿 / 1137**，r2）；交付 v1.7.0 时把这份基线写进发布包冒烟清单。
+
+## 六十三、2026-11-15 傍晚：v1.7.0 交付重打（补记）
+
+> 第六十二节交付时按用户要求**没有打发布包**（只改源码 + 跑探针）。用户装上（还是 v1.6.0 的）应用后反馈「看不到新功能」——本节点名补记：**重新打包 + 发布包冒烟 + 8099 切回发布包实例**。
+
+### 一、为什么补打
+
+- 第六十二节结束时：源码 / 版本号 / 探针都到 v1.7.0，但 `dist\` 与 zip **刻意没动**（用户当时要求「不要每个改动都弄到发布包里」）。
+- 用户实际安装的是旧包 → `/api/version` 报的是包里的版本、界面也还是旧界面，「新功能看不到」是必然的。
+- 结论：**版本号变了就必须重打包**——源码与发布包不一致时，用户看到的是旧行为。这条已写进 `交接文档.md` 已知限制 #19（原「本轮不重建」条目改成「已重打包交付 + 教训」）。
+
+### 二、打包过程与两个坑
+
+| 步骤 | 结果 |
+|---|---|
+| `build-portable.ps1` | 8 步全过：`dist\QingYaoTP AILauncher\` = **258.5MB / 3447 文件**（`app\` 144.5MB；自检「主包无 app\llama」过） |
+| 包内版本 | `app\app.mjs` 的 `APP_VERSION=1.7.0`、`app\localai-tui.mjs` 的 `VER=1.2.0`、`app\package.json` = 1.7.0 |
+| `make-zip.ps1` | `dist\QingYaoTP-AILauncher-v1.7.0.zip` = **121.95MB / 127,877,251B / 3947 条目 / 68.0s**；自检「无 app/llama 条目」过 |
+| 增强包 | **没重打**，沿用 `QingYaoTP-AILauncher-v1.6.0-vision-pack.zip`（36.6MB / 56 条目 / SHA `D7924534…11D3`）——增强包内容只由 `tools\llama.cpp` + `vision-pack.json` 决定，与主包版本无关 |
+
+两个坑（都是「旧实例没杀干净」）：
+
+1. **旧启动器还在跑 → dist 文件被锁**：清空/覆盖 `dist\` 时报 `ggml-base.dll` denied、`CrashpadMetrics.pma` locked。打包前必须先 `Get-Process "QingYaoTP AILauncher" | Stop-Process -Force`。
+2. **启动器杀了，它拉起的 node 子进程还活着**：`dist\...\runtime\node.exe ... app.mjs` 是孤儿进程，仍占着 `app\` 里的 dll → 打包中途才炸。要先按命令行精确找到它一起杀掉，再打包（杀进程写法见 `technique\05-打包与部署.md`，别用 `Stop-Process -Name msedgewebview2` 误杀别的 WebView2 程序）。
+
+### 三、实测数字
+
+| 项 | 值 |
+|---|---|
+| 主包 zip | **121.95MB / 127,877,251B / 3947 条目 / 68.0s**，SHA256 `853C61B91A046D5A5B9473C50F499D15127FE0296A042ACB88D82327AA847489`；`app/llama` 条目 0 |
+| 发布目录 | **258.5MB / 3447 文件**（v1.7.0 重打；`data\` 172.5MB 运行期缓存不算载荷） |
+| 视觉增强包 | 沿用 v1.6.0 那份：36.6MB / 38,408,198B / 56 条目 / SHA `D7924534B30143F3791D26C143B95656306AE1FFA08D52557EE25D56699A11D3` |
+| 发布包冒烟（dist 实例真跑） | `probe-version` **14/14 exit0**（pkg=1.7.0、dir=`dist\app`）；`probe-debug` **54/54 exit0**；`probe-tui-tools` **23/23 exit0**（包内 TUI VER=1.2.0） |
+| `probe-code-review-stream`（发布包） | **45/45**（带 `PROBE_SKIP_SWITCH=1`，跳过 3 项 = Phi 切换）：A–C 段真跑绿——审查 **36.5s** / 2 个问题、修正 **12.6s**（`changes [{3,6}]`、added 4 / removed 1、lineCount 12）。**不带开关时 D 段（切到 Phi-4-mini 审查）在发布包上也复现卡死**：探针超时中断 → 8099 整体无响应 → 杀进程重启发布包；所以**发布包冒烟不跑 Phi 切换**，Phi 深测只在 dev 隔离跑（48/48） |
+| 8099 | 已切回**发布包实例 v1.7.0**：`dist\QingYaoTP AILauncher\QingYaoTP AILauncher.exe`（pid 2540，dir=`dist\app`）；视觉增强包用接口装回 dist（source=pack，53 文件 / 101.1MB）；8 个真实会话 |
+
+### 四、验证
+
+| 项 | 结果 |
+|---|---|
+| 构建自检 | `build-portable.ps1` exit 0、8 步全过、自检「主包无 app\llama」；`make-zip.ps1` exit 0、自检「无 app/llama 条目」 |
+| 包内版本对账 | `app\app.mjs` = 1.7.0、`app\localai-tui.mjs` = 1.2.0、`app\package.json` = 1.7.0，三处一致 |
+| 发布包冒烟 | `probe-version` 14/14、`probe-debug` 54/54、`probe-tui-tools` 23/23、`probe-code-review-stream` **45/45**（`PROBE_SKIP_SWITCH=1` 跳过 Phi 切换——不带开关时 D 段会复现 Phi-4-mini 卡死，故发布包冒烟不跑它）（证据 `server\docs\feature-code-review-terminal-2026-11-15\release-v170-probe-*.txt`） |
+| 视觉能力 | 增强包装回 dist 后 `/api/vision/state.pack.installed=true`、`source=pack`、53 文件 / 101.1MB（本机照旧能看图） |
+| 未重跑全量 | 62 条全量在 dev 上已于第六十二节跑完（1137 断言全绿）；本次只做发布包冒烟，不重复烧 40 分钟 |
+
+### 五、给用户的结论
+
+- 现在装的就是 **v1.7.0**：终端 TUI（命令提示 + /tool 调工具）和代码面板（流式审查 / 行高亮 / 一键纠正 / 发回对话）都在发布包里了。
+- 视觉增强包**不用重下**：还是原来那份 `...-v1.6.0-vision-pack.zip`（文件名版本和主包不同步是正常的）。
+- 卸载/重装前先退出应用，否则 `app\` 里的文件被占用会失败。
+
+### 六、下一轮
+
+1. **发布包冒烟固定带 `PROBE_SKIP_SWITCH=1`**（Phi 切换在发布包上也会把 8099 卡死，已复现）；Phi 的深测只在 dev 隔离跑（48/48）。同时在冒烟脚本里把这个开关写死，别靠人记。
+2. 打包脚本加一条前置自检：**发现 dist 被占用/启动器在跑直接报错退出**（现在是人肉先杀，容易忘）。
+3. 把「版本号变了必须重打包」写进发版 checklist（README 没有、`交接文档.md` 五条铁律可补一条）。
