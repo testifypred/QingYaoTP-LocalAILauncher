@@ -168,8 +168,12 @@ $probes=@(
   @{n='probe-ui-preload'; a=@($cdp,$base,$shots); t=300},
   @{n='probe-preload'; a=@($base); t=360},
   @{n='probe-second-opinion'; a=@($base); t=420},
+  # 视觉增强包：界面探针自带临时服务（8199）与预置小包，跑完导航回 8099，不影响后面的界面探针
+  @{n='probe-ui-vision-pack'; a=@($cdp,$base,$shots); t=240},
   # 视觉 sidecar：UI 探针先跑（只动 DOM），API 探针最后跑——start 会卸载 nlc 文本模型（内存互斥）
   @{n='probe-ui-vision'; a=@($cdp,$base,$shots); t=240},
+  # 视觉增强包：纯 API 探针（自带临时服务 8199 + 临时 MODEL_DIR / LOCALAI_LLAMA_DIR / LOCALAI_VISION_PACK_DIR）
+  @{n='probe-vision-pack'; a=@($base); t=240},
   @{n='probe-vision-api'; a=@($base); t=420}
 )
 "# full suite $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')  ($($probes.Count) probes)" | Out-File -Encoding utf8 $summary

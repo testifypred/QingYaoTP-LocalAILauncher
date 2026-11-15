@@ -1,0 +1,87 @@
+== A. 现有 id 保留 ==
+  ok   契约要求的 20 个 id 全在  [缺: []]
+  ok   #vpFile 是 accept=.zip 的隐藏 file input
+  ok   视觉设置页在设置弹窗里
+
+== B. 真后端「未安装」态 ==
+  ok   点到了「设置 → 视觉」页签
+  ok   卡片已渲染（#vpCard 存在）
+  ok   data-installed = 0  [0]
+  ok   状态行写「未安装」  [未安装 · 可选能力（增强包约 40MB，不看图可忽略）]
+  ok   明细里有安装目录  [安装目录：C:\Temp\vp-ui-test\llama]
+  ok   #vpDetected 可见且有「一键安装」按钮  [检测到本地增强包：QingYaoTP-AILauncher-v1.6.0-vision-pack.zip（0.0 MB · v1.6.0）一键安装]
+  ok   #vpDetected 列出了本地增强包名字  [检测到本地增强包：QingYaoTP-AILauncher-v1.6.0-vision-pack.zip（0.0 MB · v1.6.0）一键安装]
+  ok   #setVisionStart 已禁用
+  ok   #setVisionPair 组合下拉已禁用
+  ok   #vpUninstallBtn 已禁用（未安装）
+  ok   #imgBtn 未安装时仍可点（不置灰）
+  ok   #imgBtn 点后只弹「视觉增强包未安装…」toast  [视觉增强包未安装：设置 → 视觉 → 安装视觉增强包]
+  ok   未安装时没有打开文件选择框（仍停在视觉页）
+    截图: D:\LocalModels\server\docs\feature-vision-pack-2026-11-15\ui-pack-card.png
+
+== C. 真后端「一键安装」→ 已安装 → 卸载 ==
+  ok   点到「一键安装」
+  ok   安装后 data-installed = 1
+  ok   状态行写「已安装 v1.6.0 · 8 个文件」  [已安装 v1.6.0 · 8 个文件 / 0.0 MB]
+  ok   明细写「来源：包安装」  [安装目录：C:\Temp\vp-ui-test\llama · 来源：包安装 · sidecar：b12144 · 安装于 2026-11-15 12:33]
+  ok   安装目录指向临时安装目标  [安装目录：C:\Temp\vp-ui-test\llama · 来源：包安装 · sidecar：b12144 · 安装于 2026-11-15 12:33]
+  ok   安装后 #vpUninstallBtn 可用
+  ok   安装后 #setVisionStart 可用（有 pair 且未运行）
+  ok   安装后 #setVisionPair 可用
+  ok   安装后 #imgBtn 仍可用
+  ok   磁盘上安装目录里有 llama-server.exe  [C:\Temp\vp-ui-test\llama\llama-server.exe]
+    截图: D:\LocalModels\server\docs\feature-vision-pack-2026-11-15\ui-pack-installed.png
+  ok   卸载前把 confirm 改成自动确认（模拟用户点确定）
+  ok   卸载后 data-installed = 0
+  ok   卸载后状态行回到「未安装」  [未安装 · 可选能力（增强包约 40MB，不看图可忽略）]
+  ok   卸载后 #setVisionStart 再次禁用
+  ok   卸载后 #setVisionPair 再次禁用
+  ok   磁盘上安装目录已删除  [C:\Temp\vp-ui-test\llama]
+
+== C2. 选 zip 上传安装（XHR 原始字节）→ 再卸载 ==
+  ok   #vpFile 选包后触发上传（change 事件派发成功）  [1]
+  ok   上传安装成功：data-installed=1
+  ok   上传安装成功：来源=包安装、状态行已安装  [已安装 v1.6.0 · 8 个文件 / 0.0 MB | 安装目录：C:\Temp\vp-ui-test\llama · 来源：包安装 · sidecar：b12144 · 安装于 2026-11-15 12:33]
+  ok   上传安装成功：toast 提示已安装  [视觉增强包已安装 v1.6.0 · 8 个文件 / 0.0 MB视觉增强包已卸载，释放 0.0 MB视觉增强包已安装 v1.6.0 · 8 个文件 / 0.0 MB]
+  ok   上传安装成功：进度条已收起
+  ok   上传安装后能卸载回未安装
+
+== D. stub 状态渲染（未安装 / 已安装包 / 开发目录 / 老版本自带） ==
+  ok   [stub 未安装] data-installed=0
+  ok   [stub 未安装] 检测到 2 个本地包、2 个一键安装按钮  [检测到本地增强包：QingYaoTP-AILauncher-v1.6.0-vision-pack.zip（39.3 MB · v1.6.0）一键安装检测到本地增强包：QingYaoTP-AILauncher-v1.5.1-vision-pack.zip（38.6 MB · v1.5.1）一键安装]
+  ok   [stub 未安装] 启动键 / 组合下拉禁用
+    截图: D:\LocalModels\server\docs\feature-vision-pack-2026-11-15\ui-pack-stub-uninstalled.png
+  ok   [stub 已安装包] data-installed=1
+  ok   [stub 已安装包] 状态行 = 已安装 v1.6.0 · 53 个文件 / 101.1 MB  [已安装 v1.6.0 · 53 个文件 / 101.1 MB]
+  ok   [stub 已安装包] 明细 = 安装目录 + 来源：包安装 + sidecar b12144  [安装目录：C:\app\llama · 来源：包安装 · sidecar：b12144 · 安装于 2026-11-15 12:20]
+  ok   [stub 已安装包] 卸载可用 / 启动键可用 / 重装文案  [已安装 · 可重新安装以升级或修复]
+    截图: D:\LocalModels\server\docs\feature-vision-pack-2026-11-15\ui-pack-stub-installed.png
+  ok   [stub 开发目录] data-installed=1
+  ok   [stub 开发目录] 明细 = 来源：开发目录  [安装目录：D:\LocalModels\tools\llama.cpp · 来源：开发目录]
+  ok   [stub 开发目录] 卸载按钮禁用 + hint 说明不可卸  [当前视觉来自开发目录，不可卸载]
+    截图: D:\LocalModels\server\docs\feature-vision-pack-2026-11-15\ui-pack-stub-tools.png
+  ok   [stub 老版本自带] 来源显示「老版本自带」  [安装目录：D:\LocalModels\dist\QingYaoTP AILauncher\app\llama · 来源：老版本自带 · 老版本自带（没有 .vision-pack.json 标记）]
+  ok   [stub 老版本自带] 卸载可用（target 下可卸）
+
+== E. 兜底：旧后端 404 / 网络失败（不白屏、不抛未捕获异常） ==
+  ok   404 时 loadVisionPack 不 reject  [ok]
+  ok   404 兜底：data-installed=1（旧后端视觉随主包）、状态说明不支持  [视觉增强包：当前服务端不支持管理接口]
+  ok   404 兜底：安装 / 卸载按钮禁用
+    截图: D:\LocalModels\server\docs\feature-vision-pack-2026-11-15\ui-pack-fallback-404.png
+  ok   网络失败时 loadVisionPack 不 reject  [ok]
+  ok   网络失败兜底：状态行写读取失败、不白屏  [读取视觉增强包状态失败]
+  ok   网络失败兜底：hint 提示可重试  [模拟网络失败（重新打开本页可重试）]
+  ok   网络失败兜底：不误禁用 #imgBtn
+
+== F. 进度 UI ==
+  ok   确定进度：显示「上传中 47%」  [上传中 47%（18.6 MB / 39.3 MB）]
+  ok   确定进度：进度条宽度 47%
+  ok   不确定进度：文案「正在解压安装…」+ vpIndet 类
+  ok   hideVisionPackProgress 后 #vpProgress 隐藏
+  ok   收尾：回到真后端状态（未安装 data-installed=0）  [未安装 · 可选能力（增强包约 40MB，不看图可忽略）]
+
+== G. 控制台 ==
+  ok   全程无 Runtime/Log error（favicon 资源除外）
+  （已忽略的环境噪声：1 条）
+
+== 汇总：PASS 63 / FAIL 0 ==

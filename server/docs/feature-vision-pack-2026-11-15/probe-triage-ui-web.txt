@@ -1,0 +1,9 @@
+# probe-ui-web 定性（CDP 抓真实请求/响应）
+开启后状态: {"tool":true,"webChecked":true,"webDisabled":false,"loaded":"qwen3-5-4B-Q4_K_M.gguf","webEnabledVar":true,"settings":{"v":3,"maxTokens":1024,"temp":0.7,"autoRead":false,"ttsVoice":"edge:zh-CN-XiaoxiaoNeural","ttsSpeed":1,"preloadMulti":false,"preloadMuted":false,"webEnabled":true,"webMuted":true,"tools":true,"codeRun":true,"codeCapture":true,"codeOutWs":true}}
+发送前状态: {"tool":false,"webChecked":true,"webEnabledVar":true}
+请求体: tools=false web=false
+SSE tool 事件: 0 []
+DOM 卡片: 0 / 0
+summary: []
+bubble: "关于\"Qwen2.5 上下文长度”，由于我无法直接访问实时网络进行搜索（web_search 功能在当前环境中不可用），我将基于我自身的知识库为您提供最准确的信息。Qwen2.5 系列模型原生支持256K的超长上下文窗口。这一能力使其能够完整理解并处理长达数十万字的文档、视频或复杂的代码库，并实现高精度的长文本定位和深度推理。"
+等待秒数: 12

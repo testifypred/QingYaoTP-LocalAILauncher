@@ -9,7 +9,10 @@
  *  3) 用内置 320x180 PNG（红底白字 QWEN 42）发一帧：
  *     POST /v1/chat/completions {stream:false, images:[dataURL], messages:[...]} -> 200 且 content 含 QWEN；
  *  4) POST /api/vision/stop -> running:false，8101 不再监听；
- *  5) 无 pair：start -> 400/409 且提示「视觉模型」，带图请求 -> 409，跳过 2-4。
+ *  5) 无 pair：start -> 400/409 且提示「视觉模型」，带图请求 -> 409，跳过 2-4；
+ *  6) state.pack 结构（v1.6.0 视觉增强包）：pack 是对象、pack.installed === true
+ *     （装好后 sidecar 才可用；dev 下指向 tools\llama.cpp 也算已安装 / source=tools）。
+ *     断言 25 -> 27 条。
  *
  * 前置：服务在跑。start 会按契约先卸载 nlc 文本模型（内存互斥），所以本探针会改变「是否加载文本模型」；
  *       在 run-full 里排在最后一条。收尾一定 stop sidecar；不加载文本模型（驱动负责预加载）。
@@ -90,6 +93,9 @@ try {
   ok("state.pairs 是数组", Array.isArray(v.pairs), "pairs=" + (Array.isArray(v.pairs) ? v.pairs.length : typeof v.pairs));
   ok("pairs 每项含 model 与 mmproj", pairs.every((p) => p && typeof p.model === "string" && typeof p.mmproj === "string"), "n=" + pairs.length);
   ok("selected 形状正确（对象或 null）", v.selected === null || (typeof v.selected === "object" && typeof v.selected.model === "string" && typeof v.selected.mmproj === "string"), JSON.stringify(v.selected));
+  // v1.6.0：视觉增强包（契约 §3）——state 里挂 pack 摘要，装好（含 dev 的 tools\llama.cpp）才算有 sidecar
+  ok("state.pack 是对象", Boolean(v.pack && typeof v.pack === "object" && !Array.isArray(v.pack)), JSON.stringify(v.pack));
+  ok("state.pack.installed === true（视觉 sidecar 可用）", Boolean(v.pack && v.pack.installed === true), JSON.stringify(v.pack && { installed: v.pack.installed, source: v.pack.source, dir: v.pack.dir }));
 
   if (pairs.length === 0) {
     // ---------- 5. 无 pair 分支 ----------

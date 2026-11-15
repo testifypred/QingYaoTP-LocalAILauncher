@@ -1,0 +1,40 @@
+
+== 目标 http://127.0.0.1:8099 ==
+
+  ok   GET /api/vision/state -> 200  [HTTP 200]
+  ok   state.ok === true
+  ok   state.port === 8101  [port=8101]
+  ok   state.running 为布尔  [running=false]
+  ok   state.pairs 是数组  [pairs=1]
+  ok   pairs 每项含 model 与 mmproj  [n=1]
+  ok   selected 形状正确（对象或 null）  [{"model":"Qwen3.5-9B-Q4_K_M.gguf","mmproj":"mmproj\\Qwen3.5-9B-mmproj-F16.gguf"}]
+  ok   state.pack 是对象  [{"installed":true,"dir":"D:\\LocalModels\\tools\\llama.cpp","source":"tools","version":"","files":53,"bytes":106017053,"uninstallable":false}]
+  ok   state.pack.installed === true（视觉 sidecar 可用）  [{"installed":true,"source":"tools","dir":"D:\\LocalModels\\tools\\llama.cpp"}]
+
+== B. 有可用 pair（1 组）：启动 sidecar ==
+  selected: {"model":"Qwen3.5-9B-Q4_K_M.gguf","mmproj":"mmproj\\Qwen3.5-9B-mmproj-F16.gguf"}
+  ok   有 pair 时 selected 非空
+  ok   POST /api/vision/start -> 200  [HTTP 200 {"ok":true,"running":true,"port":8101,"pid":9660,"model":"D:\\LocalModels\\Qwen3.5-9B-Q4_K_M.gguf","mmproj":"D:\\LocalMo（19.1s）]
+  ok   start 后 running:true  [running=true]
+  ok   start 返回 port:8101  [port=8101]
+  ok   start 返回 pid  [pid=9660]
+  ok   start 后 model/mmproj 非空  [D:\LocalModels\Qwen3.5-9B-Q4_K_M.gguf + D:\LocalModels\mmproj\Qwen3.5-9B-mmproj-F16.gguf]
+  ok   再查 state：running 仍为 true  [running=true]
+  ok   start 后 nlc 文本模型已卸载（内存互斥）  [loaded=(空)]
+  ok   GET http://127.0.0.1:8101/health -> ok  [HTTP 200 {"status":"ok"}]
+
+== C. 发一帧 320x180 PNG（视觉推理约十几秒）==
+  ok   带图聊天 -> 200  [HTTP 200 用时 10.2s {"choices":[{"finish_reason":"stop","index":0,"message":{"role":"assistant","content":"QWEN 42"}}],"created":1794717411,]
+  ok   返回 choices 数组  [n=1]
+  ok   content 非空  [QWEN 42]
+  ok   content 含 QWEN（宽松：含 42 也算）  [严格 QWEN 42：达成；原文 QWEN 42]
+
+== D. 停止 sidecar 并确认 8101 释放 ==
+  ok   POST /api/vision/stop -> 200  [HTTP 200 {"ok":true,"running":false}]
+  ok   stop 后 running:false  [running=false]
+  ok   8101 已释放（/health 不可达）  [2.3s]
+  ok   收尾 state.running:false  [running=false]
+  ok   自复位：sidecar 已停止、8101 无监听  [干净]
+
+== 结果: 27 通过 / 0 失败 ==
+

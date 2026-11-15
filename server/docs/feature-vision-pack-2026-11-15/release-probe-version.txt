@@ -1,0 +1,19 @@
+
+== 目标 http://127.0.0.1:8099 / 源码 D:\LocalModels\server\app.mjs ==
+
+  ok   /api/version 可用  [HTTP 200]
+  ok   版本号是 semver  [1.6.0]
+  ok   构建来源是 git 或 mtime  [mtime]
+  ok   取自 git 时短哈希合法
+  ok   有提交/打包时间可对账  [2026-11-15T07:02:19.099Z]
+  ok   git 构建带 dirty 标记  [false]
+  ok   启动时刻可解析且不在未来  [2026-11-15T07:06:09.163Z]
+  ok   报了 node 版本与端口  [v24.19.0 / 8099]
+  ok   版本接口不泄漏本地令牌
+  ok   /api/state 带同一个版本号  [1.6.0 vs 1.6.0]
+  ok   /api/state 的 build.commit 与 /api/version 一致
+  ok   package.json 的 version 与接口一致  [pkg=1.6.0]
+  ok   app.mjs 的 APP_VERSION 与接口一致  [1.6.0]
+  ok   版本号只在一处定义
+
+RESULT 14/14

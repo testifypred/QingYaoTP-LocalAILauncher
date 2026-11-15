@@ -1,0 +1,147 @@
+
+== 目标 http://127.0.0.1:8199（临时服务实例；run-full 传参 (无) 不使用）==
+  临时目录: C:\Users\lenovo\AppData\Local\Temp\vp-probe-Q7Djrz
+
+== A. 起临时服务实例（PORT=8199）==
+  ok   临时服务 /api/state 在 30s 内就绪  [pid=36048]
+  ok   拿到临时实例的本机令牌（/api/state.localToken）  [len=36]
+  ok   MODEL_DIR 环境变量生效  [modelDir=C:\Users\lenovo\AppData\Local\Temp\vp-probe-Q7Djrz\vp-model]
+
+== B. 初始状态（未安装）==
+  ok   GET /api/vision/pack -> 200（只读，不需要令牌）  [HTTP 200 {"ok":true,"installed":false,"dir":"C:\\Users\\lenovo\\AppData\\Local\\Temp\\vp-probe-Q7Djrz\\llama","source":"none","version":"","sidecar":"","files":0,"bytes"]
+  ok   pack.ok === true
+  ok   初始 installed === false  [installed=false]
+  ok   初始 source === none  [source=none]
+  ok   初始 available 是空数组（临时 packs 目录为空）  [available=[]]
+  ok   dir 指向临时 LOCALAI_LLAMA_DIR  [dir=C:\Users\lenovo\AppData\Local\Temp\vp-probe-Q7Djrz\llama]
+  ok   target 指向临时 LOCALAI_LLAMA_DIR  [target=C:\Users\lenovo\AppData\Local\Temp\vp-probe-Q7Djrz\llama]
+  ok   未安装时 uninstallable === false  [uninstallable=false]
+  ok   running === false  [running=false]
+  ok   GET /api/vision/state -> 200  [HTTP 200]
+  ok   /api/vision/state.pack 是对象  [{"installed":false,"dir":"C:\\Users\\lenovo\\AppData\\Local\\Temp\\vp-probe-Q7Djrz\\llama","source":"none","version":"","files":0,"bytes":0,"uninstallable":false}]
+  ok   state.pack.installed === false（与 /api/vision/pack 同口径）
+  ok   未安装时 note 提示「视觉增强包未安装」  [模型目录里没有可用模型：请先把 .gguf 放到 C:\Users\lenovo\AppData\Local\Temp\vp-probe-Q7Djrz\vp-model；视觉增强包未安装：设置 → 视]
+
+== C. 破坏性接口必须带 x-local-token ==
+  ok   POST install 无令牌 -> 403  [HTTP 403 缺少或错误的本地令牌（x-local-token）]
+  ok   403 文案提到令牌 / token  [缺少或错误的本地令牌（x-local-token）]
+  ok   POST uninstall 无令牌 -> 403  [HTTP 403 缺少或错误的本地令牌（x-local-token）]
+  ok   无令牌的 install 没有落盘（目标目录仍不存在）
+
+== D. 坏包：404 / 400，且一个字节都不落盘 ==
+  ok   path 不存在 -> 404  [HTTP 404 找不到增强包文件：C:\Users\lenovo\AppData\Local\Temp\vp-probe-Q7Djrz\work\no-such-pack.zip]
+  ok   404 文案说明文件不存在  [找不到增强包文件：C:\Users\lenovo\AppData\Local\Temp\vp-probe-Q7Djrz\work\no-such-pack.zi]
+  ok   假 zip（随机字节）-> 400  [HTTP 400 不是有效的 ZIP（找不到中央目录结尾）]
+  ok   假 zip 文案说明不是有效 ZIP  [不是有效的 ZIP（找不到中央目录结尾）]
+  ok   缺 required 的合法 zip -> 400  [HTTP 400 增强包不完整，缺少：llama-common.dll, ggml.dll, ggml-base.dll, mtmd.dll, libomp.dll]
+  ok   缺 required 文案列出缺哪些文件  [增强包不完整，缺少：llama-common.dll, ggml.dll, ggml-base.dll, mtmd.dll, libomp.dll]
+  ok   拒绝安装后目标目录仍不存在
+
+== E. 路径穿越：../ 与绝对路径都 400，临时目录外不落文件 ==
+  ok   ../ 条目 -> 400  [HTTP 400 增强包含非法路径（.. 或空段）：../evil-rel-jmk92t.txt]
+  ok   ../ 文案指出非法路径  [增强包含非法路径（.. 或空段）：../evil-rel-jmk92t.txt]
+  ok   绝对路径条目 -> 400  [HTTP 400 增强包含非法路径（绝对路径）：C:/Users/lenovo/AppData/Local/Temp/vp-probe-Q7Djrz/evil-abs-jmk92t.txt]
+  ok   绝对路径文案指出非法路径  [增强包含非法路径（绝对路径）：C:/Users/lenovo/AppData/Local/Temp/vp-probe-Q7Djrz/evil-abs-jmk92t.txt]
+  ok   临时目录内没有 evil-rel 文件（../ 没穿出去）
+  ok   临时目录内没有 evil-abs 文件（绝对路径没生效）
+  ok   解压临时目录 .llama.part-* / .llama.old-* 没残留
+  ok   穿越包被拒后目标目录仍不存在
+
+== F. dryRun（未安装）：只校验不落盘 ==
+  ok   dryRun 合法包 -> 200  [HTTP 200 {"ok":true,"installed":false,"dryRun":true,"stoppedSidecar":false,"install":{"version":"1.6.0","sidecar":"b12144","files":8,"bytes":12028,"sha256":"eeb1527590fe]
+  ok   dryRun 响应 dryRun === true
+  ok   dryRun 返回 install.files === 8（校验结果可用）  [files=8]
+  ok   dryRun 返回 version === 1.6.0
+  ok   dryRun 后目标目录仍不存在（没落盘）  [exists=false]
+
+== G. path 安装合法小包（zipStore 生成）==
+  ok   POST install {path} -> 200  [HTTP 200 {"ok":true,"installed":true,"dryRun":false,"stoppedSidecar":false,"install":{"version":"1.6.0","sidecar":"b12144","files":8,"bytes":12028,"sha256":"eeb1527590fe]
+  ok   响应 installed === true  [installed=true]
+  ok   响应 dryRun === false  [dryRun=false]
+  ok   install.files === 8（与清单一致）  [files=8]
+  ok   install.bytes === 清单 bytes  [bytes=12028 / 清单 12028]
+  ok   install.sha256 === zip 实际 SHA256  [eeb1527590fe8f2b...]
+  ok   install.version === 1.6.0  [version=1.6.0]
+  ok   响应 pack.installed === true
+  ok   响应 pack.source === pack  [source=pack]
+  ok   响应 pack.version === 1.6.0  [version=1.6.0]
+  ok   响应 pack.files === 8 / bytes 与清单一致  [files=8 bytes=12028]
+  ok   响应 pack.uninstallable === true（装到安装目标，可卸）  [uninstallable=true]
+  ok   安装标记 .vision-pack.json 存在
+  ok   标记内容对得上（version / pack 文件名 / sha256 / installedAt）  [{"version":"1.6.0","pack":"QingYaoTP-AILauncher-v1.6.0-vision-pack.zip","sha":"eeb1527590fe..."}]
+  ok   磁盘上 8 个 required 文件齐、大小对  [8 个]
+  ok   GET pack 复核：installed / source / files 一致  [HTTP 200]
+
+== H. 覆盖安装幂等 ==
+  ok   再装一次 -> 200（不报目录已存在）  [HTTP 200 {"ok":true,"installed":true,"dryRun":false,"stoppedSidecar":false,"install":{"version":"1.6.0","sidecar":"b12144","files":8,"bytes":12028,"sha256":"eeb1527590fe]
+  ok   再装后 files 仍为 8 / version 仍 1.6.0
+  ok   再装后 source 仍 pack
+  ok   再装后磁盘文件清单不变（没有残留旧目录）  [8 个]
+  ok   覆盖安装后没有 .llama.old-* 残留
+
+== I. dryRun（已安装）：文件清单不变 ==
+  ok   已安装时 dryRun -> 200  [HTTP 200 {"ok":true,"installed":false,"dryRun":true,"stoppedSidecar":false,"install":{"version":"1.6.0","sidecar":"b12144","files":8,"bytes":12028,"sha256":"eeb1527590fe]
+  ok   已安装时 dryRun 仍返回 dryRun === true
+  ok   dryRun 前后磁盘文件清单不变
+  ok   dryRun 后仍 installed === true
+
+== J. available：LOCALAI_VISION_PACK_DIR 里的 zip ==
+  ok   available 检测到刚放进去的包  [n=1 ["QingYaoTP-AILauncher-v1.6.0-vision-pack.zip"]]
+  ok   available[0].name 是那个 zip  [QingYaoTP-AILauncher-v1.6.0-vision-pack.zip]
+  ok   available 解析出 version 1.6.0  [version=1.6.0]
+  ok   available[0].path 在 LOCALAI_VISION_PACK_DIR 下  [C:\Users\lenovo\AppData\Local\Temp\vp-probe-Q7Djrz\packs\QingYaoTP-AILauncher-v1.6.0-vision-pack.zip]
+  ok   available 项带 bytes  [bytes=13972]
+
+== J2. available 多包：版本降序 ==
+  ok   available 多包：3 个 zip 都被检测到  [n=3 ["QingYaoTP-AILauncher-v2.0.0-vision-pack.zip","QingYaoTP-AILauncher-v1.6.0-vision-pack.zip","QingYaoTP-AILauncher-v1.0.0-vision-pack.zip"]]
+  ok   available 多包：v2.0.0 排在 v1.0.0 前面（版本降序）  [i(v2)=0 i(v1)=2]
+  ok   available 多包：两个 version 都解析正确  [v1=1.0.0 v2=2.0.0]
+  ok   清掉临时多包后 available 回到 1 个（后面的断言口径不变）  [n=1]
+
+== K. 原始 zip 字节流上传安装 ==
+  ok   坏字节流上传 -> 400  [HTTP 400 不是有效的 ZIP（文件太短）]
+  ok   坏字节流没有破坏已装目录
+  ok   zip 字节流上传 -> 200  [HTTP 200 {"ok":true,"installed":true,"dryRun":false,"stoppedSidecar":false,"install":{"version":"1.6.0","sidecar":"b12144","files":8,"bytes":12028,"sha256":"eeb1527590fe]
+  ok   流上传后 installed === true  [installed=true]
+  ok   流上传后 source === pack / files === 8  [source=pack files=8]
+  ok   流上传后 version === 1.6.0
+  ok   流上传后磁盘清单仍是那 8 个文件
+
+== L. uninstall：dryRun 不删、真删目录消失 ==
+  ok   uninstall dryRun -> 200 且 dryRun === true  [HTTP 200 {"ok":true,"installed":true,"dryRun":true,"stoppedSidecar":false,"removedBytes":12028,"pack":{"ok":true,"installed":true,"dir":"C:\\Users\\lenovo\\AppData\\Loca]
+  ok   uninstall dryRun 后目录还在、installed 仍 true
+  ok   POST uninstall -> 200  [HTTP 200 {"ok":true,"installed":false,"dryRun":false,"stoppedSidecar":false,"removedBytes":12028,"pack":{"ok":true,"installed":false,"dir":"C:\\Users\\lenovo\\AppData\\L]
+  ok   uninstall 响应 installed === false  [installed=false]
+  ok   uninstall removedBytes === 清单 bytes  [removedBytes=12028 / 清单 12028]
+  ok   目标目录已删除
+  ok   卸载后 GET pack：installed false / source none / uninstallable false  [installed=false source=none]
+  ok   卸载后 available 仍能看到 packs 目录里的 zip
+  ok   卸载后 state.pack.installed === false、note 回到「未安装」
+  ok   卸载后 POST /api/vision/start -> 409（不是 500）  [HTTP 409 视觉增强包未安装：去 设置 → 视觉 → 安装视觉增强包（约 40MB），装好后再发图；不看图可以忽略]
+  ok   start 409 文案指到「视觉增强包 / 设置」  [视觉增强包未安装：去 设置 → 视觉 → 安装视觉增强包（约 40MB），装好后再发图；不看图可以忽略]
+
+== M. 开发目录 source=tools：uninstall -> 409，仓库资产不动 ==
+  ok   第一个临时实例已停止（腾出 8199）
+  ok   前置：仓库没有 server\llama（llamaDir 会回落到 tools\llama.cpp）
+  ok   第二个临时实例就绪（不设 LOCALAI_LLAMA_DIR / LOCALAI_VISION_PACK_DIR）  [pid=31300]
+  ok   tools 分支 GET /api/vision/pack -> 200  [HTTP 200 {"ok":true,"installed":true,"dir":"D:\\LocalModels\\tools\\llama.cpp","source":"tools","version":"","sidecar":"","files":53,"bytes":106017053,"installedAt":"","]
+  ok   tools 分支 installed === true（仓库 tools 里有 sidecar）  [installed=true]
+  ok   tools 分支 source === "tools"  [source=tools]
+  ok   tools 分支 uninstallable === false（开发目录不是安装目标）  [uninstallable=false]
+  ok   tools 分支 dir 指向仓库 tools\llama.cpp  [dir=D:\LocalModels\tools\llama.cpp]
+  ok   tools 分支 target 指向 server\llama（安装目标）  [target=D:\LocalModels\server\llama]
+  ok   POST uninstall（source=tools）-> 409  [HTTP 409 当前视觉组件来自 D:\LocalModels\tools\llama.cpp（不是安装目录），不能在这里卸载]
+  ok   409 文案说明「不是安装目录 / 不能卸载」  [当前视觉组件来自 D:\LocalModels\tools\llama.cpp（不是安装目录），不能在这里卸载]
+  ok   409 后 installed 仍 true、source 仍 tools（目录没动）  [installed=true source=tools]
+  ok   仓库 tools\llama.cpp\llama-server.exe 仍在（没被删）
+  ok   server\llama 仍不存在（409 没写任何东西）
+  ok   409 响应里 installed 不是 false（没有误报卸载成功）
+  ok   第二个临时实例已停止（8199 释放）
+
+== N. 收尾：杀临时服务 / 删临时目录 / 不污染仓库 ==
+  ok   临时服务已停止（8199 不再监听）  [干净]
+  ok   临时目录已删除  [C:\Users\lenovo\AppData\Local\Temp\vp-probe-Q7Djrz]
+  临时服务启动日志: 04:40:23 QingYaoTP AILauncher v1.6.0 (dba1846) 已启动（本地 AI） | 04:40:23 界面 http://127.0.0.1:8199/   API http://127.0.0.1:8199/v1 | 04:40:23 插件：0 个可用（C:\Users\lenovo\AppData\Local\Temp\vp-probe-Q7Djrz\plugins）
+
+== 结果: 110 通过 / 0 失败 ==
+

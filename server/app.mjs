@@ -20,6 +20,8 @@ import path from "node:path";
 import { getLlama, resolveChatWrapper, LlamaChatSession, TokenMeter, defineChatSessionFunction, DraftSequenceTokenPredictor } from "node-llama-cpp";
 import { recommendConfig, CATALOG_MODELS } from "./config-recommend.mjs";
 import { zipStore, sha256 as zipSha256 } from "./diag-zip.mjs";
+// 视觉增强包（v1.6.0）：把 101MB 的 llama.cpp sidecar 从主包拆出去，做成可选安装的 zip
+import { installVisionPack, removeVisionPack, visionPackInfo, listAvailablePacks, MAX_PACK_BYTES } from "./vision-pack.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 /**
@@ -40,7 +42,7 @@ const DEBUG_UI = path.join(HERE, "debug.html");
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 /** 版本号：发版只改这一处；server\package.json 的 version 必须与它一致（probe-version 会查） */
-const APP_VERSION = "1.5.1";
+const APP_VERSION = "1.6.0";
 /** 产品正式名（2026-11-01 起）：QingYaoTP AILauncher；QingYaoTP = QingYaoTestifypred */
 const APP_NAME = "QingYaoTP AILauncher";
 const APP_SUB = "本地 AI";
@@ -55,12 +57,35 @@ const STARTED_AT = new Date().toISOString();
  * 路径优先级：环境变量 LOCALAI_LLAMA_DIR → 发布包 app/llama → 开发目录 server/../tools/llama.cpp
  * （发布包里由 build-portable.ps1 把 tools/llama.cpp 拷成 app/llama）
  */
-const LLAMA_DIR =
-  process.env.LOCALAI_LLAMA_DIR ||
-  (existsSync(path.join(HERE, "llama", "llama-server.exe"))
-    ? path.join(HERE, "llama")
-    : path.join(HERE, "..", "tools", "llama.cpp"));
-const LLAMA_SERVER = path.join(LLAMA_DIR, "llama-server.exe");
+function llamaDir() {
+  const env = String(process.env.LOCALAI_LLAMA_DIR || "").trim();
+  if (env) return path.resolve(env);
+  const packed = path.join(HERE, "llama");
+  if (existsSync(path.join(packed, "llama-server.exe"))) return packed;
+  return path.join(HERE, "..", "tools", "llama.cpp");
+}
+/**
+ * 视觉增强包的安装目标：打包后 = <安装目录>\app\llama；开发态 = server\llama（LOCALAI_LLAMA_DIR 可覆盖）。
+ * 注意这是「装到哪里」，跟 llamaDir() 的「现在用哪套」是两件事：开发态默认用仓库的 tools\llama.cpp，
+ * 那套是仓库资产，**不能**在界面里一键卸载。
+ */
+const VISION_PACK_TARGET = path.resolve(
+  String(process.env.LOCALAI_LLAMA_DIR || "").trim() || path.join(HERE, "llama"),
+);
+const llamaServerPath = () => path.join(llamaDir(), "llama-server.exe");
+/** 找 *.zip 视觉增强包的目录：LOCALAI_VISION_PACK_DIR（; 分隔）优先；默认安装目录上一级 / app\vision-pack / 开发态 dist */
+function visionPackSearchDirs() {
+  const env = String(process.env.LOCALAI_VISION_PACK_DIR || "").trim();
+  if (env) return env.split(";").map((s) => s.trim()).filter(Boolean).map((s) => path.resolve(s));
+  // 默认找：安装目录本身 / 安装目录下的 vision-pack\ / 安装目录上一级 / 再上一级（发布 dist\ 那一层）/ 上一级的 dist\。
+  // 用户最常把「主包 + 增强包 zip」一起解压到同一个下载或发布目录，所以往外多看一层（2026-11-15 发布包冒烟实测补的）。
+  return [...new Set([
+    path.resolve(HERE, ".."),
+    path.join(HERE, "vision-pack"),
+    path.resolve(HERE, "..", ".."),
+    path.resolve(HERE, "..", "..", "dist"),
+  ])];
+}
 /** 视觉 sidecar 监听端口：固定 8101（契约定死，状态接口也按这个显示） */
 const VISION_PORT = Number(process.env.VISION_PORT ?? 8101);
 const VISION_HOST = "127.0.0.1";
@@ -604,17 +629,20 @@ async function buildDiag() {
   // ---- 视觉 sidecar（v1.3.x 的主打能力；发图 500 时这里是第一现场）----
   try {
     const vis = await visionState();
-    const comp = existsSync(LLAMA_SERVER);
+    const comp = existsSync(llamaServerPath());
+    const packInfo = vis.pack || {};
     const pair = vis.selected ? vis.selected.model + " + " + vis.selected.mmproj : "";
     const detail = "8101 · " +
       (vis.running ? "运行中 pid " + vis.pid + (vis.model ? " · " + path.basename(vis.model) : "") : "未运行（发图时自动拉起，首图 6–12s）") +
       " · 配对 " + (pair || "无") + " · 上下文 " + vis.context +
       (vis.idleExitSec ? " · 闲置 " + vis.idleExitSec + " 秒退出" : " · 闲置不退出") +
-      (vis.autoRestoreSec ? " · 看完图 " + vis.autoRestoreSec + " 秒装回文本模型" : "");
+      (vis.autoRestoreSec ? " · 看完图 " + vis.autoRestoreSec + " 秒装回文本模型" : "") +
+      " · 增强包 " + (comp ? { pack: "已安装", legacy: "老版本自带", tools: "开发目录" }[packInfo.source] || "已安装" : "未安装（可选）");
     let level = "ok", fix = "";
     if (!comp) {
-      level = "error";
-      fix = "视觉组件缺失：找不到 " + LLAMA_SERVER + "；重装发布包，或把 llama.cpp（llama-server.exe + 同目录 DLL）放进 app\\llama。不看图可以忽略";
+      // v1.6.0：视觉组件不再是主包的一部分，没装只是「可选能力未启用」，不是故障
+      level = "warn";
+      fix = "视觉增强包未安装（可选，约 40MB）：设置 → 视觉 → 安装视觉增强包；不看图可以忽略";
     } else if (!pair) {
       level = "warn";
       fix = "没有可用的「模型 + mmproj」组合：把 mmproj 放到 " + path.join(MODEL_DIR, "mmproj") + " 下，或在 config.ini 指定 visionModel / visionMmproj";
@@ -627,7 +655,7 @@ async function buildDiag() {
       running: vis.running, port: vis.port, pid: vis.pid || null, model: vis.model, mmproj: vis.mmproj,
       pairs: Array.isArray(vis.pairs) ? vis.pairs.length : 0, selected: vis.selected || null,
       context: vis.context, idleExitSec: vis.idleExitSec, autoRestoreSec: vis.autoRestoreSec,
-      error: vis.error || "", component: comp, note: vis.note || "",
+      error: vis.error || "", component: comp, note: vis.note || "", pack: packInfo,
     };
   } catch (e) {
     add("vision", "warn", "视觉 sidecar", "读不到状态：" + String(e?.message ?? e));
@@ -2080,6 +2108,37 @@ async function readBody(req) {
   return JSON.parse(raw || "{}");
 }
 
+/**
+ * 把上传的原始字节流落到临时文件（视觉增强包上传用：101MB 的包不可能走 4MB 的 readBody）。
+ * 超过 maxBytes 立刻 413，并删掉半截文件；客户端断流同样清理。
+ */
+async function receiveUploadToTemp(req, { maxBytes = 600 * 1024 * 1024, ext = ".bin" } = {}) {
+  const tmp = path.join(os.tmpdir(), "qytp-upload-" + randomUUID() + ext);
+  const out = createWriteStream(tmp);
+  let size = 0;
+  try {
+    const declared = Number(req.headers["content-length"]);
+    if (Number.isFinite(declared) && declared > maxBytes) {
+      throw Object.assign(new Error("上传文件太大（" + Math.round(declared / 1024 / 1024) + "MB），上限 " + Math.round(maxBytes / 1024 / 1024) + "MB"), { status: 413 });
+    }
+    for await (const chunk of req) {
+      size += chunk.length;
+      if (size > maxBytes) {
+        throw Object.assign(new Error("上传文件超过 " + Math.round(maxBytes / 1024 / 1024) + "MB"), { status: 413 });
+      }
+      if (!out.write(chunk)) await new Promise((r) => out.once("drain", r));
+    }
+    await new Promise((res, rej) => out.end((err) => (err ? rej(err) : res())));
+    return { path: tmp, bytes: size };
+  } catch (e) {
+    out.destroy();
+    await new Promise((r) => setTimeout(r, 30));
+    await unlink(tmp).catch(() => {});
+    if (!e.status) e.status = 400;
+    throw e;
+  }
+}
+
 // ---------------------------------------------------------------- 视觉（图片入口）实现
 /**
  * sidecar 进程状态：一次只跑一个 llama-server.exe（端口 8101）。
@@ -2393,11 +2452,42 @@ async function visionPortInUse() {
   }
 }
 
-function visionPublicState(scan, ctx = VISION_CONTEXT_DEFAULT, idleSec = VISION_IDLE_DEFAULT_SEC, autoRestore = { enabled: true, sec: 15 }) {
+/** 增强包摘要（塞进 /api/vision/state；完整清单看 /api/vision/pack） */
+async function visionPackSummary() {
+  const info = await visionPackInfo({ dir: llamaDir(), target: VISION_PACK_TARGET });
+  return {
+    installed: info.installed,
+    dir: info.dir,
+    source: info.source,
+    version: info.version,
+    files: info.files,
+    bytes: info.bytes,
+    uninstallable: info.uninstallable,
+  };
+}
+
+/** 完整增强包状态（UI 用：谁在装、装哪儿、能不能卸、附近有哪些包） */
+async function visionPackState() {
+  const info = await visionPackInfo({ dir: llamaDir(), target: VISION_PACK_TARGET });
+  const available = await listAvailablePacks(visionPackSearchDirs());
+  return {
+    ok: true,
+    ...info,
+    target: VISION_PACK_TARGET,
+    running: visionRunning(),
+    available,
+    note: info.installed
+      ? ""
+      : "视觉增强包未安装（可选，约 40MB）：设置 → 视觉 → 安装视觉增强包",
+  };
+}
+
+async function visionPublicState(scan, ctx = VISION_CONTEXT_DEFAULT, idleSec = VISION_IDLE_DEFAULT_SEC, autoRestore = { enabled: true, sec: 15 }) {
   const running = visionRunning();
+  const pack = await visionPackSummary();
   let note = scan.note || "";
-  if (!existsSync(LLAMA_SERVER)) {
-    note = (note ? note + "；" : "") + "视觉组件缺失：找不到 " + LLAMA_SERVER;
+  if (!pack.installed) {
+    note = (note ? note + "；" : "") + "视觉增强包未安装：设置 → 视觉 → 安装视觉增强包（可选能力，不看图可忽略）";
   }
   return {
     ok: true,
@@ -2421,16 +2511,73 @@ function visionPublicState(scan, ctx = VISION_CONTEXT_DEFAULT, idleSec = VISION_
     // 看完图自动装回文本模型：设置页/界面据此显示提示（0 = 关闭）
     autoRestoreSec: autoRestore.enabled ? autoRestore.sec : 0,
     lastTextModel: vision.lastText ? vision.lastText.file : "",
+    // v1.6.0：视觉组件是可选的「增强包」，这里告诉界面装没装、能不能一键卸载
+    pack,
   };
 }
 
 async function visionState() {
-  return visionPublicState(
+  return await visionPublicState(
     await scanVisionPairs(),
     await visionContextSize(),
     await visionIdleSec(),
     await visionAutoRestoreConfig(),
   );
+}
+
+// ---------------------------------------------------------------- 视觉增强包：安装 / 卸载
+/** 安装包操作串行化：两个上传同时到不能各装各的（swap 目录会互相踩） */
+let visionPackLock = Promise.resolve();
+function runVisionPackLocked(fn) {
+  const run = visionPackLock.then(fn, fn);
+  visionPackLock = run.catch(() => {});
+  return run;
+}
+
+async function runVisionPackInstall(zipPath, { dryRun = false, sourceName = "" } = {}) {
+  return runVisionPackLocked(async () => {
+    if (!dryRun) {
+      if (vision.active > 0) throw Object.assign(new Error("有视觉请求正在进行，等它结束再安装"), { status: 409 });
+      if (vision.starting) throw Object.assign(new Error("视觉模型正在启动，稍后再安装"), { status: 409 });
+    }
+    let stoppedSidecar = false;
+    if (!dryRun && visionRunning()) {
+      log("视觉增强包：安装前先停 sidecar（Windows 上换 exe 会被占用）");
+      await stopVision();
+      stoppedSidecar = true;
+    }
+    const install = await installVisionPack({ zipPath, destDir: VISION_PACK_TARGET, dryRun, sourceName });
+    if (dryRun) {
+      log("视觉增强包：干跑校验通过（" + install.files + " 个文件 / " + Math.round(install.bytes / 1024 / 1024) + "MB）");
+    } else {
+      log("视觉增强包：已安装 v" + install.version + "（" + install.files + " 个文件 / " +
+        Math.round(install.bytes / 1024 / 1024) + "MB，sha256 " + install.sha256.slice(0, 12) + "…）→ " + VISION_PACK_TARGET);
+    }
+    return { ok: true, installed: !dryRun, dryRun, stoppedSidecar, install, zip: zipPath, pack: await visionPackState() };
+  });
+}
+
+async function runVisionPackUninstall({ dryRun = false } = {}) {
+  return runVisionPackLocked(async () => {
+    const info = await visionPackInfo({ dir: llamaDir(), target: VISION_PACK_TARGET });
+    if (!info.installed) throw Object.assign(new Error("视觉增强包未安装，没什么可卸的"), { status: 409 });
+    if (!info.uninstallable) {
+      throw Object.assign(new Error("当前视觉组件来自 " + info.dir + "（不是安装目录），不能在这里卸载"), { status: 409 });
+    }
+    if (vision.active > 0) throw Object.assign(new Error("有视觉请求正在进行，等它结束再卸载"), { status: 409 });
+    if (dryRun) {
+      return { ok: true, installed: true, dryRun: true, stoppedSidecar: false, removedBytes: info.bytes, pack: await visionPackState() };
+    }
+    let stoppedSidecar = false;
+    if (visionRunning()) {
+      log("视觉增强包：卸载前先停 sidecar");
+      await stopVision();
+      stoppedSidecar = true;
+    }
+    const rm = await removeVisionPack(VISION_PACK_TARGET);
+    log("视觉增强包：已卸载（释放 " + Math.round(rm.bytes / 1024 / 1024) + "MB）");
+    return { ok: true, installed: false, dryRun: false, stoppedSidecar, removedBytes: rm.bytes, pack: await visionPackState() };
+  });
 }
 
 /**
@@ -2471,18 +2618,19 @@ async function startVision(opts) {
   const reqMmproj = String((opts && opts.mmproj) || "").trim();
   return runVisionLocked(async () => {
     clearVisionRestore(); // 又要用视觉了，取消待执行的「装回文本模型」
+    // 先看组件在不在（v1.6.0：视觉是可选增强包，没装就别说「没有可用模型」，直接指到设置页）
+    if (!existsSync(llamaServerPath())) {
+      throw visionFail(409, "视觉增强包未安装：去 设置 → 视觉 → 安装视觉增强包（约 40MB），装好后再发图；不看图可以忽略");
+    }
     const scan = await scanVisionPairs();
     const want = resolveVisionTarget(reqModel, reqMmproj, scan);
 
     if (visionRunning()) {
-      if (want.model === vision.model && want.mmproj === vision.mmproj) return visionPublicState(scan);
+      if (want.model === vision.model && want.mmproj === vision.mmproj) return await visionPublicState(scan);
       log("视觉：切换组合，先停止旧 sidecar");
       await stopVisionLocked();
     }
 
-    if (!existsSync(LLAMA_SERVER)) {
-      throw visionFail(500, "没有视觉组件：找不到 " + LLAMA_SERVER + "（发布包应带 app/llama/llama-server.exe，开发目录用 tools/llama.cpp）");
-    }
     // 内存互斥：文本模型（含预加载常驻）先全部释放，再起 sidecar
     if (activeChats > 0) throw visionFail(409, "有文本对话正在进行，无法启动视觉模型，请等它结束（或点停止）");
     if (state.loading) throw visionFail(409, "文本模型正在加载，请稍后再试");
@@ -2518,7 +2666,7 @@ async function startVision(opts) {
     try {
       out = createWriteStream(VISION_LOG, { flags: "a" });
       out.on("error", () => {});
-      out.write("\n===== " + new Date().toISOString() + " 启动视觉 sidecar =====\n" + LLAMA_SERVER + " " + args.join(" ") + "\n");
+      out.write("\n===== " + new Date().toISOString() + " 启动视觉 sidecar =====\n" + llamaServerPath() + " " + args.join(" ") + "\n");
     } catch {
       out = null;
     }
@@ -2527,7 +2675,7 @@ async function startVision(opts) {
     vision.error = "";
     let child;
     try {
-      child = spawn(LLAMA_SERVER, args, { cwd: LLAMA_DIR, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+      child = spawn(llamaServerPath(), args, { cwd: llamaDir(), windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
     } catch (err) {
       vision.starting = false;
       if (out) out.end();
@@ -2597,7 +2745,7 @@ async function startVision(opts) {
     vision.idleSec = await visionIdleSec();
     touchVisionIdle();
     log("视觉 sidecar 就绪（" + path.basename(want.model) + " + " + path.basename(want.mmproj) + "，ctx " + ctx + " / " + (threads > 0 ? threads + " 线程" : "线程自动") + " / mmproj " + VISION_MMPROJ_DEVICE + "，" + ((Date.now() - t0) / 1000).toFixed(1) + "s，pid " + vision.pid + "）");
-    return visionPublicState(await scanVisionPairs(), ctx, vision.idleSec);
+    return await visionPublicState(await scanVisionPairs(), ctx, vision.idleSec);
   });
 }
 
@@ -6661,6 +6809,71 @@ async function handle(req, res) {
     }
   }
 
+  // ---- 视觉增强包（v1.6.0）：状态 / 安装 / 卸载 ----
+  // 主包不再带 appllama（101MB），看图能力改成按需安装；装/卸都要本地令牌（会往程序目录写 exe）。
+  if (req.method === "GET" && url === "/api/vision/pack") {
+    return sendJson(res, 200, await visionPackState());
+  }
+
+  if (req.method === "POST" && url === "/api/vision/pack/install") {
+    if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
+      return sendJson(res, 403, { error: { message: "缺少或错误的本地令牌（x-local-token）" } });
+    }
+    const ctype = String(req.headers["content-type"] || "").toLowerCase();
+    let tmpFile = "";
+    try {
+      let zipPath = "";
+      let dryRun = false;
+      let sourceName = "";
+      if (ctype.includes("application/json")) {
+        let body = {};
+        try {
+          body = await readBody(req);
+        } catch (e) {
+          return sendJson(res, e?.code === "BODY_TOO_LARGE" ? 413 : 400, { error: { message: e?.message ?? "JSON 解析失败" } });
+        }
+        dryRun = body.dryRun === true;
+        zipPath = String(body.path || "").trim();
+        if (!zipPath) {
+          return sendJson(res, 400, { error: { message: "缺少 path（也可以直接把 zip 字节流 POST 上来上传安装）" } });
+        }
+        if (!/\.zip$/i.test(zipPath)) return sendJson(res, 400, { error: { message: "只接受 .zip 格式的视觉增强包" } });
+        if (!path.isAbsolute(zipPath)) zipPath = path.resolve(MODEL_DIR, zipPath);
+        if (!existsSync(zipPath)) return sendJson(res, 404, { error: { message: "找不到增强包文件：" + zipPath } });
+      } else {
+        // 原始字节流（界面里选文件上传）：流式落盘，不走 4MB 的 readBody 上限
+        const up = await receiveUploadToTemp(req, { maxBytes: MAX_PACK_BYTES, ext: ".zip" });
+        tmpFile = up.path;
+        zipPath = up.path;
+        dryRun = String(req.headers["x-vision-pack-dry"] || "") === "1";
+        try { sourceName = decodeURIComponent(String(req.headers["x-vision-pack-name"] || "")).slice(0, 200); } catch { sourceName = ""; }
+        log("视觉增强包：收到上传 " + Math.round(up.bytes / 1024 / 1024) + "MB");
+      }
+      return sendJson(res, 200, await runVisionPackInstall(zipPath, { dryRun, sourceName }));
+    } catch (err) {
+      return sendJson(res, err?.status || 500, { error: { message: String(err?.message ?? err) } });
+    } finally {
+      if (tmpFile) await unlink(tmpFile).catch(() => {});
+    }
+  }
+
+  if (req.method === "POST" && url === "/api/vision/pack/uninstall") {
+    if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
+      return sendJson(res, 403, { error: { message: "缺少或错误的本地令牌（x-local-token）" } });
+    }
+    let body = {};
+    try {
+      body = await readBody(req);
+    } catch (e) {
+      return sendJson(res, e?.code === "BODY_TOO_LARGE" ? 413 : 400, { error: { message: e?.message ?? "JSON 解析失败" } });
+    }
+    try {
+      return sendJson(res, 200, await runVisionPackUninstall({ dryRun: body.dryRun === true }));
+    } catch (err) {
+      return sendJson(res, err?.status || 500, { error: { message: String(err?.message ?? err) } });
+    }
+  }
+
   if (req.method === "GET" && url === "/api/state") {
     return sendJson(res, 200, {
       models: await scanModels(),
@@ -7924,7 +8137,9 @@ server.listen(PORT, "127.0.0.1", () => {
       : "";
   log(`${APP_NAME} v${APP_VERSION}${tag} 已启动（${APP_SUB}）`);
   log(`界面 http://127.0.0.1:${PORT}/   API http://127.0.0.1:${PORT}/v1`);
-  if (!existsSync(LLAMA_SERVER)) log("视觉组件缺失：找不到 " + LLAMA_SERVER + "（图片入口不可用；发布包应带 app/llama/llama-server.exe）");
+  if (!existsSync(llamaServerPath())) {
+    log("视觉增强包未安装：图片入口不可用（设置 → 视觉 → 安装视觉增强包；可选能力，不看图可忽略）");
+  }
   writeFile(PID_FILE, String(process.pid)).catch(() => {});
   // 启动时清一次过期快照；之后每次写盘顺带跑，成本只有几次 readdir
   pruneOldSnapshotDirs().catch(() => {});

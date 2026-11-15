@@ -1,0 +1,131 @@
+﻿视觉增强包拆分 —— 打包脚本实证报告（teammate: build，task-2）
+============================================================
+任务：新建 server\make-vision-pack.ps1 / 拆分 server\build-portable.ps1 / server\make-zip.ps1 排除与断言
+时间：2026-11-15 12:24–12:38（Asia/Shanghai）
+环境：Windows + Windows PowerShell 5.1.26100.9711；真实构建在 C:\Temp\vp-build（dist 运行目录全程未动，8099 旧发布包一直在跑）
+
+一、三个脚本状态
+1) server\make-vision-pack.ps1（新建，UTF-8 BOM）
+   - 参数：-Src（默认 <repo>\tools\llama.cpp）/ -Out（默认 <repo>\dist）/ -Version（默认解析 server\app.mjs 的 APP_VERSION）/ -Sidecar（默认 b12144）
+   - 产物：<Out>\QingYaoTP-AILauncher-v<ver>-vision-pack.zip
+     结构：顶层目录 QingYaoTP-AILauncher-v<ver>-vision-pack/ + vision-pack.json（UTF-8 无 BOM）+ llama\（= 源目录全部文件）
+   - required 8 件校验（llama-server.exe / llama-server-impl.dll / llama.dll / llama-common.dll / ggml.dll / ggml-base.dll / mtmd.dll / libomp.dll），缺一 exit 1
+   - 自检：zip 文件条目数 = 源文件数 + 1（vision-pack.json），不符 exit 1；打印 MB / 条目 / 耗时 / SHA256
+   - 不写死盘符：repo 由脚本位置推导；-Out 目录不存在会自动创建
+2) server\build-portable.ps1（改，UTF-8 BOM）
+   - 删除「复制视觉 sidecar（llama-server.exe）」那一步（原 226-237 行）
+   - 默认改为：清掉已存在的 $AppDir\llama（若有）+ 打印
+     「视觉已拆分：主包不带 app\llama；用 server\make-vision-pack.ps1 生成增强包」
+   - 新增 -BundleVision（switch，默认关；开了恢复旧复制行为，供离线一体化包）
+   - 同步改文字：脚本头注释 / config.ini 模板（加一行「视觉增强包 … 设置 → 视觉 → 安装视觉增强包」）/
+     使用说明.txt（目录结构加 app\llama\ 一行 + 第九节看图加「视觉增强包不随主包」说明）/ 汇总输出加「视觉」一行
+   - 打包产物自检：非 -BundleVision 时 $AppDir\llama 存在即 exit 1；-BundleVision 时缺 llama-server.exe 即 exit 1
+3) server\make-zip.ps1（改，UTF-8 BOM）
+   - robocopy 增加 /XD <dist>\app\llama 兜底
+   - 打完用 ZipFile 打开断言没有 app/llama/ 前缀条目，有则 exit 1（已实测能拦）
+   - 输出仍打印 MB / 条目 / 耗时，另加「自检：无 app/llama 条目（视觉已拆分）」
+
+二、真构建实证（C:\Temp\vp-build，dist 未动）
+1) 拆分模式（默认）
+   命令：powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\build-portable.ps1 -OutDir 'C:\Temp\vp-build\QingYaoTP AILauncher'
+   输出（节选）：
+     ==> 视觉已拆分：主包不带 app\llama；用 server\make-vision-pack.ps1 生成增强包
+         不看图的人不用下这 101MB；需要「离线一体化包」时加 -BundleVision
+     ==> 写配置与说明
+         自检：主包无 app\llama（视觉已拆分）
+     完成：C:\Temp\vp-build\QingYaoTP AILauncher
+       app\      144.5 MB
+       视觉      已拆分：主包不含 app\llama；增强包用 make-vision-pack.ps1
+       合计       258.5 MB / 3446 个文件
+   核对：app\llama 不存在；关键文件齐（app.mjs / app.html / debug.html / localai-debug.mjs / diag-zip.mjs /
+   doc-extract.mjs / config-recommend.mjs / README.md / package.json=1.6.0 / runtime\node.exe /
+   QingYaoTP AILauncher.exe / DebugTool.exe）；包内 app.mjs 的 APP_VERSION=1.6.0
+2) 基线对照（-BundleVision，恢复旧行为）
+   命令同上加 -BundleVision（OutDir=C:\Temp\vp-bundle\QingYaoTP AILauncher）
+   输出：已附带 llama-server（101.1 MB）；自检：app\llama 随包（-BundleVision）
+         合计 359.6 MB / 3499 个文件
+   => 拆分收益：-53 个文件 / -101.1 MB（压缩后主 zip 少 36.6MB）
+   注：任务书写「v1.5.1 口径 3498」，实际当前仓库 v1.5.x 基线是 3499（v1.5.0 起 README.md 也进包；
+   3498 是 v1.4.0 口径）；3446 = 3499 - 53，与预期一致。
+
+三、两个 zip（实测）
+1) 视觉增强包
+   命令：powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-vision-pack.ps1 -Out 'C:\Temp\vp-build'
+   输出：
+     版本（取自 app.mjs）：1.6.0
+     完成：C:\Temp\vp-build\QingYaoTP-AILauncher-v1.6.0-vision-pack.zip
+       36.6 MB / 56 条目（54 个文件 + 目录项） / 7.6s
+       视觉 sidecar：53 个文件 / 101.1 MB（required 8 件齐）；sidecar=b12144
+       SHA256 CF31B1D4A2AA68B47F873D9CB0C09A447229E136A2A9D44ECA78523ABABEF26A
+   条目核对（另开 ZipFile，明细见 build-vision-pack-entries.txt）：
+     总 56 条目 = 1 个顶层目录 + llama/ 目录 + vision-pack.json + 53 个 llama/ 文件
+   vision-pack.json（UTF-8 无 BOM，首字节 7B；JSON.parse 通过）：
+     {
+       "format": 1,
+       "name": "QingYaoTP AILauncher 视觉增强包",
+       "version": "1.6.0",
+       "sidecar": "b12144",
+       "createdAt": "2026-11-15T04:27:48Z",
+       "files": 53,
+       "bytes": 106017053
+     }
+   说明：契约示例 bytes=106004121 是近似值，实测源目录 53 文件 = 106,017,053 B = 101.1 MB，清单写实测值；
+   实测 36.6MB 而非预估 ~40MB（ggml-vulkan.dll 42.0MB 压缩率比预估高）。
+2) 主包交付 zip
+   命令：powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-zip.ps1 -Dist 'C:\Temp\vp-build\QingYaoTP AILauncher' -Zip 'C:\Temp\vp-build\main-test.zip'
+   输出：
+     版本（取自 app.mjs）：1.6.0
+     完成：C:\Temp\vp-build\main-test.zip
+       121.9 MB / 3946 条目 / 69.9s
+       自检：无 app/llama 条目（视觉已拆分）
+       SHA256 5C4B9C793EF76A8132C61F3562384B7ECCECE2BC84216F88CDA3BCF0E3B48F4D
+   独立复核（另开 ZipFile，不依赖脚本自述）：
+     条目 3946（文件 3446 + 目录 500）；app/llama 前缀 0 条
+     含 QingYaoTP AILauncher.exe / DebugTool.exe / config.ini / 使用说明.txt / app/app.mjs / app/app.html /
+     app/debug.html / app/localai-debug.mjs / app/diag-zip.mjs / app/doc-extract.mjs / app/config-recommend.mjs /
+     app/README.md / runtime/node.exe / data/ / logs/ / models/
+     config.ini 已消毒：modelDir=（空）
+   对照 v1.5.1 交付包 158.5MB / 4000 条目 → 121.9MB / 3946 条目
+     = -36.6MB / -54 条目（53 个 llama 文件 + 1 个 app\llama 目录项）
+
+四、自检记录（全部实跑）
+1) BOM：三个脚本前 3 字节均 EF BB BF（改完用 [IO.File]::WriteAllText + UTF8Encoding($true) 补过）
+2) PS 5.1 Parser（powershell.exe -NoProfile，不是 pwsh 7）：
+   make-vision-pack.ps1 => PARSE_OK
+   build-portable.ps1   => PARSE_OK
+   make-zip.ps1         => PARSE_OK
+   （0 errors；中文抽样 Contains=True，U+FFFD 替换字符 = 0）
+3) make-vision-pack.ps1 负向测试：
+   - 源目录只放 llama-server.exe → 「缺 required 文件（7 个）：llama-server-impl.dll, …」exit 1
+   - -Src 指向不存在目录 → 「找不到视觉 sidecar 源目录」exit 1
+   - -Version 覆盖（9.9.9-test）→ 产物 QingYaoTP-AILauncher-v9.9.9-test-vision-pack.zip，exit 0
+4) make-zip.ps1 兜底实测：
+   - 假 dist 里故意放 app\llama\llama-server.exe + llama.dll、app\app.mjs、data\webview2 缓存：
+     /XD 生效 → zip 8 条目、app/llama 0 条、app/app.mjs 在、data/webview2 未进包、exit 0
+   - 把 /XD app\llama 去掉的副本脚本跑同一假 dist →
+     断言拦住：「自检失败：交付 zip 里有 3 条 app/llama/ 条目…」exit 1
+
+五、与契约不符处 / 需要 Lead 知道的
+1) 契约 §5「条目数 = 53+1」：目录项另算，实测总 56 条目（2 目录 + 54 文件）；脚本自检按「文件条目 = 源文件数 + 1」。
+2) 契约示例 vision-pack.json 的 bytes=106004121 与实测 106017053 差 13KB（示例是估计值），脚本写实测值。
+3) 契约预估视觉包 ~40MB，实测 36.6MB（更好，主包 121.9MB 落在 122MB 目标）。
+4) 任务书「比 v1.5.1 口径 3498 少 53」：当前仓库 v1.5.x 实际基线 3499（README.md 进包），拆分后 3446 = 3499 - 53。
+5) 版本一致性：本轮首次临时构建时 Lead 只改了 app.mjs（package.json 还是 1.5.1），已在三处版本同步为 1.6.0 后
+   重跑 build-portable + make-zip，本报告数字来自一致快照（包内 app.mjs 与 app\package.json 均为 1.6.0）。
+   正式 dist 构建由 Lead 在集成阶段跑；若之后 app.html / README 再变，体积/条数会有小幅偏移（结构不受影响）。
+6) 新坑（建议记入 technique/07）：PowerShell 变量名大小写不敏感——新脚本参数 -Out 与局部流变量 $out 撞名，
+   赋值被 [string] 类型约束转成字符串，报「Cannot find an overload for "CopyTo" and the argument count: "1"」；
+   已改名 $inStream / $outStream 并加注释。
+7) 未动 dist\QingYaoTP AILauncher（8099 旧发布包一直在跑，其 app\llama 保留原样）；未 git commit / reset；未跑 run-full.ps1。
+
+六、复现命令（临时目录实证，不碰 dist）
+  powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\build-portable.ps1 -OutDir 'C:\Temp\vp-build\QingYaoTP AILauncher'
+  powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\build-portable.ps1 -OutDir 'C:\Temp\vp-bundle\QingYaoTP AILauncher' -BundleVision
+  powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-vision-pack.ps1 -Out 'C:\Temp\vp-build'
+  powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-zip.ps1 -Dist 'C:\Temp\vp-build\QingYaoTP AILauncher' -Zip 'C:\Temp\vp-build\main-test.zip'
+
+七、证据/产物
+  - 本报告：server\docs\feature-vision-pack-2026-11-15\build-report.txt
+  - 视觉包条目清单：server\docs\feature-vision-pack-2026-11-15\build-vision-pack-entries.txt（56 行）
+  - 实跑目录 C:\Temp\vp-build：拆分主包目录、QingYaoTP-AILauncher-v1.6.0-vision-pack.zip、main-test.zip、verify-main.ps1 等
+  - 基线目录 C:\Temp\vp-bundle\QingYaoTP AILauncher（-BundleVision 对照）

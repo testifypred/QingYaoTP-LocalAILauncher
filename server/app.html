@@ -1029,6 +1029,22 @@ header::before{
 .settingsBody label.chk{font-size:12.5px;padding:6px 8px;border:1px solid var(--line);border-radius:5px;background:var(--panel-2)}
 .exportRow{display:flex;align-items:center;gap:10px}
 .exportRow .hintText{font-size:11px;color:var(--dim);font-family:var(--mono);word-break:break-all}
+/* ---------------- 视觉增强包卡片（v1.6.0：101MB sidecar 从主包拆出，可选安装） ---------------- */
+#vpStatus{font-size:11.5px;color:var(--text-2)}
+#vpCard[data-installed="0"] #vpStatus{color:var(--warn)}
+#vpDetail{word-break:break-all}
+#vpDetected{display:flex;flex-direction:column;gap:6px}
+#vpDetected[hidden]{display:none}
+.vpDetRow{display:flex;align-items:center;gap:9px;font-size:11.5px;color:var(--text-2);min-width:0}
+.vpDetRow>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vpDetRow .detMeta{flex:none;color:var(--dim);font-family:var(--mono);font-size:11px}
+.vpDetRow button{flex:none;padding:3px 9px;font-size:11px}
+#vpProgress{display:flex;align-items:center;gap:9px;font-size:11px;color:var(--cyan);font-family:var(--mono)}
+#vpProgress[hidden]{display:none}
+#vpProgress .vpBarWrap{flex:none;width:240px;height:5px;border-radius:3px;background:var(--line-2);overflow:hidden}
+#vpProgress .vpBarFill{height:100%;width:0;border-radius:3px;background:linear-gradient(90deg,var(--cyan),var(--accent-2));transition:width .18s linear}
+#vpProgress .vpBarFill.vpIndet{width:38%;animation:vpSlide 1.1s ease-in-out infinite}
+@keyframes vpSlide{0%{margin-left:-38%}100%{margin-left:100%}}
 .pluginRow{display:flex;align-items:center;gap:6px;padding:5px 7px;border:1px solid var(--line);border-radius:5px;background:var(--panel-2);margin-bottom:4px;font-size:12px}
 .pluginRow b{color:var(--text);font-weight:600;font-family:var(--mono)}
 .pluginRow .hintText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1598,6 +1614,20 @@ header::before{
       </div>
     </div>
     <div class="settingsBody" id="paneVision" data-pane="vision" hidden>
+      <div class="field" id="vpCard" data-installed="0">
+        <span class="lbl">视觉增强包 <i>可选 · 约 40MB</i></span>
+        <em id="vpStatus">正在读取…</em>
+        <em id="vpDetail"></em>
+        <div class="exportRow">
+          <button id="vpInstallBtn" class="ghost" type="button">安装视觉增强包…</button>
+          <button id="vpUninstallBtn" class="ghost" type="button" disabled>卸载</button>
+          <input id="vpFile" type="file" accept=".zip" hidden>
+          <span id="vpHint" class="hintText">—</span>
+        </div>
+        <div id="vpDetected" hidden></div>
+        <div id="vpProgress" hidden><div class="vpBarWrap"><div id="vpProgressFill" class="vpBarFill"></div></div><span id="vpProgressText">—</span></div>
+        <em>看图用的本地视觉 sidecar（llama.cpp b12144，53 个文件约 101 MB）已从主包拆出：装好后才能在聊天里发图、才能在本页启动视觉模型；不看图可以不装。增强包 zip 放在安装目录旁时，这里会自动检测到。</em>
+      </div>
       <div class="field">
         <span class="lbl">视觉模型组合 <i>model + mmproj</i></span>
         <select id="setVisionPair"></select>
@@ -2124,6 +2154,12 @@ function renderImgPreview() {
 
 /** 点图片按钮：没有 pair 就明确告诉用户缺什么，别让人以为点了没反应 */
 async function pickImages() {
+  // 视觉增强包没装：点图片只说明去哪装，不弹文件选择框（契约 §4.2）
+  if (!visionPackLoaded) { try { await loadVisionPack(false); } catch {} }
+  if (visionPack && visionPack.installed === false) {
+    showToast('视觉增强包未安装：设置 → 视觉 → 安装视觉增强包', 'warn', 6500);
+    return;
+  }
   try {
     await ensureVisionState(true);
   } catch (e) {
@@ -6829,10 +6865,317 @@ function visionPairMatches(p, modelAbs, mmprojAbs) {
   return !!p && ends(modelAbs, p.model) && ends(mmprojAbs, p.mmproj);
 }
 
+// ---------------------------------------------------------------- 视觉增强包（可选 sidecar，v1.6.0 起从主包拆出）
+// 原先随主包的 app\llama\（101MB / 53 文件）改成可选「视觉增强包」：
+// GET /api/vision/pack 只读状态；安装 / 卸载是破坏性接口，必须带 x-local-token（来源 /api/state.localToken）。
+// 后端可能还没升级到 v1.6.0（404）或临时连不上：卡片如实说明，不拦原有功能，也不抛未捕获异常。
+let visionPack = null;            // 最近一次 GET /api/vision/pack 的结果
+let visionPackLoaded = false;     // 是否已经读过（pickImages 用）
+let visionPackBusy = false;       // 上传 / 安装 / 卸载进行中
+let visionPackError = '';         // 读不到状态时的原因
+let visionPackUnsupported = false; // 旧后端（404）：视觉随主包提供
+const VP_SOURCE_LABEL = { pack: '包安装', legacy: '老版本自带', tools: '开发目录', none: '无' };
+
+/** 大小显示成「101.1 MB」这种（fmtSize 会四舍五入成整数 MB，契约要一位小数） */
+function vpMB(bytes) {
+  const b = Number(bytes) || 0;
+  if (!b) return '0 MB';
+  const mb = b / 1048576;
+  if (mb >= 1024) return (mb / 1024).toFixed(2) + ' GB';
+  return mb.toFixed(1) + ' MB';
+}
+
+/** 后端错误文案：403 / 404 给能自己处理的说法，其余直接转述（后端已是人话） */
+function visionPackErrText(e) {
+  const s = String((e && e.message) || e || '').trim() || '未知错误';
+  if (/^HTTP 403$|令牌|token/i.test(s)) return '本地令牌无效或缺失，请刷新页面后重试';
+  if (/^HTTP 404$/.test(s)) return '服务端没有该接口（可能还没升级到 v1.6.0）';
+  return s;
+}
+
+/** 渲染卡片：状态行 / 明细 / 按钮可用性 / 检测到的本地包列表（数据全部来自 /api/vision/pack） */
+function renderVisionPack() {
+  const card = $('vpCard');
+  if (!card) return; // 老缓存页面没有这张卡：静默跳过，别抛
+  const stEl = $('vpStatus'), detEl = $('vpDetail'), hint = $('vpHint');
+  const detBox = $('vpDetected'), instBtn = $('vpInstallBtn'), uninBtn = $('vpUninstallBtn');
+  if (visionPackUnsupported) {
+    // 旧版本后端：视觉在 app\llama\ 里随主包发，没有「装/卸」概念。标成已安装，别误拦看图。
+    card.dataset.installed = '1';
+    if (stEl) stEl.textContent = '视觉增强包：当前服务端不支持管理接口';
+    if (detEl) detEl.textContent = '旧版本后端没有 GET /api/vision/pack；视觉 sidecar 随主包提供，无需安装。';
+    if (hint) hint.textContent = '升级到 v1.6.0 后可在本页安装 / 卸载';
+    if (instBtn) { instBtn.disabled = true; instBtn.textContent = '安装视觉增强包…'; }
+    if (uninBtn) uninBtn.disabled = true;
+    if (detBox) { detBox.hidden = true; detBox.textContent = ''; }
+    return;
+  }
+  if (!visionPack) {
+    // 连不上：不假装未安装（那会禁用看图），只提示读不到；重新打开本页会重试。
+    card.dataset.installed = '1';
+    if (stEl) stEl.textContent = '读取视觉增强包状态失败';
+    if (detEl) detEl.textContent = '';
+    if (hint) hint.textContent = (visionPackError || '接口暂不可用') + '（重新打开本页可重试）';
+    if (instBtn) { instBtn.disabled = visionPackBusy; instBtn.textContent = '安装视觉增强包…'; }
+    if (uninBtn) uninBtn.disabled = true;
+    if (detBox) { detBox.hidden = true; detBox.textContent = ''; }
+    return;
+  }
+  const pk = visionPack;
+  const inst = !!pk.installed;
+  card.dataset.installed = inst ? '1' : '0'; // 探针靠这个断言「装没装」
+  // 未安装：立刻门禁。组合扫描还要 1–2 秒，不能等 loadVisionTab 收尾才禁用，
+  // 否则这段时间「启动」看着可点（用户会点、界面探针也会读到）。
+  if (!inst) {
+    const sb = $('setVisionStart'), pb = $('setVisionPair');
+    if (sb) sb.disabled = true;
+    if (pb) pb.disabled = true;
+  }
+  if (stEl) {
+    stEl.textContent = inst
+      ? '已安装' + (pk.version ? ' v' + pk.version : '') + ' · ' + (Number(pk.files) || 0) + ' 个文件 / ' + vpMB(pk.bytes)
+      : '未安装 · 可选能力（增强包约 40MB，不看图可忽略）';
+  }
+  if (detEl) {
+    const parts = [];
+    if (pk.dir) parts.push('安装目录：' + pk.dir);
+    if (inst) parts.push('来源：' + (VP_SOURCE_LABEL[pk.source] || pk.source || '—'));
+    if (inst && pk.sidecar) parts.push('sidecar：' + pk.sidecar);
+    if (inst && pk.installedAt) parts.push('安装于 ' + fmtStamp(pk.installedAt));
+    if (pk.note) {
+      // 后端 note 有时和上面的状态 / hint 重复（未安装提示、开发目录不可卸），别占两行
+      const n = String(pk.note);
+      const dup = (!inst && n.indexOf('视觉增强包未安装') >= 0) || (inst && n.indexOf('不可卸载') >= 0);
+      if (!dup) parts.push(n);
+    }
+    detEl.textContent = parts.join(' · ');
+    detEl.title = parts.join('\n');
+  }
+  if (instBtn) {
+    instBtn.disabled = visionPackBusy;
+    instBtn.textContent = visionPackBusy ? '处理中…' : (inst ? '重新安装视觉增强包…' : '安装视觉增强包…');
+  }
+  if (uninBtn) uninBtn.disabled = visionPackBusy || !inst || pk.uninstallable === false;
+  if (hint) {
+    if (visionPackBusy) hint.textContent = '安装 / 卸载进行中…';
+    else if (!inst) hint.textContent = (Array.isArray(pk.available) && pk.available.length)
+      ? '选 .zip 包安装，或点下面「一键安装」'
+      : '选 .zip 包安装（附近没检测到现成的增强包）';
+    else if (pk.uninstallable === false) hint.textContent = '当前视觉来自开发目录，不可卸载';
+    else if (pk.running) hint.textContent = '视觉模型运行中：安装 / 卸载会先停掉它';
+    else hint.textContent = '已安装 · 可重新安装以升级或修复';
+  }
+  renderVisionPackDetected();
+}
+
+/** 「检测到本地增强包：<name>（39.3 MB · v1.6.0）[一键安装]」——可多个，全部来自 available */
+function renderVisionPackDetected() {
+  const box = $('vpDetected');
+  if (!box) return;
+  const list = (visionPack && Array.isArray(visionPack.available)) ? visionPack.available : [];
+  box.textContent = '';
+  if (!list.length) { box.hidden = true; return; }
+  box.hidden = false;
+  list.forEach((it) => {
+    const row = document.createElement('div');
+    row.className = 'vpDetRow';
+    const label = document.createElement('span');
+    label.textContent = '检测到本地增强包：' + (it.name || it.path || '未知文件');
+    label.title = it.path || '';
+    const meta = document.createElement('span');
+    meta.className = 'detMeta';
+    meta.textContent = '（' + vpMB(it.bytes) + (it.version ? ' · v' + it.version : '') + '）';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'ghost';
+    btn.textContent = '一键安装';
+    btn.disabled = visionPackBusy;
+    btn.onclick = () => { installVisionPackFromPath(it.path).catch(() => {}); };
+    row.appendChild(label);
+    row.appendChild(meta);
+    row.appendChild(btn);
+    box.appendChild(row);
+  });
+}
+
+/** 进度行：传百分比就是确定进度，不传就滚一条不确定的条 */
+function showVisionPackProgress(text, indeterminate, pct) {
+  const box = $('vpProgress'), fill = $('vpProgressFill'), t = $('vpProgressText');
+  if (!box) return;
+  box.hidden = false;
+  if (fill) {
+    if (typeof pct === 'number' && isFinite(pct)) {
+      fill.classList.remove('vpIndet');
+      fill.style.width = Math.max(0, Math.min(100, pct)) + '%';
+    } else if (indeterminate) {
+      fill.classList.add('vpIndet');
+      fill.style.width = '';
+    }
+  }
+  if (t) t.textContent = text || '—';
+}
+function hideVisionPackProgress() {
+  const box = $('vpProgress');
+  if (box) box.hidden = true;
+}
+
+/** 读 /api/vision/pack；force=true 每次重读（打开视觉页、装/卸完）。失败不抛，转成卡片上的兜底文案 */
+async function loadVisionPack(force) {
+  if (!force && visionPackLoaded) { renderVisionPack(); return visionPack; }
+  let pk = null, err = '', notFound = false;
+  try {
+    const r = await fetch('/api/vision/pack', { cache: 'no-store' });
+    const j = await r.json().catch(() => null);
+    if (r.status === 404) notFound = true;
+    else if (!r.ok) err = 'HTTP ' + r.status;
+    else if (!j || typeof j.installed !== 'boolean') err = '接口返回格式异常';
+    else pk = j;
+  } catch (e) {
+    err = (e && e.message) || '网络错误';
+  }
+  // 后端也可能只把 pack 挂在 /api/vision/state 里：两种都认
+  if (!pk) {
+    const sp = visionStateCache && visionStateCache.pack;
+    if (sp && typeof sp.installed === 'boolean') {
+      pk = Object.assign({ available: [] }, sp);
+      err = '';
+      notFound = false;
+    }
+  }
+  visionPack = pk;
+  visionPackUnsupported = !pk && notFound;
+  visionPackError = pk ? '' : (err || (notFound ? '' : '未知错误'));
+  visionPackLoaded = true;
+  renderVisionPack();
+  return visionPack;
+}
+
+/** 装 / 卸之后：后端已停了 sidecar、目录变了；状态缓存与组合一起作废，重读 pack + state */
+async function afterVisionPackChanged() {
+  visionStateLoaded = false;
+  visionStateCache = null;
+  visionPairs = [];
+  try { await loadVisionTab(); } catch {}
+  try { await refresh(); } catch {}
+}
+
+/** 一键安装：POST JSON {path}（path 来自 GET 的 available[]） */
+async function installVisionPackFromPath(path) {
+  if (visionPackBusy) return;
+  const p = String(path || '').trim();
+  if (!p) { showToast('没有可用的增强包路径：请用「安装视觉增强包…」选 zip', 'warn', 6000); return; }
+  if (!localToken) { try { await refresh(); } catch {} }
+  if (!localToken) { showToast('拿不到本地令牌，请刷新页面后重试', 'err', 7000); return; }
+  visionPackBusy = true;
+  renderVisionPack();
+  showVisionPackProgress('正在安装增强包…（先停视觉模型，再解压）', true);
+  try {
+    const j = await apiJson('/api/vision/pack/install', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-local-token': localToken },
+      body: JSON.stringify({ path: p, dryRun: false }),
+    });
+    visionPackBusy = false;
+    hideVisionPackProgress();
+    const ins = j.install || {};
+    showToast('视觉增强包已安装' + (ins.version ? ' v' + ins.version : '') + ' · ' + (Number(ins.files) || 0) + ' 个文件 / ' + vpMB(ins.bytes), 'ok', 6500);
+    await afterVisionPackChanged();
+  } catch (e) {
+    visionPackBusy = false;
+    hideVisionPackProgress();
+    showToast('安装视觉增强包失败：' + visionPackErrText(e), 'err', 8000);
+    renderVisionPack();
+  }
+}
+
+/** 上传安装：XMLHttpRequest 发原始 zip 字节（不走 4MB readBody 上限），令牌走 header，进度走 upload.onprogress */
+async function installVisionPackFromFile(file) {
+  if (!file || visionPackBusy) return;
+  if (!/\.zip$/i.test(file.name || '')) { showToast('请选择 .zip 格式的视觉增强包', 'warn', 5200); return; }
+  if (!localToken) { try { await refresh(); } catch {} }
+  if (!localToken) { showToast('拿不到本地令牌，请刷新页面后重试', 'err', 7000); return; }
+  visionPackBusy = true;
+  renderVisionPack();
+  showVisionPackProgress('准备上传：' + (file.name || '增强包') + '（' + vpMB(file.size) + '）', true);
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/vision/pack/install');
+  xhr.setRequestHeader('content-type', 'application/zip');
+  xhr.setRequestHeader('x-local-token', localToken);
+  xhr.upload.onprogress = (ev) => {
+    if (!ev) return;
+    if (ev.lengthComputable && ev.total) {
+      const pct = Math.round((ev.loaded / ev.total) * 100);
+      showVisionPackProgress('上传中 ' + pct + '%（' + vpMB(ev.loaded) + ' / ' + vpMB(ev.total) + '）', false, pct);
+    } else {
+      showVisionPackProgress('上传中…（' + vpMB(ev.loaded) + '）', true);
+    }
+  };
+  xhr.upload.onload = () => showVisionPackProgress('上传完成 100% · 正在解压安装…', true);
+  xhr.onerror = () => finishVisionPackUpload(null, 0, '网络错误（服务端可能还没提供上传安装接口）');
+  xhr.onabort = () => finishVisionPackUpload(null, 0, '上传已取消');
+  xhr.onload = () => {
+    let j = null;
+    try { j = JSON.parse(xhr.responseText || '{}'); } catch {}
+    finishVisionPackUpload(j, xhr.status, '');
+  };
+  try {
+    xhr.send(file);
+  } catch (e) {
+    finishVisionPackUpload(null, 0, (e && e.message) || '上传失败');
+  }
+}
+
+function finishVisionPackUpload(j, status, err) {
+  visionPackBusy = false;
+  hideVisionPackProgress();
+  if (status === 200 && j && j.ok !== false) {
+    const ins = j.install || {};
+    showToast('视觉增强包已安装' + (ins.version ? ' v' + ins.version : '') + ' · ' + (Number(ins.files) || 0) + ' 个文件 / ' + vpMB(ins.bytes), 'ok', 6500);
+    afterVisionPackChanged().catch(() => {});
+    return;
+  }
+  const msg = (j && j.error && j.error.message) || err || ('安装失败（HTTP ' + status + '）');
+  showToast('安装视觉增强包失败：' + visionPackErrText(msg), 'err', 8000);
+  renderVisionPack();
+}
+
+/** 卸载：confirm() 二次确认 → POST → 刷新。卸载中按钮禁用（renderVisionPack 里按 busy 算） */
+async function uninstallVisionPack() {
+  if (visionPackBusy) return;
+  const pk = visionPack;
+  if (!pk || !pk.installed) return;
+  const dir = pk.dir || pk.target || '';
+  const ok = window.confirm('卸载视觉增强包？\n\n将删除：' + (dir || '视觉 sidecar 目录') +
+    '\n（' + (Number(pk.files) || 0) + ' 个文件 / ' + vpMB(pk.bytes) + '）\n\n卸载后看不了图，可随时重装。');
+  if (!ok) return;
+  if (!localToken) { try { await refresh(); } catch {} }
+  if (!localToken) { showToast('拿不到本地令牌，请刷新页面后重试', 'err', 7000); return; }
+  visionPackBusy = true;
+  renderVisionPack();
+  showVisionPackProgress('正在卸载视觉增强包…（先停视觉模型，再删目录）', true);
+  try {
+    const j = await apiJson('/api/vision/pack/uninstall', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-local-token': localToken },
+      body: JSON.stringify({ dryRun: false }),
+    });
+    visionPackBusy = false;
+    hideVisionPackProgress();
+    showToast('视觉增强包已卸载' + (j.removedBytes ? '，释放 ' + vpMB(j.removedBytes) : ''), 'ok', 6000);
+    await afterVisionPackChanged();
+  } catch (e) {
+    visionPackBusy = false;
+    hideVisionPackProgress();
+    showToast('卸载视觉增强包失败：' + visionPackErrText(e), 'err', 8000);
+    renderVisionPack();
+  }
+}
 async function loadVisionTab() {
   const sel = $('setVisionPair'), stEl = $('setVisionState'), hint = $('setVisionHint');
   const startBtn = $('setVisionStart'), stopBtn = $('setVisionStop'), logEl = $('setVisionLog');
   if (!sel || !stEl) return;
+  // 增强包状态先读（本页顶部卡片 + 启动门禁都靠它）；接口没上线也不抛，loadVisionPack 内部兜底。
+  try { await loadVisionPack(true); } catch {}
   let st;
   try {
     st = await ensureVisionState(true);
@@ -6848,6 +7191,14 @@ async function loadVisionTab() {
     if (hint) hint.textContent = '视觉接口不可用';
     if (logEl) logEl.textContent = '—';
     return;
+  }
+  // 后端若只在 /api/vision/state 里挂了 pack 字段（/api/vision/pack 不可用），也认
+  if (!visionPack && st.pack && typeof st.pack.installed === 'boolean') {
+    visionPack = Object.assign({ available: [] }, st.pack);
+    visionPackUnsupported = false;
+    visionPackError = '';
+    visionPackLoaded = true;
+    renderVisionPack();
   }
   const pairs = Array.isArray(st.pairs) ? st.pairs : [];
   visionPairs = pairs;
@@ -6901,6 +7252,14 @@ async function loadVisionTab() {
     else hint.textContent = '启动后会先卸载文本模型（内存互斥）';
   }
   if (logEl) logEl.textContent = st.logPath || '—';
+  // 视觉增强包没装：启动键 / 组合下拉禁用（契约 §4.2）。
+  // 只有明确 installed === false 才拦；接口读不到（visionPack 为 null）不拦，免得旧后端看不了图。
+  if (visionPack && visionPack.installed === false) {
+    if (startBtn) startBtn.disabled = true;
+    if (stopBtn) stopBtn.disabled = true;
+    sel.disabled = true;
+    if (hint) hint.textContent = '视觉增强包未安装：先在本页顶部点「安装视觉增强包…」';
+  }
 }
 
 async function startVisionFromTab() {
@@ -6969,6 +7328,23 @@ $('setVisionPair') && ($('setVisionPair').onchange = function () {
   }
   loadVisionTab().catch(() => {});
 });
+
+// 视觉增强包卡片：选包上传 / 一键安装 / 卸载（confirm 在 uninstallVisionPack 里）
+$('vpInstallBtn') && ($('vpInstallBtn').onclick = () => {
+  if (visionPackBusy) return;
+  const f = $('vpFile');
+  if (!f) { showToast('页面缺少文件选择框，请刷新重试', 'err', 6000); return; }
+  f.click();
+});
+$('vpFile') && ($('vpFile').onchange = (ev) => {
+  const inp = ev && ev.target;
+  const file = inp && inp.files && inp.files[0];
+  if (inp) inp.value = ''; // 允许再次选同一个文件
+  if (file) installVisionPackFromFile(file).catch(() => {});
+});
+$('vpUninstallBtn') && ($('vpUninstallBtn').onclick = () => { uninstallVisionPack().catch(() => {}); });
+// 首屏先把增强包状态读回来：点 #imgBtn 时不用等设置页打开才知道装没装
+loadVisionPack(false).catch(() => {});
 
 // ---- 关于页：版本 / 构建 / 运行环境 ----
 // 数据只认服务端 /api/version：界面不自己拼版本号，否则改了常量界面还显示旧的。

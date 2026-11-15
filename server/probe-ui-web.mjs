@@ -133,6 +133,12 @@ console.log("\n== E. 真发一轮联网问答 ==");
 {
   await ev(`newChat()`);
   await sleep(600);
+  // 2026-11-15 定性：newChat() 会回到开场白，showHero() 里按「用户默认」把「调用工具」复位
+  // （v1.5.1 起默认关，见 app.html showHero 的 toolChk.checked = toolEnabled）。
+  // 不重新勾上就发，请求体是 tools=false / web=false —— 模型根本没有 web_search，
+  // 会自己答「我无法联网搜索」，6 条卡片断言全红（上一轮全量就是这么红的，不是产品缺陷）。
+  await ev(`(() => { const c = document.getElementById('toolChk'); c.checked = true; c.dispatchEvent(new Event('change')); return 1; })()`);
+  await sleep(400);
   await ev(`(() => { const q = document.getElementById('q'); q.value = '用 web_search 搜索「Qwen2.5 上下文长度」，告诉我第一条结果标题。'; q.dispatchEvent(new Event('input')); document.getElementById('send').click(); return 1; })()`);
   console.log("    已发送，等待联网与回答…");
 

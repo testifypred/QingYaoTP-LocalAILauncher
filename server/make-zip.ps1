@@ -6,6 +6,7 @@
 #   · models\ 保留空目录（用户把 gguf 放这里，modelDir 留空即可用）
 #   · 版本号从 app.mjs 的 APP_VERSION 解析，zip 名/根目录名都跟着走（不再手改脚本）
 #   · 条目一律正斜杠（跨工具兼容）；所有路径由本脚本位置推导（repo = server 的上一级），不写死盘符
+#   · app\llama 是视觉增强包（v1.6.0 起拆分）：robocopy 排除 + 打完断言 zip 里没有该前缀（兜底）
 #
 # 用法：powershell -NoProfile -ExecutionPolicy Bypass -File .\make-zip.ps1
 # 产出：<repo>\dist\QingYaoTP-AILauncher-v<APP_VERSION>.zip
@@ -37,7 +38,8 @@ $stage = Join-Path $root $RootName
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
 Write-Host '==> 暂存发布载荷（排除 data / logs 内容）' -ForegroundColor Cyan
-$rc = @($dist, $stage, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/R:1', '/W:1', '/XD', (Join-Path $dist 'data'), (Join-Path $dist 'logs'))
+# /XD app\llama 是兜底：主包从 v1.6.0 起不再带视觉 sidecar（101MB），dist 里残留旧 app\llama 也要拦下
+$rc = @($dist, $stage, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/R:1', '/W:1', '/XD', (Join-Path $dist 'data'), (Join-Path $dist 'logs'), (Join-Path $dist 'app\llama'))
 & robocopy @rc | Out-Null
 if ($LASTEXITCODE -ge 8) { Write-Host "!! robocopy 失败 $LASTEXITCODE" -ForegroundColor Red; exit 1 }
 
@@ -91,6 +93,13 @@ Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
 $z = Get-Item $Zip
 $zipRead = [System.IO.Compression.ZipFile]::OpenRead($Zip)
 $n = $zipRead.Entries.Count
+# 自检：交付 zip 里绝不允许有 app/llama/ 条目（视觉已拆分；robocopy /XD 之外再兜一层）
+$llamaEntries = @($zipRead.Entries | Where-Object { $_.FullName -match '(^|/)app/llama/' })
 $zipRead.Dispose()
+if ($llamaEntries.Count -gt 0) {
+    Write-Host ("!! 自检失败：交付 zip 里有 {0} 条 app/llama/ 条目（例如 {1}）——主包不应带视觉 sidecar；检查 build-portable.ps1 是否加了 -BundleVision、dist 是否有残留" -f $llamaEntries.Count, $llamaEntries[0].FullName) -ForegroundColor Red
+    exit 1
+}
 Write-Host ('完成：{0}' -f $z.FullName) -ForegroundColor Green
 Write-Host ('  {0:N1} MB / {1} 条目 / {2:N1}s' -f ($z.Length / 1MB), $n, ((Get-Date) - $t0).TotalSeconds)
+Write-Host '  自检：无 app/llama 条目（视觉已拆分）' -ForegroundColor DarkGray

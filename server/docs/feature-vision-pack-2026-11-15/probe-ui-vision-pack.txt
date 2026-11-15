@@ -1,0 +1,66 @@
+
+== 目标 http://127.0.0.1:8099，CDP http://127.0.0.1:9333，临时服务 http://127.0.0.1:8199 ==
+  临时目录: C:\Users\lenovo\AppData\Local\Temp\vp-ui-probe-M1kjKo
+
+== A. 起临时服务实例（PORT=8199）==
+  ok   临时服务 /api/state 在 30s 内就绪  [pid=8764]
+
+== B. 临时服务前置：未安装 + 检测到本地包 + 有视觉组合 ==
+  ok   临时服务初始 pack.installed === false  [HTTP 200 installed=false]
+  ok   临时服务 available 里有预置的本地包  [n=1]
+  ok   临时服务有 1 对视觉组合（装好后启动键才会恢复可点）  [pairs=1]
+  ok   已预置首启引导 / 使用说明标记（否则弹窗会盖住顶栏）  [HTTP 200]
+
+== C. 连 CDP，把共享页面导航到临时服务 ==
+  CDP 页面目标: http://127.0.0.1:8099/
+  ok   共享页面导航到临时服务（http://127.0.0.1:8199）
+  ok   导航后页面加载完成（readyState=complete 且有 #settingsBtn）
+
+== D. 未安装：卡片、门禁、检测到的本地包 ==
+  ok   设置里有「视觉」页签  [生成 / 显卡 / 视觉 / 朗读 / 工具 / 外观 / 关于]
+  ok   #vpCard 存在
+  ok   #vpCard data-installed === "0"（未安装）  [data-installed=0]
+  ok   未安装时 #setVisionStart 禁用（契约 §4.2 门禁）
+  ok   未安装时 #setVisionPair 组合下拉禁用
+  ok   未安装时 #vpUninstallBtn 禁用
+  ok   #vpStatus 文案显示未安装  [未安装 · 可选能力（增强包约 40MB，不看图可忽略）]
+  ok   #vpDetected 可见（检测到本地包）  [hidden=false]
+  ok   #vpDetected 文案含「检测到本地增强包」与包名  [检测到本地增强包：QingYaoTP-AILauncher-v1.6.0-vision-pack.zip（0.0 MB · v1.6.0）一键安装]
+  ok   #vpDetected 文案解析出 v1.6.0  [检测到本地增强包：QingYaoTP-AILauncher-v1.6.0-vision-pack.zip（0.0 MB · v1.6.0）一键安装]
+  ok   #vpDetected 里有「一键安装」按钮  [一键安装]
+  ok   #vpInstallBtn 存在且文案含「安装」  [安装视觉增强包…]
+    截图: D:\LocalModels\server\docs\feature-vision-pack-2026-11-15\probe-ui-vision-pack-01-uninstalled.png
+
+== E. 点「一键安装」-> 已安装 ==
+  ok   点 #vpDetected 的「一键安装」  [ok]
+  ok   一键安装后后端 pack.installed === true（≤30s）  [{"installed":true,"source":"pack","files":8,"version":"1.6.0"}]
+  ok   一键安装走 path 安装，source === pack  [source=pack]
+  ok   后端 files === 8 / version === 1.6.0  [files=8 version=1.6.0]
+  ok   #vpCard data-installed === "1"（已安装）  [data-installed=1]
+  ok   已安装后 #setVisionStart 可用（门禁解除）  [disabled=false]
+  ok   已安装后 #setVisionPair 组合下拉可用
+  ok   已安装后 #vpUninstallBtn 可用
+  ok   #vpStatus 显示已安装 + 版本  [已安装 v1.6.0 · 8 个文件 / 0.0 MB]
+  ok   临时安装目录里 8 个 required 文件齐全  [dir=C:\Users\lenovo\AppData\Local\Temp\vp-ui-probe-M1kjKo\llama]
+  ok   安装标记 .vision-pack.json 存在
+    截图: D:\LocalModels\server\docs\feature-vision-pack-2026-11-15\probe-ui-vision-pack-02-installed.png
+
+== F. 点「卸载」-> 回到未安装 ==
+  ok   已覆写 window.confirm（卸载确认框自动「确定」）
+  ok   点 #vpUninstallBtn  [ok]
+  ok   卸载后后端 pack.installed === false（≤30s）  [installed=false]
+  ok   卸载后临时视觉目录已删除
+  ok   #vpCard 回到 data-installed === "0"  [data-installed=0]
+  ok   卸载后 #setVisionStart 重新禁用
+  ok   卸载后 #vpUninstallBtn 重新禁用
+  ok   #vpStatus 回到未安装  [未安装 · 可选能力（增强包约 40MB，不看图可忽略）]
+    截图: D:\LocalModels\server\docs\feature-vision-pack-2026-11-15\probe-ui-vision-pack-03-uninstalled.png
+
+== G. 收尾：导航回 http://127.0.0.1:8099 / 杀临时服务 / 删临时目录 ==
+  ok   共享页面已导航回 http://127.0.0.1:8099  [http://127.0.0.1:8099/]
+  ok   回共享页面后加载完成、#settingsBtn 可用  [ready=complete hasBtn=true]
+  ok   临时服务已停止（8199 不再监听）  [干净]
+  ok   临时目录已删除  [C:\Users\lenovo\AppData\Local\Temp\vp-ui-probe-M1kjKo]
+
+== 结果: 42 通过 / 0 失败 ==
+

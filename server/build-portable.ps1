@@ -3,6 +3,7 @@
 # 用法（在 server 目录下）：
 #   powershell -ExecutionPolicy Bypass -File .\build-portable.ps1
 #   powershell -ExecutionPolicy Bypass -File .\build-portable.ps1 -OutDir 'E:\build\dist\QingYaoTP AILauncher'
+#   powershell -ExecutionPolicy Bypass -File .\build-portable.ps1 -BundleVision   # 离线一体化包（把 101MB 视觉 sidecar 也打进去）
 #
 # 产物：
 #   <OutDir>\QingYaoTP AILauncher.exe   带图标的启动器（托盘 + 优雅停机）
@@ -13,6 +14,12 @@
 #
 # 只保留 Vulkan 与 CPU 两套原生库（cuda / cuda-ext / arm64 共 528MB 全部剔除），
 # 便携目录因此从 ~700MB 降到 ~200MB；模型本身永远外置。
+#
+# 视觉增强包（v1.6.0 起拆分）：看图用的 llama.cpp sidecar（tools\llama.cpp，53 文件 / 101.1MB）
+# 默认**不**进主包，改由 server\make-vision-pack.ps1 打成
+#   dist\QingYaoTP-AILauncher-v<APP_VERSION>-vision-pack.zip
+# 用户在「设置 → 视觉 → 安装视觉增强包」里一键装/卸，不看图的人不用下这 101MB。
+# 需要「离线一体化包」（目标机没法单独装增强包）时加 -BundleVision 恢复旧行为。
 
 param(
     # 输出目录：默认 <repo>\dist\QingYaoTP AILauncher（repo = 本脚本所在 server 的上一级）
@@ -24,7 +31,10 @@ param(
     [string]$ModelDir = '',   # 留空 = 用 <安装目录>\models（便携；不要写死本机路径）
     [string]$AutoLoad = '',   # 留空 = 首启「自动检查用户配置」按本机硬件推荐
     [int]$ContextSize = 16384,
-    [int]$Port = 8099
+    [int]$Port = 8099,
+    # 视觉增强包（tools\llama.cpp → app\llama，53 文件 / 101.1MB）是否打进主包。
+    # 默认关（v1.6.0 起拆分）；需要离线一体化包时加 -BundleVision。
+    [switch]$BundleVision
 )
 
 $ErrorActionPreference = 'Stop'
@@ -87,6 +97,8 @@ foreach ($need in @(
     # 调试工具：页面 + 独立程序 + 它自己的图标（漏了它，包里「Debug」按钮会 500）
     # 调试工具导出诊断包用（app.mjs import 了它；漏了 /debug 与导出接口都会 500）
     (Join-Path $Server 'diag-zip.mjs'),
+    # 视觉增强包（app.mjs import 了它：解 ZIP / 装 / 卸）；漏了整包起不来（2026-11-15 v1.6.0 差点漏）
+    (Join-Path $Server 'vision-pack.mjs'),
     (Join-Path $Server 'debug.html'),
     (Join-Path $Server 'localai-debug.mjs'),
     (Join-Path $Server 'localai-debug.cmd'),
@@ -160,6 +172,8 @@ Copy-Item (Join-Path $Server 'localai-tui.mjs') $AppDir -Force
 Copy-Item (Join-Path $Server 'localai-tui.cmd') $AppDir -Force
 # 调试工具（Debugging Tool）：独立程序 + 调试页 + 它自己的图标
 Copy-Item (Join-Path $Server 'diag-zip.mjs') $AppDir -Force
+# 视觉增强包：app.mjs import 的 vision-pack.mjs（自己解 ZIP、装/卸 sidecar）；和 doc-extract 一样必须进包
+Copy-Item (Join-Path $Server 'vision-pack.mjs') $AppDir -Force
 Copy-Item (Join-Path $Server 'debug.html') $AppDir -Force
 Copy-Item (Join-Path $Server 'localai-debug.mjs') $AppDir -Force
 Copy-Item (Join-Path $Server 'localai-debug.cmd') $AppDir -Force
@@ -223,18 +237,31 @@ $rc2 = @($modSrc, $modDst, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/R:1', '/W:1',
 & robocopy @rc2 | Out-Null
 if ($LASTEXITCODE -ge 8) { Die "复制 TTS 依赖失败，退出码 $LASTEXITCODE" }
 
-Step '复制视觉 sidecar（llama-server.exe）'
-# 看图能力走独立进程：llama-server + --mmproj（nlc 3.22.x 没有视觉 API）
-$llamaSrc = Join-Path $Server '..\tools\llama.cpp'
-$llamaExe = Join-Path $llamaSrc 'llama-server.exe'
-if (-not (Test-Path $llamaExe)) { Die "缺少视觉 sidecar：$llamaExe（先把它放到 tools\llama.cpp）" }
-$llamaDst = Join-Path $AppDir 'llama'
-New-Item -ItemType Directory -Force -Path $llamaDst | Out-Null
-$rc3 = @($llamaSrc, $llamaDst, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/R:1', '/W:1')
-& robocopy @rc3 | Out-Null
-if ($LASTEXITCODE -ge 8) { Die "复制 llama-server 失败，退出码 $LASTEXITCODE" }
-$llamaMB = [math]::Round(((Get-ChildItem $llamaDst -Recurse -File | Measure-Object Length -Sum).Sum / 1MB), 1)
-Write-Host ('   已附带 llama-server（' + $llamaMB + ' MB）')
+if ($BundleVision) {
+    Step '复制视觉增强包（-BundleVision：离线一体化包）'
+    # 看图能力走独立进程：llama-server + --mmproj（nlc 3.22.x 没有视觉 API）
+    $llamaSrc = Join-Path $Server '..\tools\llama.cpp'
+    $llamaExe = Join-Path $llamaSrc 'llama-server.exe'
+    if (-not (Test-Path $llamaExe)) { Die "缺少视觉 sidecar：$llamaExe（先把它放到 tools\llama.cpp）" }
+    $llamaDst = Join-Path $AppDir 'llama'
+    New-Item -ItemType Directory -Force -Path $llamaDst | Out-Null
+    $rc3 = @($llamaSrc, $llamaDst, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/R:1', '/W:1')
+    & robocopy @rc3 | Out-Null
+    if ($LASTEXITCODE -ge 8) { Die "复制 llama-server 失败，退出码 $LASTEXITCODE" }
+    $llamaMB = [math]::Round(((Get-ChildItem $llamaDst -Recurse -File | Measure-Object Length -Sum).Sum / 1MB), 1)
+    Write-Host ('   已附带 llama-server（' + $llamaMB + ' MB）')
+} else {
+    Step '视觉已拆分：主包不带 app\llama；用 server\make-vision-pack.ps1 生成增强包'
+    # 视觉增强包（llama.cpp b12144，53 文件 / 约 101MB）单独打：server\make-vision-pack.ps1
+    #   → <dist>\QingYaoTP-AILauncher-v<ver>-vision-pack.zip，用户在「设置 → 视觉」一键装/卸。
+    # 这里清掉旧产物里可能残留的 app\llama（OutDir 被复用/增量拷贝时才会有）。
+    $llamaDst = Join-Path $AppDir 'llama'
+    if (Test-Path $llamaDst) {
+        Remove-Item $llamaDst -Recurse -Force
+        Write-Host ('   已清掉旧产物里的 app\llama：' + $llamaDst)
+    }
+    Write-Host '   不看图的人不用下这 101MB；需要「离线一体化包」时加 -BundleVision'
+}
 
 Step '复制 Node 运行时'
 Copy-Item $NodeExe (Join-Path $RuntimeDir 'node.exe') -Force
@@ -271,6 +298,7 @@ $cfg = @"
 # vkDevices   Vulkan 设备号（逗号分隔，空 = 全部设备）；核显+独显的机器填独显那一项
 # visionModel 看图用的模型（留空 = 自动：modelDir\mmproj\*.gguf 按名字配对各模型）
 # visionMmproj 看图用的视觉投影文件（留空 = 自动）
+# 视觉增强包  看图用的 app\llama 不随主包：设置 → 视觉 → 安装视觉增强包（可选，不看图可忽略）
 # visionContext 视觉模式上下文（默认 32768；8K 装不下多图/长对话）
 # visionIdleSec 视觉模型闲置多少秒后自动停止（0 = 不停；默认 300）
 # visionThreads 图像编码线程数（留空 = 核数-2，封顶 20）
@@ -314,6 +342,7 @@ QingYaoTP AILauncher（本地 AI）便携版
   WebView2Loader.dll        它的原生加载器
   config.ini                端口、模型目录、自动加载模型
   app\                      服务端 app.mjs、界面 app.html、KaTeX、node-llama-cpp
+  app\llama\                视觉增强包安装位置（可选；默认不随包，设置 → 视觉 一键装）
   runtime\node.exe          随包 Node，目标机器不需要单独安装 Node
   vc_redist.x64.exe         VC++ 运行库安装包（缺它模型加载不了；启动器会自动提示安装）
   logs\app.log              服务端日志（启动器把 stdout/stderr 都写到这里）
@@ -371,7 +400,10 @@ QingYaoTP AILauncher（本地 AI）便携版
   输入区的 Σ 按钮（也支持粘贴 / 拖拽）可以把图片发给本地模型看。
   需要一个视觉模型：把视觉模型 .gguf 放进模型目录，把配套的 mmproj-*.gguf 放进 <modelDir>\mmproj\。
   应用按文件名自动配对；也可以在 config.ini 用 visionModel= / visionMmproj= 直接指定。
-  首次看图会启动独立进程 app\llama\llama-server.exe（约 6-12 秒）；单张 1440×900 截图约 40-60 秒
+  视觉增强包（llama.cpp sidecar：压缩包约 40MB / 解压 101MB）不随主包，
+  先在「设置 → 视觉 → 安装视觉增强包」装一次（或选本地 zip 安装）；不装的话点图片入口会提示
+  「视觉增强包未安装：设置 → 视觉 → 安装视觉增强包」——不看图可以忽略。
+  装好后首次看图会启动独立进程 app\llama\llama-server.exe（约 6-12 秒）；单张 1440×900 截图约 40-60 秒
   （图像编码走 CPU：-ngl 0 只管文本层，必须 -mmdev none 才强制 CPU，否则核显会 device lost → 500）。
   上下文默认 32K（config.ini 的 visionContext 可改）；闲置 300 秒自动退出（visionIdleSec，0 = 不停）。
   设置 → 视觉 里可以调「发图质量」（768 快 / 1024 标准 / 1280 精细），越小越快。
@@ -387,6 +419,17 @@ QingYaoTP AILauncher（本地 AI）便携版
 "@
 Set-Content -Path (Join-Path $resolved '使用说明.txt') -Value $readme -Encoding UTF8
 
+# 打包自检：视觉已拆分时主包里绝不允许有 app\llama；-BundleVision 时必须真的带上 llama-server.exe。
+# （拆分后主包少 53 个文件 / 101.1MB，这条防脚本改坏、也防 OutDir 残留旧产物）
+$llamaCheck = Join-Path $AppDir 'llama'
+if ($BundleVision) {
+    if (-not (Test-Path (Join-Path $llamaCheck 'llama-server.exe'))) { Die "自检失败：指定了 -BundleVision，但主包里没有 app\llama\llama-server.exe" }
+    Write-Host '   自检：app\llama 随包（-BundleVision）'
+} else {
+    if (Test-Path $llamaCheck) { Die "自检失败：主包里不应该有 app\llama（视觉已拆分）：$llamaCheck" }
+    Write-Host '   自检：主包无 app\llama（视觉已拆分）'
+}
+
 $sizeApp = (Get-ChildItem $AppDir -Recurse -File | Measure-Object Length -Sum).Sum
 # data\ 是运行期产生的 WebView2 缓存与本地存储，不算包体
 $dataDir = Join-Path $resolved 'data'
@@ -398,5 +441,6 @@ if (Test-Path $dataDir) { $sizeData = (Get-ChildItem $dataDir -Recurse -File | M
 Write-Host ''
 Write-Host ("完成：{0}" -f $resolved) -ForegroundColor Green
 Write-Host ("  app\\      {0:N1} MB" -f ($sizeApp / 1MB))
+Write-Host ("  视觉      {0}" -f $(if ($BundleVision) { '随包（-BundleVision）' } else { '已拆分：主包不含 app\llama；增强包用 make-vision-pack.ps1' }))
 Write-Host ("  合计       {0:N1} MB / {1} 个文件" -f ($sizeAll / 1MB), $files)
 if ($sizeData -gt 0) { Write-Host ("  另有 data\\  {0:N1} MB（运行期缓存，可随时删）" -f ($sizeData / 1MB)) }

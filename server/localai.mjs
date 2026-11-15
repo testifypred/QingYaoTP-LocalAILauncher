@@ -16,7 +16,7 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const VERSION = "1.5.1";
+const VERSION = "1.6.0";
 const DEFAULT_URL = "http://127.0.0.1:8099";
 
 // ---------- 参数解析 ----------

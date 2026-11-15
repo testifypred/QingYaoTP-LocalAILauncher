@@ -2916,3 +2916,92 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 ### 2026-11-15 中午：交接收口（无代码改动，仅文档对齐）
 
 第五十九/六十节的数字补进 `交接文档.md` 与 `新会话启动词.md` 的状态块：版本 v1.5.1、交付 zip `QingYaoTP-AILauncher-v1.5.1.zip`（4000 条 / SHA256 7BAAE5E2…）、探针 77 个 / 全量 **57 条** / 口径 **877**、服务 v1.5.1；开场词改成「v1.5.1 已打包 → 下一条做视觉增强包拆分」。日志按惯例只追加。
+
+## 六十一、2026-11-15 中午：视觉增强包拆分（v1.6.0）
+
+> 需求：主包 158.5MB 里有 101.1MB 是 `app\llama\`（llama.cpp b12144 / 53 个文件），**不看图的人也在为它付流量**。
+> 做法：把视觉 sidecar 拆成可选的「视觉增强包」zip（36.6MB），设置 → 视觉 里一键装 / 卸；也支持选 zip 上传安装、自动检测本地包。
+
+### 一、目标与结果（实测对照）
+
+| 项 | 拆分前（v1.5.1） | 拆分后（v1.6.0） | 差 |
+|---|---|---|---|
+| 发布目录（载荷） | 359.5MB / 3499 文件 | **258.5MB / 3447 文件** | -101.1MB / -52 文件（-53 个 llama 文件 + 1 个新增 `vision-pack.mjs`） |
+| 对外主包 zip | 158.5MB / 4000 条目 | **121.9MB / 3947 条目** | **-36.6MB / -53 条目** |
+| 视觉增强包 zip | — | **36.6MB / 56 条目**（解压 106,017,053B / 53 文件） | 可选能力 |
+| 看图 | 随包就有 | 装增强包后才有；不装只是发图被拦 | 功能不变，体积可选 |
+
+- 主包 121.9MB 落进「~122MB」目标；压缩收益比预估好（`ggml-vulkan.dll` 42MB 压缩率高），增强包实测 **36.6MB** 而非预估 ~40MB。
+- `3447 = 3499 − 53（llama 文件）+ 1（新增 vision-pack.mjs）`；**3498 是 v1.4.0 旧口径**（v1.5.0 起 README 也进包，+1）——本轮同时把这个口径钉进 `technique\07`。
+
+### 二、设计（口径全在 `CONTRACT.md`）
+
+| 层 | 设计 |
+|---|---|
+| 分布 | 主包**不带** `app\llama\`；增强包 zip = 顶层目录 + `vision-pack.json` + `llama\`（53 个文件） |
+| 清单 | `vision-pack.json` = `{format:1, name, version:"1.6.0", sidecar:"b12144", createdAt, files:53, bytes:106017053}`（bytes 用实测，不是契约里的估计值） |
+| 安装目标 | `<安装目录>\app\llama`（`LOCALAI_LLAMA_DIR` 可覆盖）；开发态目标 `server\llama`，但**实际使用**仍是仓库 `tools\llama.cpp`——「装到哪」和「现在用哪套」是两件事 |
+| 来源判定 | 看安装目录里有没有 `.vision-pack.json` 标记：`pack`（有）/ `legacy`（只有文件，≤v1.5.1 升级上来的）/ `tools`（开发目录）/ `none`；`uninstallable` 只对装在安装目标上的为 true |
+| 后端 | `GET /api/vision/pack`（只读）+ `POST /api/vision/pack/install` + `POST /api/vision/pack/uninstall`（后两个必须 `x-local-token`，否则 **403**）；`/api/vision/state` 新增 `pack` 摘要；未安装时 `/api/vision/start` 回 **409**（不是 500） |
+| ZIP | 零依赖自己解析（中央目录 + `zlib.inflateRawSync`，store/deflate 都吃）；只收 `<前缀>llama/**` + `vision-pack.json`；绝对路径/盘符/`..` → 400 且**一个字节不落盘**；required 8 件缺一 → 400；每文件 CRC32 + 声明大小；解到同级临时目录再**原子换目录**（失败回滚） |
+| 两种 body | JSON `{path, dryRun}`（一键安装 / 预校验）或**原始 zip 字节流**（`#vpFile` 选文件上传，流式落盘，不吃 4MB 的 readBody 上限） |
+| 停 sidecar | 装 / 卸都先 `stopVision()`（Windows 上换 exe 会被占用）；正在看图（`vision.active > 0`）→ 409 |
+| 前端 | 设置 → 视觉 顶部 `#vpCard[data-installed]`：状态 / 明细 / 安装 / 卸载 / 选 zip / 检测到的本地包 / 进度；未安装时启动键与组合下拉禁用，点图片只 toast 引导去装 |
+| 打包 | `build-portable.ps1` 删掉复制 sidecar 那一步（改成断言 `app\llama` 不存在）+ `-BundleVision` 恢复一体化；新增 `make-vision-pack.ps1`；`make-zip.ps1` 排除并断言无 `app/llama/` 条目 |
+
+### 三、改动清单（文件级）
+
+| 文件 | 改动 |
+|---|---|
+| `server\vision-pack.mjs`（新，367 行） | ZIP 解析 / 校验 / 解压 / 原子换目录 / 来源判定 / 搜索本地包；零依赖 |
+| `server\app.mjs` | 新增 3 条路由 + `visionPackSummary/visionPackState` + 装/卸串行锁；新增 `VISION_PACK_TARGET` 与 `visionPackSearchDirs()`；`/api/vision/state` 挂 `pack`、未安装时 note 追加提示；`/api/diag` 视觉项提示「装增强包」 |
+| `server\app.html` | 设置 → 视觉 新增 `#vpCard` 卡片（安装/卸载/选 zip/一键安装/进度/检测列表）；`#imgBtn` 未安装只 toast；`#setVisionStart` / `#setVisionPair` 门禁 |
+| `server\make-vision-pack.ps1`（新，UTF-8 BOM） | `tools\llama.cpp` → `dist\QingYaoTP-AILauncher-v<ver>-vision-pack.zip`；required 8 件 + 条目数自检 + SHA256 |
+| `server\build-portable.ps1` | 去掉复制 `app\llama`；改断言「主包无 app\llama」；加 `-BundleVision`；同步 config.ini 模板 / 使用说明.txt / 汇总输出 |
+| `server\make-zip.ps1` | robocopy `/XD app\llama` + 打完用 ZipFile 断言无 `app/llama/` 条目 |
+| `server\probe-vision-pack.mjs`（新） | API **110 条**，自带 8199 临时实例（临时 MODEL_DIR / LOCALAI_LLAMA_DIR / LOCALAI_VISION_PACK_DIR）；+20 = `source=tools` 开发目录「不可卸 409」16 条 + `available` 多包版本降序 4 条 |
+| `server\probe-ui-vision-pack.mjs`（新） | UI **42 条**，CDP + 8199 实例，finally 导航回 8099 |
+| `server\probe-vision-api.mjs` | +2 条 → **27**（`state.pack` 是对象 / `installed === true`） |
+| `server\docs\run-full.ps1` | 插两条新探针，57 → **59 条**（`$probes.Count` 自算，不手写） |
+| `server\build-portable.ps1`（**终版修复**） | 补 `vision-pack.mjs` 进两处文件清单——首次终版漏了它，zip 的 `app\` 里没有、目标机 `app.mjs` import 直接崩；重建后主包 zip 3946 → **3947** 条目、发布目录 3446 → **3447** 文件 |
+| `server\app.mjs`（**终版修复**） | 增强包搜索目录补「安装目录的上一级」与「上上级 `dist\`」——发布包在 `dist\QingYaoTP AILauncher\` 时原来看不到并排放的 `dist\...vision-pack.zip`（冒烟实测） |
+| 版本 | `app.mjs` / `package.json` / `localai.mjs` 三处 1.6.0（`make-zip` / `make-vision-pack` 都从 app.mjs 解析） |
+| 文档 | `README.md`（新增「视觉增强包（可选）」一节 + 打包顺序 + 探针口径）、`交接文档.md`、`technique\05/06/07`、本日志；`新会话启动词.md` 由 Lead 改 |
+
+### 四、实测数字（`server\docs\feature-vision-pack-2026-11-15\build-report.txt`）
+
+| 项 | 值 |
+|---|---|
+| 拆分模式构建 | **258.5MB / 3447 文件** / 8 步全过；自检「主包无 app\llama」；`app\` 144.5MB |
+| `-BundleVision` 对照 | 359.6MB / 3499 文件（= 拆分前基线；-53 文件 / -101.1MB） |
+| 主包 zip | **121.9MB / 3947 条目 / 69.9s**（文件 3447 + 目录项 500）；对照 v1.5.1 = -36.6MB / -53 条目 |
+| 视觉增强包 zip | **36.6MB / 56 条目 / 7.6–8.9s**；53 文件 / 101.1MB（required 8 件齐）；`vision-pack.json` bytes=106017053 |
+| 终版 SHA / 大小 | 主包 `95D46B683DED4515D47272A44717846E018DADD0324C043502181B65720C880B`（**121.9MB / 127,852,310B / 3947 条目**；zip 内含 `app/vision-pack.mjs` 16,027B）；视觉包 `D7924534B30143F3791D26C143B95656306AE1FFA08D52557EE25D56699A11D3`（**36.6MB / 38,408,198B / 56 条目**，不变）。视觉包 SHA **每次重打包都会变**（`vision-pack.json` 带 `createdAt`），别写成「可复现」 |
+
+### 五、验证
+
+| 项 | 结果 |
+|---|---|
+| `probe-vision-pack` | **110/110**（`probe-vision-pack.txt`）：令牌 403（install/uninstall 各一）、404、假 zip / 缺 required / 路径穿越全 400 且不落盘、dryRun 不落盘、path 安装、覆盖幂等、available 检测与版本解析、**字节流上传安装**、卸载（dryRun 不删 / 真删目录消失 / removedBytes 对得上 / 卸载后 start 409）；新增 `source=tools` 开发目录「不可卸 409」（409 后 `tools\llama.cpp` 的 exe 还在、`server\llama` 没被写）与 `available` 多包版本降序 |
+| `probe-ui-vision-pack` | **42/42**（`probe-ui-vision-pack.txt` + 3 张截图）：未安装门禁 → 一键安装 → 已安装（启动键恢复）→ 卸载 → 回到未安装；跑完导航回 8099 |
+| `probe-ui-vision` / `probe-vision-api` | **19/19** / **27/27**（`probe-ui-vision.txt` / `probe-vision-api.txt`）：真 9B 发一帧 320×180 PNG → 答出「QWEN 42」（HTTP 200 / 10.2s），sidecar 启动 19.1s；`state.pack.installed === true`（source=tools） |
+| 脚本自检 | 三个 `.ps1` 均 UTF-8 BOM + PS5.1 Parser `PARSE_OK`；`make-vision-pack` 负向（缺 required / 源目录不存在 / `-Version` 覆盖）都按预期 exit 1；`make-zip` 的 `app/llama` 断言实测能拦住 |
+| 全量首跑（59 条） | **55 绿 + 4 红**，4 红全定性为**探针陈旧/环境、产品代码零改动**：`probe-ui-new` 29/30（陈旧断言 `saved.v===2`，v1.5.1 起 `SETTINGS_VERSION=3` → 改 `>=2`，复跑 **30/30**）、`probe-ui-backup` 19/20（备份目录放 C: 而同盘提醒只在同盘出现 → 改到仓库所在盘，复跑 **20/20**）、`probe-menu-stacking` 1/2（这次 Edge 视口被缩成 500×320 → 重启 Edge，复跑 **2/2**）、`probe-ui-web` 33/39（探针 E 段 `newChat()` 后没重新勾「调用工具」，v1.5.1 起默认关 → 请求体 `tools=false/web=false`，`web_search` 没注册给模型；直连带 `tools=true` 时正常调 `web_search` ×3，`probe-web-tools` 19/19 也证明链路好 → 探针在 `newChat()` 后重勾并 `dispatch change`，复跑 **39/39**，证据 `probe-full-2026-11-15-v160-r2\reprobe-ui-web.out.txt`）；12:44 服务端退出过一次由驱动自动拉起（已知 Vulkan 中途断开，不是本轮引入）。**4 条全部修探针后复跑全绿（30/30、20/20、2/2、39/39），产品代码零改动** |
+| 全量 r2（59 条） | **58 绿 + 1 红**（13:12–13:30，`server\docs\probe-full-2026-11-15-v160-r2\`）：`probe-web-tools` **15/19**（4 条：`web_search` 抓回 0 条结果、`engine=undefined`），同探针后段流式 `web_search` 仍抓到结果 → **外部搜索引擎瞬时失败**（复跑 §2 抓到 6 条 / 引擎 baidu），环境原因、非产品缺陷 |
+| 发布包冒烟（终版 dist） | **26/26**（`release-smoke.txt`）：版本 1.6.0 / 跑的是 dist / 无 `app\llama` / 未装时 `start`→409 / **自动检测到 dist 里并排放的增强包 zip** / `probe-version` 14/14 + `probe-debug` 54/54 / 一键安装（path）→ source=pack、files=53、bytes=106,017,053、落盘 + 标记 / `uninstallable=true` / **`probe-vision-api` 真 9B 27/27（29s）** / 识图后 sidecar 已停 |
+| 全量口径 | 驱动 57 → **59 条**、断言口径 877 → **1031**（877 + 110 + 42 + 2）；证据 `server\docs\probe-full-2026-11-15-v160\`（首跑 `summary.txt` + 修复后 `rerun\`）+ `server\docs\probe-full-2026-11-15-v160-r2\`（`reprobe-ui-web.out.txt` 等复跑记录） |
+| dev 实证 | 8099 v1.6.0 真 9B 视觉：启动 sidecar 19.0s → 1 张图 HTTP 200 / 10184ms → 停止（`dev-8099.out.txt`） |
+
+### 六、给用户的结论
+
+- **不看图的人**：主包小 36.6MB，功能一个不少；发图时只弹提示「去设置 → 视觉装」，其它照常。
+- **要看图的人**：多下 36.6MB 的增强包（解压 101MB），设置 → 视觉 → 安装（选 zip 或「一键安装」都行），**装完不用重启**；不想要了可以一键卸载。
+- **老用户升级**：`app\llama\` 还在的照旧能用，界面标「老版本自带」，想瘦身可以卸；开发态照旧用仓库 `tools\llama.cpp`，界面里不给卸。
+- 两个 zip 一起发：主包给所有人，增强包给要看图的人。
+
+### 七、下一轮
+
+1. 图片落盘（会话可回看原图、导出含图）——视觉线的下一件。
+2. 可选：增强包「联网下载」入口（现在只支持本地 zip 与上传安装）。
+3. 交付包冒烟按契约 §8 走：起 dist → `POST /api/vision/pack/install {path: dist\...vision-pack.zip}` → `/api/vision/state` 的 `pairs ≥ 1` 且 `pack.installed === true` → `probe-version` 14/14、`probe-debug` 54/54 → 再 `probe-vision-api`（真 9B，最硬的一条）。
+4. 顺手修 1 行：`toolEnabled` 只在页面加载时赋值，勾 / 取消「调用工具」不同步它 → 在 `#toolChk` 的 `change` 里同步 `toolEnabled = toolChk.checked`（2026-11-15 由 probe-ui-web 定性时顺带发现，本轮未修，已记进交接文档已知限制第 18 条）。

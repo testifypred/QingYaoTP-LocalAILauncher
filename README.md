@@ -20,7 +20,7 @@
 | 会话：多会话、就地改名、自动起标题、历史版本回滚、标题+正文搜索 | 侧栏 / 右键菜单 |
 | 文档检索（RAG）：md/txt/log/csv + docx + pdf 建索引，模型可检索并给出处 | 勾「调用工具」 |
 | 代码工作区：模型回答里的代码直接落 `workspace\code\`，可运行、可让模型审查 | 顶栏「代码」 |
-| 图片输入：粘贴 / 拖拽 / 选择，独立进程看图（CPU 编码，不占显存） | 输入区 Σ / 设置 → 视觉 |
+| 图片输入：粘贴 / 拖拽 / 选择，独立进程看图（CPU 编码，不占显存）；需装可选「视觉增强包」 | 输入区 Σ / 设置 → 视觉 |
 | 公式（LaTeX / 化学式）、全屏终端、命令行客户端 | 顶栏「公式」「终端」/ `localai` |
 | 插件：`plugins\` 下放一个 .mjs 就多一个工具 | 设置 → 工具 |
 | 调试工具：23 项体检 + 诊断历史 + 实时资源 + 导出诊断包 | 顶栏「Debug」/ `localai-debug.cmd` |
@@ -35,6 +35,25 @@
 5. 模型也可以自己放：把 `.gguf` 丢进 `<安装目录>\models\`（`config.ini` 的 `modelDir` 留空即用这个目录）。
 
 > 首次启动会自动显示**本文件**；之后想再看：设置 → 关于 →「使用说明…」。
+
+## 视觉增强包（可选）
+
+看图要一个独立的小程序（llama.cpp 的 `llama-server` + DLL，解压后 **101.1MB / 53 个文件**）。它**不随主包**：主包因此从 158.5MB 降到 **约 122MB**，不看图的人不用为它付流量。
+
+装它（约 37MB 的 zip）：
+
+1. **设置 → 视觉** → 顶部「视觉增强包」卡片 → **安装视觉增强包…** → 选中下载来的 `QingYaoTP-AILauncher-v1.6.0-vision-pack.zip`；
+2. 或者把 zip 和主包放在同一个目录（比如 `dist\`，或安装目录下的 `vision-pack\`）再打开这一页，卡片里会列出「检测到本地增强包：…」→ 点**一键安装**；
+3. 装完**立刻可用，不用重启**；状态行显示「已安装 v1.6.0 · 53 个文件 / 101.1 MB」，来源写「包安装」。
+
+| 情况 | 能不能看图 | 说明 |
+|---|---|---|
+| 没装增强包 | 不能 | 文本对话、工具、联网、代码工作区全照常；点图片按钮只弹提示「去 设置 → 视觉 装」 |
+| 装了增强包 | 能 | 来源「包安装」，可随时**卸载**（同一张卡片，释放约 101MB） |
+| 从 ≤v1.5.1 升上来的机器 | 能 | `app\llama\` 里的老文件照旧可用，来源显示「老版本自带」，也可以卸 |
+| 源码开发态 | 能 | 直接用仓库 `tools\llama.cpp\`（来源「开发目录」）——那是仓库资产，**不能**在界面里卸 |
+
+> 「检测到本地增强包」只认文件名里带 `vision-pack` 的 `.zip`。安装/卸载都会**先停掉正在跑的看图进程**（Windows 上换 exe 会被占用），正在看图时会提示稍后再试。
 
 ## 从源码运行 / 自己打包
 
@@ -54,12 +73,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\build-portable.ps1
 #    换输出位置：-OutDir 'E:\build\dist\QingYaoTP AILauncher'
 #    指定随包 node：-NodeExe 'C:\Program Files\nodejs\node.exe'
 
-# 4) 打成对外交付的单文件 zip（产物：dist\QingYaoTP-AILauncher-v<版本>.zip）
+# 4) 打「视觉增强包」zip（产物：dist\QingYaoTP-AILauncher-v<版本>-vision-pack.zip）
+powershell -NoProfile -ExecutionPolicy Bypass -File .\make-vision-pack.ps1
+
+# 5) 打成对外交付的单文件 zip（产物：dist\QingYaoTP-AILauncher-v<版本>.zip）
 powershell -NoProfile -ExecutionPolicy Bypass -File .\make-zip.ps1
 ```
 
 - **不写死任何盘符**：脚本里的路径都由「脚本自身位置」推导，版本号由 `server\app.mjs` 的 `APP_VERSION` 解析——换台机器、换目录都能构建。
-- **视觉看图**需要 `tools\llama.cpp\` 里的 `llama-server`（约 101MB，不入库）；没有它，文本对话照常，只是发图会报错。
+- **主包默认不带视觉**（v1.6.0 起）：`build-portable.ps1` 不打 `app\llama\`，`make-zip.ps1` 还会断言交付 zip 里没有 `app/llama/` 条目。要「离线一体化包」（目标机没法单独装增强包）就加 `-BundleVision`，恢复旧行为。
+- **视觉增强包**由 `make-vision-pack.ps1` 从 `tools\llama.cpp` 打包（约 101MB 的 sidecar，不入库）：源目录默认 `tools\llama.cpp`，产物默认落在 `dist\`；缺 required 文件会直接 exit 1。
 - **模型权重不入库**（GB 级），自己下或首启下载。
 
 ## 目录结构
@@ -69,7 +92,7 @@ QingYaoTP AILauncher.exe   启动器（托盘、守护、单实例、内置 WebV
 config.ini                 端口 / 模型目录 / 自动加载 / 上下文 / 后端 / 显卡 / 视觉
 runtime\node.exe           随包 Node（目标机不用装 Node）
 app\                       服务端 app.mjs、界面 app.html、调试页、CLI、vendor 前端库
-app\llama\                 视觉 sidecar（llama-server.exe + mtllib，约 101MB）
+app\llama\                 视觉增强包安装位置（可选；主包不带，设置 → 视觉 装完才出现）
 models\                    模型目录（modelDir 留空时用它；可放 mmproj\ 做看图）
 plugins\                   插件目录（放 .mjs 即生效）
 data\                      界面缓存与 localStorage（删掉 = 重置界面状态）
@@ -83,6 +106,8 @@ workspace\                 会话、代码工作区、RAG 索引等用户数据
 |---|---|
 | 双击没反应 / 一闪而过 | 先看 `logs\app.log`；缺 VC++ 运行库最常见；也可运行 `localai-debug.cmd`（服务没起来也能诊断） |
 | 界面打开是白屏 | 端口被占（启动器会自动改口并写回 `config.ini`）；或被安全软件拦了本地回环 |
+| 发图提示「视觉增强包未安装」 | 设置 → 视觉 → **安装视觉增强包…**（选 zip 或点「一键安装」，约 37MB，装完不用重启）；只看文字可以不管它 |
+| 卸载视觉增强包失败 | 先把看图进程停掉（设置 → 视觉 →「停止」按钮，或等它闲置 300s 自动退出）；正在看图时安装/卸载都会被拒绝，等图看完再来 |
 | 生成很慢 | 设置 → 显卡 看看有没有选到独显；上下文别开到 64K 以上；第一次提问要预填充，慢是正常的 |
 | 显存不够报错 | 换更小的量化（Q4_K_M）、模型或上下文档位；关掉看图（同一时刻只跑一个重模型） |
 | 想换模型 | 顶栏「模型」菜单选一个即加载；行尾「删」可删（默认进回收站，可还原） |
@@ -115,4 +140,4 @@ workspace\                 会话、代码工作区、RAG 索引等用户数据
 
 - 版本号只有一处来源：`server\app.mjs` 的 `APP_VERSION`（`package.json` 必须一致，探针会对账）。
 - 现状与下一步：`交接文档.md`；时间流水与设计取舍：`DeveloperRealtimeLog.md`；技术专题：`technique\`。
-- 回归靠 76 个探针（`server\probe-*.mjs`），全量驱动 `server\docs\run-full.ps1`（56 条）——这个项目没有 CI，探针就是 CI。
+- 回归靠 **79 个探针**（`server\probe-*.mjs`），全量驱动 `server\docs\run-full.ps1`（**59 条** / 断言口径 **1031**）——这个项目没有 CI，探针就是 CI。

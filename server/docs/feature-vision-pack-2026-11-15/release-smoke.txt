@@ -1,0 +1,29 @@
+# 发布包冒烟 2026/11/15 15:05:59
+  ok   发布包 exe 存在  [D:\LocalModels\dist\QingYaoTP AILauncher\QingYaoTP AILauncher.exe]
+  ok   发布包服务起来（8099）
+  ok   版本 = 1.6.0  [1.6.0]
+  ok   跑的是发布包目录  [D:\LocalModels\dist\QingYaoTP AILauncher\app]
+  ok   发布包无 app\llama（视觉已拆分）
+  ok   初始未安装  [false/none]
+  ok   自动检测到本地增强包  [QingYaoTP-AILauncher-v1.6.0-vision-pack.zip]
+  ok   检测到的包版本 = 1.6.0  [1.6.0]
+  ok   检测到的是 dist 里的增强包 zip  [D:\LocalModels\dist\QingYaoTP-AILauncher-v1.6.0-vision-pack.zip]
+  ok   视觉 pairs >= 1（模型 + mmproj 配对在）  [pairs=1]
+  ok   vision/state.pack.installed = false
+  ok   note 提示去装增强包  [按文件名族自动配对：Qwen3.5-9B-Q4_K_M.gguf + mmproj\Qwen3.5-9B-mmproj-]
+  ok   未安装时 start -> 409  [HTTP 409 视觉增强包未安装：去 设置 → 视觉 → 安装视觉增强包（约 40MB），装好后再发图；不看图可以忽略]
+  ok   probe-version 全绿  [exit=0 1s]
+  ok   probe-debug 全绿  [exit=0 6s]
+  ok   安装 200 installed=true  [HTTP 200]
+  ok   安装后 source=pack  [pack]
+  ok   安装后 files=53  [files=53]
+  ok   安装后字节数 = 106017053  [bytes=106017053]
+  ok   app\llama\llama-server.exe 落盘
+  ok   安装标记 .vision-pack.json 存在
+  ok   vision/state.pack.installed = true
+  ok   安装后 uninstallable = true
+  ok   安装后 start 不再是「未安装」提示
+  ok   probe-vision-api 全绿（真 9B 识图）  [exit=0 29s]
+  ok   识图后 sidecar 已停
+
+结果: 26/26 通过

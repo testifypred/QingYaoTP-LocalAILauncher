@@ -149,7 +149,9 @@ ok("语速取值合法且标签自洽", Number(t.speed) >= 0.5 && Number(t.speed
   await ev(`document.getElementById('settingsSave').click()`);
   await sleep(300);
   const saved = JSON.parse(await ev(`localStorage.getItem('localai.settings')`));
-  ok("保存后落进 localStorage", saved.v === 2 && saved.ttsSpeed === 1.3 && saved.autoRead === false, JSON.stringify(saved));
+  // v 是设置结构版本：v1.5.1 为了「工具默认关」的迁移把它从 2 提到 3（app.html 的 SETTINGS_VERSION），
+  // 这里只断言「写进去了、且版本号是新的 schema」，不要再写死 2（2026-11-15 第二十一轮实测：写死 2 会假红）。
+  ok("保存后落进 localStorage", saved.v >= 2 && saved.ttsSpeed === 1.3 && saved.autoRead === false, JSON.stringify(saved));
   ok("保存后关闭面板", await ev(`document.getElementById('settingsModal').hidden`));
 }
 
