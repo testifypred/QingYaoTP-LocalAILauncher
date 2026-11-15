@@ -1,0 +1,14 @@
+
+== 目标 http://127.0.0.1:8099 · 模型 qwen3-5-4B-Q4_K_M.gguf ==
+
+  ok   非工具模式逐块推正文  [34 chunks / 4554ms]
+  ok   工具模式也逐块推正文  [34 chunks / 9612ms]
+  ok   工具模式首字远早于结束（不再整段一次性给）  [first=7038ms total=9612ms]
+  ok   正文不含 <tool_call>
+  ok   正文不含 <tool_response>
+  ok   指标齐全  [{"promptTokens":659,"prefillTokens":665,"reusedTokens":0,"cacheHit":0,"resumed":false,"completionTokens":35,"totalTokens]
+  ok   真调工具时仍推 tool 事件  [toolEvents=1]
+  ok   调完工具正文正常且不泄漏标记  [现在是2026年11月15日星期日10点39分。]
+  ok   非流式仍返回完整 JSON  [HTTP 200]
+
+RESULT 9/9

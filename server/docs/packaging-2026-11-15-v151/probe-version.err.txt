@@ -1,0 +1,16 @@
+node:fs:441
+    return binding.readFileUtf8(path, stringToFlags(options.flag));
+                   ^
+
+Error: ENOENT: no such file or directory, open 'D:\LocalModels\dist\package.json'
+    at readFileSync (node:fs:441:20)
+    at t.readFileSync (node:electron/js2c/node_init:2:11049)
+    at file:///D:/LocalModels/server/probe-version.mjs:46:24
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\LocalModels\\dist\\package.json'
+}
+
+Node.js v24.17.0

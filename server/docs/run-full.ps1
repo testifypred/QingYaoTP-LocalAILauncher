@@ -160,6 +160,7 @@ $probes=@(
   @{n='probe-auto-title'; a=@($cdp,$shots); t=240},
   @{n='probe-ui-sessions'; a=@($cdp,$base); t=200},
   @{n='probe-chat-plain'; a=@($base); t=240},
+  @{n='probe-tool-stream'; a=@($base,$M); t=360},
   @{n='probe-tools-agent'; a=@($base,$M); t=360},
   @{n='probe-web-tools'; a=@($base,$M); t=360},
   @{n='probe-kv-long'; a=@('8099'); t=360},

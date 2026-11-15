@@ -40,7 +40,7 @@ const DEBUG_UI = path.join(HERE, "debug.html");
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 /** 版本号：发版只改这一处；server\package.json 的 version 必须与它一致（probe-version 会查） */
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "1.5.1";
 /** 产品正式名（2026-11-01 起）：QingYaoTP AILauncher；QingYaoTP = QingYaoTestifypred */
 const APP_NAME = "QingYaoTP AILauncher";
 const APP_SUB = "本地 AI";
@@ -4195,14 +4195,15 @@ function buildToolRegistry(journal, onCall, options = {}) {
     defs,
     /** 拼成塞进系统提示的说明书 */
     describe() {
+      // 只列参数名、不列参数说明：这段会拼进系统提示、每轮都要预填充一次。
+      // 参数含义模型从工具名与描述基本能推出来，省下的 token 直接换成首字延迟
+      //（2026-11-15 实测：工具说明 ~680 token，在这台核显上约 8 秒预填充）。
       return defs
         .map((d) => {
           const props = (d.params && d.params.properties) || {};
           const keys = Object.keys(props);
-          const args = keys.length
-            ? keys.map((k) => `${k}（${props[k].description || props[k].type || "任意"}）`).join("、")
-            : "无";
-          return `- ${d.name}：${d.description}\n  参数：${args}`;
+          const args = keys.length ? keys.join("、") : "无";
+          return "- " + d.name + "（参数：" + args + "）：" + d.description;
         })
         .join("\n");
     },
@@ -4226,22 +4227,17 @@ function buildToolRegistry(journal, onCall, options = {}) {
 const TOOL_ROUND_LIMIT = Math.max(1, Number(process.env.TOOL_ROUNDS ?? 4));
 
 function buildToolInstructions(registry) {
+  // 这段每轮都进系统提示、都要预填充。保持「格式 + 硬规则」够用即可，别写成长文。
   return [
-    "你可以调用本机工具来获取自己无法知道、或需要精确计算的信息。",
-    "",
-    "可用工具：",
+    "你可以调用本机工具来获取自己不知道、或需要精确计算的信息。可用工具：",
     registry.describe(),
     "",
-    "调用规则（必须严格遵守）：",
-    "1. 需要工具时，只输出下面这样的调用块，前面不要写任何解释文字：",
+    "调用格式（严格遵守）：需要工具时只输出调用块，前面不要写解释；不需要就直接回答，绝对不要输出调用块。",
     "<tool_call>",
     '{"name": "工具名", "arguments": {"参数名": "参数值"}}',
     "</tool_call>",
-    "2. 一次可以输出多个 <tool_call> 块。",
-    "3. 我会用 <tool_response> 把结果给你；拿到结果后再用中文正常回答用户，不要复述 JSON、不要编造结果。",
-    "4. 不需要工具时直接回答，绝对不要输出 <tool_call>。",
-    "5. 时间、日期、星期、具体数值计算、本机文件与模型列表，一律用工具，不要凭记忆。",
-    "6. 读文件用 read_workspace_file；write_workspace_file 会写入或覆盖文件，只在用户要求保存结果时才用。",
+    "我会用 <tool_response> 回结果；拿到后正常回答，不要复述 JSON、不要编造结果。",
+    "时间、日期、星期、具体数值计算、本机文件与模型列表一律用工具；读文件用 read_workspace_file（write_workspace_file 只在要求保存时用）。",
   ].join("\n");
 }
 
@@ -4289,6 +4285,55 @@ function stripToolCalls(text) {
     .replace(/<tool_response>[\s\S]*?<\/tool_response>/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+/**
+ * 工具模式的流式正文过滤器：正文里一旦出现 <tool_call> 块，必须整块扣住不外发
+ * （标记可能被 tokenizer 拆成两半）。只把「确认不可能是标记前缀」的片段交给 onText；
+ * 一轮结束时 finish() 放出尾巴，未闭合的调用块直接丢弃（本来就不该给用户看）。
+ */
+const TOOL_OPEN_TAG = "<tool_call>";
+const TOOL_CLOSE_TAG = "</tool_call>";
+function createToolCallScrubber(onText) {
+  let buf = "";
+  let inCall = false;
+  const push = (t) => {
+    if (t) onText(t);
+  };
+  return {
+    feed(text) {
+      buf += text;
+      for (;;) {
+        if (inCall) {
+          const i = buf.indexOf(TOOL_CLOSE_TAG);
+          if (i < 0) {
+            // 调用块的参数可能很长，留一点尾巴足够认出闭合标签即可
+            if (buf.length > 4096) buf = buf.slice(-64);
+            return;
+          }
+          buf = buf.slice(i + TOOL_CLOSE_TAG.length);
+          inCall = false;
+          continue;
+        }
+        const i = buf.indexOf(TOOL_OPEN_TAG);
+        if (i >= 0) {
+          push(buf.slice(0, i));
+          buf = buf.slice(i + TOOL_OPEN_TAG.length);
+          inCall = true;
+          continue;
+        }
+        const hold = partialSuffixLen(buf, TOOL_OPEN_TAG);
+        push(buf.slice(0, buf.length - hold));
+        buf = buf.slice(buf.length - hold);
+        return;
+      }
+    },
+    finish() {
+      if (!inCall) push(buf);
+      buf = "";
+      inCall = false;
+    },
+  };
 }
 
 // ---------------------------------------------------------------- 聊天
@@ -4573,14 +4618,42 @@ async function handleChat(payload, res) {
       let visible = "";
       let round = 0;
       let rawCallSeen = false;
-      let turnText = await session.prompt(lastUser.text, {
-        maxTokens,
-        temperature,
-        // 计时用：首个 token 到达才算预填充结束。少了这个，单轮直接作答时
-        // ttft 会在整段生成完之后才补记，生成时间被算进预填充，速度算出几十万 tok/s。
-        onToken,
-        ...toolOpts,
-      });
+      // 工具模式也边生成边显示（2026-11-15 修）：正文过 <tool_call> 过滤器后逐段外发，
+      // 思考段走 reasoning_content。非流式请求保持原样，仍是一次性返回。
+      let streamedChars = 0;
+      const scrubber = streaming
+        ? createToolCallScrubber((t) => {
+            streamedChars += t.length;
+            chunk({ content: t });
+          })
+        : null;
+      const splitter = streaming
+        ? createThoughtSplitter(
+            (t) => chunk({ reasoning_content: t }),
+            (t) => scrubber.feed(t),
+          )
+        : null;
+      const promptTurn = async (text) => {
+        if (!streaming) {
+          return await session.prompt(text, { maxTokens, temperature, onToken, ...toolOpts });
+        }
+        const meta = await session.promptWithMeta(text, {
+          maxTokens,
+          temperature,
+          // 计时用：首个 token 到达才算预填充结束。少了这个，单轮直接作答时
+          // ttft 会在整段生成完之后才补记，生成时间被算进预填充，速度算出几十万 tok/s。
+          onToken,
+          ...toolOpts,
+          onResponseChunk: (c) => {
+            if (!c || !c.text) return;
+            if (ttftMs === null) ttftMs = Date.now() - t0;
+            if (c.segmentType === "thought") chunk({ reasoning_content: c.text });
+            else splitter.feed(c.text);
+          },
+        });
+        return meta.responseText ?? "";
+      };
+      let turnText = await promptTurn(lastUser.text);
       if (ttftMs === null) ttftMs = Date.now() - t0;
       if (/<tool_call>/i.test(turnText)) rawCallSeen = true;
       visible += stripToolCalls(turnText);
@@ -4596,17 +4669,18 @@ async function handleChat(payload, res) {
           );
         }
         round += 1;
-        turnText = await session.prompt(feedback.join("\n"), {
-          maxTokens,
-          temperature,
-          onToken,
-          ...toolOpts,
-        });
+        turnText = await promptTurn(feedback.join("\n"));
         if (/<tool_call>/i.test(turnText)) rawCallSeen = true;
         visible += stripToolCalls(turnText);
       }
       if (parseToolCalls(turnText).length) {
         visible += `\n\n（已达到 ${TOOL_ROUND_LIMIT} 轮工具调用上限，先答到这里）`;
+      }
+
+      // 流式路径把两处缓冲的尾巴放完（未闭合的调用块会被丢弃）
+      if (splitter) {
+        splitter.finish();
+        scrubber.finish();
       }
 
       // 思考段照旧拆开：Qwen3 这类走模板段，R1 那类把  thinking 混在正文里
@@ -4635,8 +4709,9 @@ async function handleChat(payload, res) {
         total_tokens: metrics.totalTokens,
       };
       if (streaming) {
-        if (reasoning) chunk({ reasoning_content: reasoning });
-        chunk({ content: text });
+        // 思考段与正文已经在生成过程中推过了；这里只补「过程里没有可显示内容」的兜底文案，
+        // 避免整段重复一遍（这正是工具模式以前首字要等整段生成的原因）。
+        if (streamedChars === 0 && text) chunk({ content: text });
         chunk({}, "stop", { usage, metrics, tools: toolJournal });
         res.write("data: [DONE]\n\n");
         res.end();

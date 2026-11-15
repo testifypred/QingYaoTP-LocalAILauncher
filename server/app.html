@@ -1177,7 +1177,7 @@ header::before{
       <label class="chk" title="思考型模型先输出推理过程：更慢、更耗 token，复杂问题可能更准">
         <input type="checkbox" id="thinkChk">深度思考
       </label>
-      <label class="chk" title="允许模型调用内置工具（查时间、计算、列模型、读文件）">
+      <label class="chk" title="允许模型调用内置工具（查时间、计算、列模型、读文件）。开启后提示词更长、可能多轮，首字会明显变慢（实测约 7–8s）；普通问答建议关闭">
         <input type="checkbox" id="toolChk">调用工具
       </label>
       <label class="chk" title="允许联网搜索与读取网页，需要先勾「调用工具」">
@@ -5020,7 +5020,13 @@ function showHero() {
   for (const b of document.querySelectorAll('#hero .modeBtn')) {
     b.onclick = () => applyHeroMode(b.dataset.mode);
   }
-  applyHeroMode('agent', true);
+  // 不默认套用「Agent 模式」：它会勾上「调用工具」，而工具模式要付 500+ token 的工具说明
+  // 预填充（实测首字 7–8s，关掉是 1–2s）。默认按用户上次的选择（默认全关），
+  // 想用 Agent/推理模式自己点按钮。
+  for (const b of document.querySelectorAll('#hero .modeBtn')) b.classList.remove('sel');
+  toolChk.checked = toolEnabled;
+  const heroHint0 = document.getElementById('heroHint');
+  if (heroHint0) heroHint0.textContent = '直接说就行 · Agent 模式：先调工具查证再答 · 推理模式：先想清楚再答';
   renderImgPreview();
   syncSendState();
   setTimeout(() => { try { hi.focus(); } catch {} }, 60);
@@ -6664,7 +6670,9 @@ let webMuted = false;      // 联网须知「不再提示」
  * 旧版把「自动朗读」当成普通开关，默认值虽是关，但装过旧配置的用户可能已经打开。
  * 本次需求是取消自动朗读，所以旧配置统一归零一次；之后完全由用户自己在「朗读」页决定。
  */
-const SETTINGS_VERSION = 2;
+// v3（2026-11-15）：工具模式默认关。它要付 500+ token 的工具说明预填充、还可能需要多轮，
+// 普通问答实测首字 7–8s（关掉是 1–2s）。老配置（v2）一次性迁到关，之后用户自己勾。
+const SETTINGS_VERSION = 3;
 
 function loadSettings() {
   try {
@@ -6680,7 +6688,7 @@ function loadSettings() {
     // 联网默认关；须知默认要提示
     webEnabled = s.webEnabled === true;
     webMuted = s.webMuted === true;
-    toolEnabled = s.tools === true;
+    toolEnabled = Number(s.v) >= 3 ? s.tools === true : false;
     codeRunOn = s.codeRun !== false;
     // Agent 模式代码自动收录：主存进设置对象；契约里点名的单独键 localai.codeCapture 也认
     codeCaptureOn = s.codeCapture !== false;
