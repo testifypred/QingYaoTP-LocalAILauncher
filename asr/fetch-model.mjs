@@ -1,9 +1,12 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const BASE = "https://hf-mirror.com/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/";
-const DEST = "D:\\LocalModels\\asr";
+// 下载到本脚本同级的 deps\（.gitignore 已排除）；可用 ASR_DIR 覆盖
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const DEST = process.env.ASR_DIR ?? path.join(HERE, "deps");
 fs.mkdirSync(DEST, { recursive: true });
 
 async function head(name) {

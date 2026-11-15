@@ -8,12 +8,14 @@
  */
 import WebSocket from "ws";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { rm } from "node:fs/promises";
 
 const CDP = process.argv[2] || "http://127.0.0.1:9333";
 const APP = process.argv[3] || "http://127.0.0.1:8099";
-const OUT = process.argv[4] || "D:/LocalModels/server/docs/probe-full-2026-10-27/shots";
-const TARGET = process.argv[5] || "D:\\LocalModels\\server\\docs\\probe-full-2026-10-27\\backup-ui-target";
+const OUT = process.argv[4] || path.join(os.tmpdir(), "qytp-probe-shots");
+const TARGET = process.argv[5] || path.join(os.tmpdir(), "qytp-probe-backup-ui-target");
 
 let pass = 0, fail = 0;
 const check = (n, c, d = "") => { if (c) { pass++; console.log("ok   " + n + (d ? "  [" + d + "]" : "")); } else { fail++; console.log("FAIL " + n + "  " + d); } };

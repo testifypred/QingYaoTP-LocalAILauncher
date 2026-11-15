@@ -5,10 +5,15 @@
  *
  * 覆盖：配置读写、扫描（魔数/深度/大小过滤/去重）、收录（硬链接/已存在/非法文件）。
  */
+import os from "node:os";
+import path from "node:path";
+
 const BASE = process.argv[2] || "http://127.0.0.1:8096";
-const FIX = process.argv[3] || "D:\\Test For DSH Harness\\fake-models\\src";
+/** fixture 根目录：默认在系统临时目录下（可用 PROBE_FIXTURE_ROOT 覆盖），不写死某个盘 */
+const FIXROOT = process.env.PROBE_FIXTURE_ROOT || path.join(os.tmpdir(), "qytp-fake-models");
+const FIX = process.argv[3] || path.join(FIXROOT, "src");
 /** 被探服务端的 MODEL_DIR：收录都往这里放，和源目录必须是两个地方 */
-const MODELDIR = process.argv[4] || "D:\\Test For DSH Harness\\fake-models\\library";
+const MODELDIR = process.argv[4] || path.join(FIXROOT, "library");
 
 let pass = 0;
 let fail = 0;
@@ -47,10 +52,10 @@ console.log("== A. 配置 ==");
   ok("常见位置列表非空", (r.data?.common || []).length > 3, String((r.data?.common || []).length));
   ok("返回只含存在的位置", Array.isArray(r.data?.existing));
 
-  const w = await j("POST", "/api/discover/config", { onboarded: true, customDirs: ["D:\\Test For DSH Harness"] });
+  const w = await j("POST", "/api/discover/config", { onboarded: true, customDirs: [FIXROOT] });
   ok("POST config 生效", w.status === 200 && w.data?.onboarded === true && w.data?.customDirs?.length === 1);
   const back = await j("GET", "/api/discover/config");
-  ok("配置已持久化", back.data?.onboarded === true && back.data?.customDirs?.[0] === "D:\\Test For DSH Harness");
+  ok("配置已持久化", back.data?.onboarded === true && back.data?.customDirs?.[0] === FIXROOT);
   // 复位，后面还要测首次引导的语义
   await j("POST", "/api/discover/config", { onboarded: false, customDirs: [] });
 }

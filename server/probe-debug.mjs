@@ -15,10 +15,11 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const BASE = process.argv[2] || "http://127.0.0.1:8099";
-const HERE = "D:\\LocalModels\\server";
+const HERE = dirname(fileURLToPath(import.meta.url));
 // 崩溃记录的真实路径从 /api/diag 的 paths.crashLog 取：
 // 跑源码时是 server\vulkan-crash.log，跑发布包时是 dist\QingYaoTP AILauncher\app\vulkan-crash.log
 let CRASH = HERE + "\\vulkan-crash.log";

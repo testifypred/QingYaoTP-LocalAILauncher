@@ -2,7 +2,8 @@
  * QingYaoTP AILauncher（本地 AI）桌面应用 —— 模型管理器 + OpenAI 兼容服务 + 内置界面
  *
  * 设计要点：
- *  - 单进程管理 D:\LocalModels 下的所有 .gguf，一次只加载一个模型（显存/内存友好）
+ *  - 单进程管理一个模型目录（MODEL_DIR）下的所有 .gguf，一次只加载一个模型（显存/内存友好）
+ *    开发态默认取 server 的上一级；发布包由 Launcher.cs 按 config.ini 注入 → 不写死盘符/绝对路径
  *  - 对外仍暴露 OpenAI 兼容接口 (/v1/chat/completions)，Cherry Studio / DSH 可直接接
  *  - 界面通过 /api/* 控制加载与卸载
  */
@@ -21,7 +22,11 @@ import { recommendConfig, CATALOG_MODELS } from "./config-recommend.mjs";
 import { zipStore, sha256 as zipSha256 } from "./diag-zip.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const MODEL_DIR = process.env.MODEL_DIR ?? "D:\\LocalModels";
+/**
+ * 模型目录：环境变量 MODEL_DIR 优先（发布包由 Launcher.cs 按 config.ini 注入，留空＝<安装目录>\models）；
+ * 开发态退化成 server 的上一级（本仓库里就是仓库根）——不写死任何盘符或绝对路径。
+ */
+const MODEL_DIR = process.env.MODEL_DIR ?? path.resolve(HERE, "..");
 const PORT = Number(process.env.PORT ?? 8099);
 const AUTO_LOAD = process.env.AUTO_LOAD ?? "";
 const DEFAULT_CONTEXT = Number(process.env.CONTEXT_SIZE ?? 16384);
@@ -35,7 +40,7 @@ const DEBUG_UI = path.join(HERE, "debug.html");
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 /** 版本号：发版只改这一处；server\package.json 的 version 必须与它一致（probe-version 会查） */
-const APP_VERSION = "1.4.0";
+const APP_VERSION = "1.4.1";
 /** 产品正式名（2026-11-01 起）：QingYaoTP AILauncher；QingYaoTP = QingYaoTestifypred */
 const APP_NAME = "QingYaoTP AILauncher";
 const APP_SUB = "本地 AI";
@@ -6014,6 +6019,27 @@ async function writeDiscovery(patch) {
   return next;
 }
 
+/**
+ * 盘符级的常见目录（<盘>:\Models、<盘>:\AI）：按本机真实存在的盘生成，不写死 D:。
+ * 只做 existsSync 判断，不遍历子目录，代价可忽略。
+ */
+function driveRoots() {
+  const drives = new Set();
+  for (const base of [MODEL_DIR, process.cwd(), process.env.SystemDrive || "C:\\"]) {
+    const root = path.parse(path.resolve(base)).root;
+    if (root) drives.add(root);
+  }
+  for (const letter of ["C", "D", "E", "F", "G"]) drives.add(letter + ":\\");
+  const out = [];
+  for (const root of drives) {
+    for (const name of ["Models", "AI"]) {
+      const dir = path.join(root, name);
+      if (existsSync(dir)) out.push({ dir, kind: "generic", label: dir });
+    }
+  }
+  return out;
+}
+
 /** 常见位置：只返回这台机器上真实存在的 */
 function commonRoots() {
   const home = os.homedir();
@@ -6025,8 +6051,7 @@ function commonRoots() {
     { dir: path.join(home, ".ollama", "models"), kind: "ollama", label: "Ollama" },
     { dir: path.join(process.env.APPDATA ?? "", "CherryStudio"), kind: "cherrystudio", label: "CherryStudio" },
     { dir: path.join(home, ".cherrystudio"), kind: "cherrystudio", label: "CherryStudio" },
-    { dir: "D:\\Models", kind: "generic", label: "D:\\Models" },
-    { dir: "D:\\AI", kind: "generic", label: "D:\\AI" },
+    ...driveRoots(),
     { dir: path.join(home, "AppData", "Local", "Programs", "Ollama"), kind: "ollama", label: "Ollama(程序目录)" },
   ];
   return list.filter((r) => r.dir && path.isAbsolute(r.dir));

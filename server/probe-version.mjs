@@ -9,9 +9,10 @@
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const BASE = process.argv[2] || "http://127.0.0.1:8099";
-const APP_MJS = process.argv[3] || "D:\\LocalModels\\server\\app.mjs";
+const APP_MJS = process.argv[3] || path.join(path.dirname(fileURLToPath(import.meta.url)), "app.mjs");
 const PKG = path.join(path.dirname(APP_MJS), "package.json");
 
 let pass = 0, fail = 0;

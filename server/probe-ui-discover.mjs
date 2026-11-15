@@ -4,12 +4,15 @@
  *   node probe-ui-discover.mjs [cdpBase] [appBase] [shotDir]
  */
 import { writeFile, mkdir } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 const CDP = process.argv[2] || "http://127.0.0.1:9333";
 const APP = process.argv[3] || "http://127.0.0.1:8096";
-const OUT = process.argv[4] || "D:/LocalModels/server/docs/ui-new";
-const FIX = "D:\\Test For DSH Harness\\fake-models\\src";
+const OUT = process.argv[4] || path.join(os.tmpdir(), "qytp-probe-shots");
+/** fixture 根目录：默认系统临时目录（可用 PROBE_FIXTURE_ROOT 覆盖） */
+const FIXROOT = process.env.PROBE_FIXTURE_ROOT || path.join(os.tmpdir(), "qytp-fake-models");
+const FIX = path.join(FIXROOT, "src");
 
 let pass = 0;
 let fail = 0;
@@ -42,7 +45,7 @@ await cmd("Page.enable");
 // 开场复位：把「已询问」标记和模型目录清干净，保证本轮可重复
 {
   const { rm, mkdir } = await import("node:fs/promises");
-  const MODELDIR = process.argv[5] || "D:\\Test For DSH Harness\\fake-models\\library";
+  const MODELDIR = process.argv[5] || path.join(FIXROOT, "library");
   await rm(MODELDIR, { recursive: true, force: true });
   await mkdir(MODELDIR, { recursive: true });
   await fetch(`${APP}/api/discover/config`, {
@@ -149,7 +152,7 @@ console.log("\n== E. 关闭后不再打扰 ==");
   ok("面板已关闭", await ev(`document.getElementById('discoverModal').hidden`));
   const cfg = await (await fetch(`${APP}/api/discover/config`)).json();
   ok("服务端记下已询问", cfg.onboarded === true, String(cfg.onboarded));
-  ok("自定义目录已持久化", (cfg.customDirs || []).includes("D:\\Test For DSH Harness\\fake-models\\src"));
+  ok("自定义目录已持久化", (cfg.customDirs || []).includes(FIX));
 
   await cmd("Page.reload", { ignoreCache: true });
   await sleep(3500);

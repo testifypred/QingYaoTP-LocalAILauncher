@@ -8,10 +8,12 @@
  * 自复位：跑完删掉测试会话、恢复默认配置、清掉临时目标目录。
  */
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 const BASE = process.argv[2] || "http://127.0.0.1:8099";
-const TARGET = process.argv[3] || "D:\\LocalModels\\server\\docs\\probe-full-2026-10-27\\backup-target";
+// 目标目录默认放系统临时目录（跑完自清），不再写死某个盘上的 docs 子目录
+const TARGET = process.argv[3] || path.join(os.tmpdir(), "qytp-probe-backup-target");
 
 let pass = 0;
 let fail = 0;

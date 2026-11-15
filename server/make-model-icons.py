@@ -1,4 +1,4 @@
-﻿"""
+"""
 模型品牌图标处理：裁掉白边 → 补成正方形 → 缩到 128px 白底 PNG。
 
 为什么保留白底：OpenAI 的 logo 是纯黑结，放到暗色卡片上会看不见；
@@ -8,13 +8,16 @@ import os
 import sys
 from PIL import Image, ImageChops
 
-OUT = r"D:\LocalModels\server\vendor\models"
-SRC = {
-    "microsoft": r"C:\Users\lenovo\AppData\Roaming\dsh-desktop\harness\attachments\v1\objects\bc\bc16429e02434ddee523bb67b1282327ca5b374b7e88f1ebffb4051df59ee988",
-    "qwen": r"C:\Users\lenovo\AppData\Roaming\dsh-desktop\harness\attachments\v1\objects\72\724f8eaf4a0d5c759050a318c8e8a5750e82695ff961a290ab52d03ef6a10817",
-    "openai": r"C:\Users\lenovo\AppData\Roaming\dsh-desktop\harness\attachments\v1\objects\dd\dd742803109cf9b79b83d8251991c8c852a59187a225512570c43ef85a0f9b86",
-    "deepseek": r"C:\Users\lenovo\AppData\Roaming\dsh-desktop\harness\attachments\v1\objects\a0\a0d0d7f69430ad52044d49b87901f4fac86a833149487dd575acc1a618cec2ae",
-}
+# 输出固定到本脚本同级的 vendor\models（仓库内相对路径，换台机器照样能跑）
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor", "models")
+
+# 源图由命令行传入：name=path（各人本地的图片路径不同，不写死、不入库）
+#   python make-model-icons.py microsoft=<png> qwen=<png> openai=<png> deepseek=<png>
+SRC = {}
+for _arg in sys.argv[1:]:
+    _name, _sep, _path = _arg.partition("=")
+    if _sep:
+        SRC[_name.strip()] = _path.strip()
 SIZE = 128
 PAD = 0.10  # 四周留白比例
 
@@ -54,8 +57,10 @@ def process(name, path):
 
 
 if __name__ == "__main__":
+    if not SRC:
+        sys.exit("用法: python make-model-icons.py microsoft=<png> qwen=<png> openai=<png> deepseek=<png>")
     os.makedirs(OUT, exist_ok=True)
     for k, v in SRC.items():
         if not os.path.exists(v):
-            sys.exit(f"缺少源文件：{v}")
+            sys.exit(f"缺少源文件：{k} -> {v}")
         process(k, v)

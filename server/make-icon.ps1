@@ -4,7 +4,7 @@
 Add-Type -AssemblyName System.Drawing
 $ErrorActionPreference = 'Stop'
 
-$OutDir = 'D:\LocalModels\server'
+$OutDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 $Parts  = Join-Path $OutDir 'icon-parts'
 New-Item -ItemType Directory -Force -Path $Parts | Out-Null
 $PARTIAL = [string][char]0x2202   # U+2202

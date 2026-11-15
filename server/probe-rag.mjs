@@ -9,6 +9,7 @@
  * 工作区根不写死：从 /api/rag/status 的 dir 反推（源码目录与发布包目录不同）。
  */
 import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 const BASE = process.argv[2] || "http://127.0.0.1:8099";
@@ -33,7 +34,7 @@ const baseStatus = (await j("GET", "/api/rag/status")).data;
 ok("索引状态可读", typeof baseStatus?.files === "number", JSON.stringify(baseStatus).slice(0, 100));
 
 const ragDir = String(baseStatus?.dir || "");
-DIR = ragDir ? path.join(path.dirname(ragDir), "rag-probe") : "D:\\LocalModels\\workspace\\rag-probe";
+DIR = ragDir ? path.join(path.dirname(ragDir), "rag-probe") : path.join(os.tmpdir(), "qytp-rag-probe");
 
 await mkdir(DIR, { recursive: true });
 await writeFile(path.join(DIR, "alpha.md"), "# 量子笔记\n\n纠缠态可以用来做量子通信。\n\n第二段讲退相干与测量。\n", "utf8");

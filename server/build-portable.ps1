@@ -15,9 +15,13 @@
 # 便携目录因此从 ~700MB 降到 ~200MB；模型本身永远外置。
 
 param(
-    [string]$OutDir = 'D:\LocalModels\dist\QingYaoTP AILauncher',
-    [string]$Icon = 'D:\LocalModels\server\localai.ico',
-    [string]$ModelDir = '',   # 留空 = 用 <安装目录>\models（便携；不要写死本机 D:\LocalModels）
+    # 输出目录：默认 <repo>\dist\QingYaoTP AILauncher（repo = 本脚本所在 server 的上一级）
+    [string]$OutDir = '',
+    # 应用图标：默认 server\localai.ico
+    [string]$Icon = '',
+    # 随包 node.exe：留空 = LOCALAI_NODE_EXE > PATH 上的 node > %ProgramFiles%\nodejs\node.exe
+    [string]$NodeExe = '',
+    [string]$ModelDir = '',   # 留空 = 用 <安装目录>\models（便携；不要写死本机路径）
     [string]$AutoLoad = '',   # 留空 = 首启「自动检查用户配置」按本机硬件推荐
     [int]$ContextSize = 16384,
     [int]$Port = 8099
@@ -25,11 +29,47 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $Server = Split-Path -Parent $MyInvocation.MyCommand.Path
+$Repo = Split-Path -Parent $Server
+if (-not $OutDir) { $OutDir = Join-Path $Repo 'dist\QingYaoTP AILauncher' }
+if (-not $Icon) { $Icon = Join-Path $Server 'localai.ico' }
 $Nlc = Join-Path $Server 'node_modules\node-llama-cpp'
-$Csc = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+$Csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+if (-not (Test-Path $Csc)) { $Csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\csc.exe' }
 
 function Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
 function Die($msg) { Write-Host "!!  $msg" -ForegroundColor Red; exit 1 }
+
+# 随包 node.exe：不再写死某个盘上的安装路径（换台机器就崩）。优先级：
+#   -NodeExe 参数 > LOCALAI_NODE_EXE > PATH 上的 node > %ProgramFiles%\nodejs\node.exe
+# 注意：PATH 上的 node 常常是 npm 的 .cmd 垫片（120 字节），复制进包会是废文件——
+#       所以要求候选必须是 .exe 且体积 > 1MB。
+$nodeCandidates = @()
+if ($env:LOCALAI_NODE_EXE) { $nodeCandidates += $env:LOCALAI_NODE_EXE }
+if ($NodeExe) { $nodeCandidates += $NodeExe }
+$nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+if ($nodeCmd) {
+    $nodeCandidates += $nodeCmd.Source
+    $nodeCandidates += ($nodeCmd.Source -replace '\.(cmd|bat|ps1)$', '.exe')
+}
+$nodeCandidates += (Join-Path $env:ProgramFiles 'nodejs\node.exe')
+$pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+if ($pf86) { $nodeCandidates += (Join-Path $pf86 'nodejs\node.exe') }
+# 最后扫一遍 PATH 里的每个目录直接找 node.exe（有的机器只把 NODE 的目录丢进 PATH，
+# 真正的 node.exe 就在那儿，而 Get-Command node 命中的是别的垫片）
+foreach ($dir in ($env:PATH -split ';')) {
+    if (-not $dir) { continue }
+    $cand = Join-Path $dir 'node.exe'
+    if (Test-Path $cand) { $nodeCandidates += $cand }
+}
+$NodeExe = $nodeCandidates | Where-Object {
+    $_ -and (Test-Path $_) -and ($_ -match '\.exe$') -and ((Get-Item $_).Length -gt 1MB)
+} | Select-Object -First 1
+if (-not $NodeExe) {
+    Die '找不到可用的 node.exe（要求是真正的 .exe，不是 npm 的 .cmd 垫片）：用 -NodeExe 指定，或设 LOCALAI_NODE_EXE，或把 node 放进 PATH'
+}
+if (-not (Test-Path $Csc)) { Die "找不到 C# 编译器 csc.exe：$Csc" }
+Write-Host ("   随包 node：$NodeExe")
+Write-Host ("   C# 编译器：$Csc")
 
 foreach ($need in @(
     (Join-Path $Server 'app.mjs'),
@@ -60,12 +100,18 @@ foreach ($need in @(
     (Join-Path $Server 'launcher\webview2\WebView2Loader.dll'),
     $Icon,
     $Csc,
-    'D:\Node.js\node.exe'
+    $NodeExe
 )) { if (-not (Test-Path $need)) { Die "缺少依赖：$need" } }
 
-# 安全闸：只允许清空以 dist\QingYaoTP AILauncher 结尾的目录，绝不误删别处
+# 安全闸：输出目录必须叫 QingYaoTP AILauncher，且不能是盘根/用户目录——绝不误删别处
 $resolved = [System.IO.Path]::GetFullPath($OutDir).TrimEnd('\')
-if ($resolved -notmatch '\\dist\\QingYaoTP AILauncher$') { Die "输出目录必须是 ...\dist\QingYaoTP AILauncher，收到：$resolved" }
+if ((Split-Path $resolved -Leaf) -ne 'QingYaoTP AILauncher') {
+    Die "输出目录名必须是 QingYaoTP AILauncher，收到：$resolved"
+}
+$rootOfDrive = [System.IO.Path]::GetPathRoot($resolved).TrimEnd('\')
+if ($resolved.TrimEnd('\') -eq $rootOfDrive -or $resolved.TrimEnd('\') -eq $env:USERPROFILE.TrimEnd('\')) {
+    Die "输出目录不能是盘根或用户目录：$resolved"
+}
 if (Test-Path $resolved) {
     Step "清空旧产物 $resolved"
     # 内嵌窗口的 localStorage 里存着对话记录，重新打包时保留，别把历史一起删了
@@ -186,7 +232,7 @@ $llamaMB = [math]::Round(((Get-ChildItem $llamaDst -Recurse -File | Measure-Obje
 Write-Host ('   已附带 llama-server（' + $llamaMB + ' MB）')
 
 Step '复制 Node 运行时'
-Copy-Item 'D:\Node.js\node.exe' (Join-Path $RuntimeDir 'node.exe') -Force
+Copy-Item $NodeExe (Join-Path $RuntimeDir 'node.exe') -Force
 
 Step '编译启动器（带图标 + WebView2 内嵌窗口）'
 $exe = Join-Path $resolved 'QingYaoTP AILauncher.exe'

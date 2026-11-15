@@ -3,7 +3,7 @@
 > 原名 `HANDOFF.md`，由上一任开发者写于 **2026-10-18 21:45**。
 > 从 **2026-10-18 21:44** 起，本文件改为**按时间流水记录**：每一笔写清「几点、改了什么、落在哪、怎么验的」。
 > 第一节是日志索引，其后的一~七节是原交接正文（保留原样，仅修正两处日期笔误），八~十节是本次三项需求的详细设计说明。
-> 最新一笔：**2026-11-15 凌晨**（第五十七节，打包轮：版本升 **1.4.0**、重打发布包与交付 zip、55 条回归全绿；产品代码只动了版本号）。全部时间均为 China Standard Time，本机时钟。
+> 最新一笔：**2026-11-15 上午**（第五十八节，**可移植性整改**：打包/zip/服务端/开发脚本里的写死路径改成「由脚本位置推导 + 环境变量」，顺带修掉「把 npm 的 `node.cmd` 垫片打进包」的真缺陷；版本升 **1.4.1**、重打发布包与交付 zip）。全部时间均为 China Standard Time，本机时钟。
 >
 > **接手先读 [`交接文档.md`](交接文档.md)**（一页纸：定位、现状、代码地图、下一步）。
 > 技术专题已抽到 [`technique/`](technique/)：架构、接口、插件、模型、打包、探针、坑。本文件保留**按时间流水**的原始记录，作为「为什么这么做」的证据。
@@ -2748,3 +2748,56 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 1. 交付包已经是 v1.4.0（含三个功能），可以发给老笔记本试 1.5B。
 2. 按 `交接文档.md`「下一步」继续：视觉增强包拆分（主包回 ~122MB）、图片落盘、7B 分片下载。
 3. 若要把「干净会话集」这条固化：全量驱动开跑前先备份+清空会话、跑完自动恢复（现在只有探针内置备份，没有整体口径）。
+
+## 五十八、2026-11-15 上午：可移植性整改（v1.4.1）
+
+> 起因：用户一句「可移植性做得太差了」。查下来不是一处两处——打包脚本写死 `D:\Node.js\node.exe` 与 `D:\LocalModels\`，zip 脚本连版本号都写死，服务端默认模型目录写死 `D:\LocalModels`，开发脚本/ASR/图标脚本/若干探针也都写死盘符。换台机器 clone 下来，**按 README 跑构建会直接失败**。
+> 这一笔把「路径」全部改成「由脚本位置推导 + 环境变量覆盖」，并做到了实证：**从另一个工作目录、构建到临时目录，产物与仓库内一致**。
+
+### 一、改了哪些（全部是路径来源，行为不变）
+
+| 文件 | 改法 |
+|---|---|
+| `server\build-portable.ps1` | `$OutDir` / `$Icon` 默认改空 → 由 `$PSScriptRoot` 推导（repo = server 上一级）；csc 由 `$env:WINDIR` 推导并回退 Framework；**node 改为多候选发现**；安全闸从「路径必须以 `\dist\QingYaoTP AILauncher` 结尾」放宽为「目录名必须是 `QingYaoTP AILauncher`，且不是盘根/用户目录」——于是**任意位置都能构建** |
+| `server\make-zip.ps1` | 路径全部由脚本位置推导；**版本号从 `server\app.mjs` 的 `APP_VERSION` 解析**，zip 名与包内根目录名都跟着走（以前要手改脚本两处，容易忘） |
+| `server\app.mjs` | `MODEL_DIR` 默认 `path.resolve(HERE, "..")`（开发态＝仓库根；发布包由 `Launcher.cs` 按 config.ini 注入）；嗅探的 `D:\Models` / `D:\AI` 改成**按本机真实存在的盘动态生成**（`driveRoots()`） |
+| `server\app.html` | 首启文案不再写「会放进 `D:\LocalModels`」，改成「当前模型目录（便携包默认 `<安装目录>\models`）」 |
+| `server\run-server.cmd` | `%~dp0` 相对路径 + node 发现（随包 runtime > PATH > Program Files）；去掉写死的模型名 |
+| `server\启动本地AI.bat` | Edge 路径改用 `%ProgramFiles(x86)%` / `%ProgramFiles%` 探测 |
+| `asr\fetch-model.mjs` | 下载目录 = 脚本同级 `deps\`（`.gitignore` 已排除），可用 `ASR_DIR` 覆盖 |
+| `server\make-icon.ps1` | 输出目录 = `$PSScriptRoot` |
+| `server\make-model-icons.py` | 输出 = 脚本同级 `vendor\models`；源图改命令行 `name=path` 传入（原来写死本机 DSH 附件缓存路径） |
+| `probe-version` / `probe-debug` / `probe-backup` / `probe-ui-backup` / `probe-rag` / `probe-discover` / `probe-ui-discover` | 默认值改成「脚本相对 / 系统临时目录 / `PROBE_FIXTURE_ROOT` 等环境变量」，不再写死 `D:\` |
+
+### 二、顺带抓到一个真缺陷（以前没暴露是因为这台机器刚好一样）
+
+`Get-Command node` 在这台机器命中的是 **DSH 的 `node.cmd` 垫片（120 字节）**，不是 node.exe。按老逻辑「直接复制过去」的写法会把 **120 字节的废文件**打进 `runtime\node.exe`——目标机双击直接起不来。
+现在发现逻辑是：`-NodeExe` > `LOCALAI_NODE_EXE` > PATH 上的 node（`.cmd` 自动换同名 `.exe`）> `%ProgramFiles%\nodejs\node.exe` > **扫一遍 PATH 每个目录里的 `node.exe`**，并要求**候选必须是真的 `.exe` 且 > 1MB**。本机落到 `D:\Node.js\node.exe`（92,825,416B，与旧包一致）。
+
+### 三、验证（这回是可移植性的实证，不只是「跑通了」）
+
+| 项 | 结果 |
+|---|---|
+| **异地构建** | 工作目录 `C:\`、`-OutDir %TEMP%\qytp-portable\dist\QingYaoTP AILauncher`，不带任何绝对路径入参 → **exit 0 / 12.0s / 359.5MB / 3498 文件**，与仓库内构建逐文件对照：文件名集合一致、大小一致（差异只有版本号与运行期文件） |
+| 随包 node | 临时构建与正式构建的 `runtime\node.exe` 都是 **92,825,416B**（修复前是 120B） |
+| 开发态默认目录 | `PORT=8098` 裸跑 `node app.mjs`（不设 MODEL_DIR）→ `/api/state.modelDir = D:\LocalModels`，5 个模型；说明「默认值＝server 上一级」确实生效 |
+| 嗅探候选 | `/api/discover/config.common` 里不再有硬编码的 `D:\Models`/`D:\AI`（本机这两个目录本来就不存在，过滤后同样不出现）；Windows 常见位置照旧返回 |
+| 包内冒烟 | `probe-version` **14/14**（pkg=1.4.1）、`probe-debug` **54/54**、`probe-backup` **38/38**、`probe-rag` **16/16**；`app.mjs`/`app.html` 与源码 **SAME** |
+| 构建/打包 | `build-portable.ps1` exit 0（359.5MB / 3498 文件）；`make-zip.ps1` **自动解析出版本 1.4.1** → `QingYaoTP-AILauncher-v1.4.1.zip` = **166,235,868B / 158.5MB / 3999 条目 / 69.0s**，SHA256 `C3ED469F71484CC947F432B9A9931BD9F39EE1767C21D2E9B6C2E83D5467925C` |
+| 服务 | 发布包重启后 **v1.4.1 / 5 模型 / 8 会话 / gpu=vulkan**（本机 config.ini 仍指 `modelDir=D:\LocalModels`，包里那份是消毒后的空值） |
+
+### 四、版本与产物
+
+- 版本 1.4.0 → **1.4.1**：`app.mjs` / `package.json` / `localai.mjs` 三处（**`make-zip.ps1` 起不再需要改版本**，它从 app.mjs 解析）
+- 新交付：`dist\QingYaoTP-AILauncher-v1.4.1.zip`（158.5MB / 3999 条目）；v1.4.0 那份留着当历史
+- 发布包：359.5MB / 3498 文件（载荷口径）
+
+### 五、还剩的「个人草稿」痕迹（不影响产品，想清可单独一轮）
+
+`server\compare.mjs`、`probe.mjs`、`probe-metrics.mjs`、`probe-template.mjs`、`probe-thinking.mjs`、`probe-tools{,2,3}.mjs`、`server.mjs` 这些早期实验脚本里还写着 `D:\LocalModels\*.gguf`（其中几个引用的 qwen2.5-7b 早已删除），`server\backup\*.bak` 也是 10-18 的旧备份。它们不在 55 条全量驱动里，本轮没动——要清就单独一轮删/改写。
+
+### 六、下一轮
+
+1. 回到主线：**视觉增强包拆分**（主包 158.5MB 里 `app\llama\` 占 101MB，拆出去主包回 ~122MB）。
+2. 顺手清第五节那批草稿脚本 + `server\backup\`（~20min）。
+3. 若还要发 GitHub：README/LICENSE/NOTICE + 移除 `server\vendor\vc_redist.x64.exe`（24MB）仍需处理；可移植性这条**已经不再是阻塞项**。

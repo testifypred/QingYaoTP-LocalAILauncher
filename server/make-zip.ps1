@@ -4,18 +4,28 @@
 # 11-01 与 11-04 两轮都出现过「dist 已更新、交付 zip 还是旧的」。这里把规则固定下来：
 #   · 只打发布载荷：data\ 与 logs\ 只保留空目录（WebView2 缓存、运行日志不进包）
 #   · models\ 保留空目录（用户把 gguf 放这里，modelDir 留空即可用）
-#   · 根目录名固定 QingYaoTP AILauncher-v1.4.0，条目一律用正斜杠（跨工具兼容）
+#   · 版本号从 app.mjs 的 APP_VERSION 解析，zip 名/根目录名都跟着走（不再手改脚本）
+#   · 条目一律正斜杠（跨工具兼容）；所有路径由本脚本位置推导（repo = server 的上一级），不写死盘符
 #
 # 用法：powershell -NoProfile -ExecutionPolicy Bypass -File .\make-zip.ps1
-# 产出：D:\LocalModels\dist\QingYaoTP-AILauncher-v1.4.0.zip
+# 产出：<repo>\dist\QingYaoTP-AILauncher-v<APP_VERSION>.zip
 
 param(
-    [string]$Dist = 'D:\LocalModels\dist\QingYaoTP AILauncher',
-    [string]$Zip = 'D:\LocalModels\dist\QingYaoTP-AILauncher-v1.4.0.zip',
-    [string]$RootName = 'QingYaoTP AILauncher-v1.4.0'
+    [string]$Dist = '',
+    [string]$Zip = '',
+    [string]$RootName = ''
 )
 
 $ErrorActionPreference = 'Stop'
+$Server = Split-Path -Parent $MyInvocation.MyCommand.Path
+$Repo = Split-Path -Parent $Server
+$verMatch = Select-String -Path (Join-Path $Server 'app.mjs') -Pattern 'const APP_VERSION = "([^"]+)"' | Select-Object -First 1
+if (-not $verMatch) { Write-Host '!! 解析不到 server\app.mjs 的 APP_VERSION' -ForegroundColor Red; exit 1 }
+$Ver = $verMatch.Matches[0].Groups[1].Value
+if (-not $RootName) { $RootName = 'QingYaoTP AILauncher-v' + $Ver }
+if (-not $Dist) { $Dist = Join-Path $Repo 'dist\QingYaoTP AILauncher' }
+if (-not $Zip) { $Zip = Join-Path $Repo ('dist\QingYaoTP-AILauncher-v' + $Ver + '.zip') }
+Write-Host ("   版本（取自 app.mjs）：$Ver") -ForegroundColor DarkGray
 $dist = [System.IO.Path]::GetFullPath($Dist).TrimEnd('\')
 if (-not (Test-Path (Join-Path $dist 'QingYaoTP AILauncher.exe'))) {
     Write-Host "!! 发布目录里没有 QingYaoTP AILauncher.exe，先跑 build-portable.ps1：$dist" -ForegroundColor Red

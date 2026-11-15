@@ -3,7 +3,9 @@ setlocal
 cd /d "%~dp0"
 
 set "PORT=8099"
-set "EDGE=C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+rem Edge: 先按 32 位安装位置找，找不到再按 64 位位置（不写死盘符/架构）
+set "EDGE=%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe"
+if not exist "%EDGE%" set "EDGE=%ProgramFiles%\Microsoft\Edge\Application\msedge.exe"
 
 rem ---- If the service is already up, just open the window ----
 powershell -NoProfile -Command "try{ [void](Invoke-RestMethod 'http://127.0.0.1:8099/health' -TimeoutSec 2); exit 0 } catch { exit 1 }" >nul 2>&1
