@@ -1,0 +1,37 @@
+
+== 目标 http://127.0.0.1:8099 · TUI localai-tui.mjs ==
+
+  ok   GET /api/state -> 200  [HTTP 200]
+  ok   前置：模型已加载  [loaded=qwen3-5-4B-Q4_K_M.gguf]
+  ok   GET /api/tools 带回工具清单  [n=10 例如 get_current_time,calculate,list_local_models,read_workspace_file]
+
+== A. --hint-test "/to"：补全出 /tool 与 /tools ==
+  ok   --hint-test "/to" 退出码 0  [code=0 timedOut=false err=]
+  ok   输出至少 2 行补全结果  [lines=2 ["/tool\t调用软件工具（名称 + 参数）","/tools\t列出软件工具；on|off 切换工具调用"]]
+  ok   补全结果里有 /tool  [["/tool\t调用软件工具（名称 + 参数）","/tools\t列出软件工具；on|off 切换工具调用"]]
+  ok   补全结果里有 /tools  [["/tools\t列出软件工具；on|off 切换工具调用"]]
+  ok   每行是「cmd<TAB>说明」且说明非空  [["/tool\t调用软件工具（名称 + 参数）","/tools\t列出软件工具；on|off 切换工具调用"]]
+
+== B. --hint-test "/tool "：列出可用工具 ==
+  ok   --hint-test "/tool " 退出码 0  [code=0]
+  ok   提示条列出至少 3 个工具名  [命中=get_current_time,calculate,list_local_models,read_workspace_file,list_workspace_files,write_workspace_file / 共 10]
+  ok   提示条包含 get_current_time
+  ok   提示条带工具说明（不是只有名字）  [get_current_time 获取当前本地日期与时间。凡是问「现在几点」「今天几号」「今天星期几」都必须调用，不要凭记忆回答。 calculate 精确计算一个数学表达式，支持 + - * / %]
+
+== C. --hint-test "/"：命令全集 ==
+  ok   --hint-test "/" 退出码 0  [code=0]
+  ok   至少 11 条命令  [n=11]
+  ok   包含全部必需命令（help/clear/new/model/state/tools/tool/run/web/think/exit）  [齐]
+  ok   --hint-test 非命令输入也能正常退出（不崩）  [code=0]
+
+== D. --plain 管道：/tools、/tool get_current_time、/exit ==
+  ok   --plain 管道退出码 0（/exit 生效）  [code=0 timedOut=false err=]
+  ok   /tools 打印了工具名  [命中=get_current_time,calculate,list_local_models,read_workspace_file,list_workspace_files]
+  ok   /tools 打印了参数（args）  [· 工具 10 个 · 调用：/tool <name> [key=value …] [--json '<json>'] get_current_time （无参数） 获取当前本地日期与时间。凡是问「现在几点」「今天几号」「今天星期几」都必须调用，不要凭记忆回答。 calculat]
+  ok   /tool 调用结果里带工具名 get_current_time
+  ok   /tool 调用结果里有时间（年份/带时间的 JSON）  [· 工具 10 个 · 调用：/tool <name> [key=value …] [--json '<json>'] get_current_time （无参数） 获取当前本地日期与时间。凡是问「现在几点」「今天几号」「今天星期几」都必须调用，不要凭记忆回答。 calculate expression:* 精确计算一]
+  ok   没有出现「未知命令」
+  ok   没有 HTTP 错误 / 异常堆栈  [· 工具 10 个 · 调用：/tool <name> [key=value …] [--json '<json>'] get_current_time （无参数） 获取当前本地日期与时间。凡是问「现在几点」「今天几号」「今天星期几」都必须]
+
+== 结果: 23 通过 / 0 失败 ==
+

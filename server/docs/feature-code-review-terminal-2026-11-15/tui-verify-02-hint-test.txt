@@ -1,0 +1,48 @@
+﻿== 环境：2026-11-15 16:05:49 · node v24.17.0 · BASE http://127.0.0.1:8099 (dev v1.7.0) · localai-tui VER 1.2.0 ==
+== --hint-test "/to"（每行 cmd<TAB>说明；不依赖服务）==
+/tool	调用软件工具（名称 + 参数）
+/tools	列出软件工具；on|off 切换工具调用
+exit=0
+
+== --hint-test "/tool "（带尾空格：列工具名；服务在线）==
+get_current_time	获取当前本地日期与时间。凡是问「现在几点」「今天几号」「今天星期几」都必须调用，不要凭记忆回答。
+calculate	精确计算一个数学表达式，支持 + - * / % ** 和括号。涉及具体数值计算时必须调用，不要心算。
+list_local_models	列出本机已下载的可用模型文件及其大小（GB）。
+read_workspace_file	只读取、不修改：读取 workspace 根目录下一个文本文件的内容（只接受文件名，不要带目录）。要看文件内容就用它，绝不要用 write_workspace_file。
+list_workspace_files	列出工作目录 workspace 下的文件与子目录（相对路径），用于查看有哪些资料可读。
+write_workspace_file	新建或覆盖一个文本文件（相对路径，最大 256KB），只在需要把结果保存成文件时用。它会写入/覆盖同名文件；只是要看内容请用 read_workspace_file。content 要精简，不要重复行，单次不超过 200 行。
+run_code	在本机运行一段代码（javascript/python/c/cpp/java/go/rust），返回 stdout、stderr 与退出码；10 秒超时、输出上限 64KB。适合写完文件后立刻验证。
+search_documents	检索本机 workspace 里的文档（md / txt / log / csv / Word 的 docx / PDF），按相关度返回片段与出处文件。问「我的资料里怎么说」「文档/笔记里有没有提到」时先调用它；拿到 file 之后可以用 read_workspace_file 读全文。
+web_search	联网搜索网页（中文查询优先百度，被反爬拦截时自动改用 Bing）。适合查时效性信息、新闻、文档入口。返回标题、地址与摘要。
+fetch_url	读取一个网页的正文（已去标签）。只支持 http/https，拒绝本机与内网地址。适合在搜索之后打开具体页面看细节。
+exit=0
+
+== --hint-test "/tool cal"（按前缀过滤工具名）==
+calculate	精确计算一个数学表达式，支持 + - * / % ** 和括号。涉及具体数值计算时必须调用，不要心算。
+exit=0
+
+== --hint-test "/"（空输入列全部命令）==
+/new	清空上下文（不删会话文件）
+/run	直接跑代码（python/js/c/cpp…）
+/web	联网开关（打开时隐含工具开）
+/exit	退出
+/help	命令与用法总览
+/tool	调用软件工具（名称 + 参数）
+/clear	清屏（保留上下文）
+/model	换模型（不给参数列出候选）
+/state	打印服务状态
+/think	深度思考开关
+/tools	列出软件工具；on|off 切换工具调用
+exit=0
+
+== --hint-test "/xyz"（无匹配）==
+（无匹配：/xyz）
+exit=0
+
+== 服务不可达时的回退：--hint-test "/tool " --url http://127.0.0.1:8399（无人监听，不碰 8099）==
+/tool	调用软件工具（名称 + 参数）（清单需服务在线，输入后会自动拉取 /api/tools）
+exit=0
+
+== 服务不可达时的回退：管道 /tools（友好报错、exit 0）==
+连不上 http://127.0.0.1:8399：先把 QingYaoTP AILauncher.exe 开起来
+exit=0

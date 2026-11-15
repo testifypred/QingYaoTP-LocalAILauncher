@@ -1,0 +1,117 @@
+== 本文件用桩服务（tui-stub-server.mjs，零依赖，不碰 8099/模型）确定性地验证 TUI 层；8099 真服务版见 tui-verify-02/03/04/05/06 ==
+== 环境：2026-11-15 16:02:03 · node v24.17.0 · 桩 http://127.0.0.1:8299（令牌校验 + 404 + result.error 分支）==
+
+== node --check + --selftest ==
+check exit=0
+SELFTEST 通过（29 项）
+exit=0
+
+== --hint-test "/tool " @stub（工具名+说明来自 GET /api/tools）==
+get_current_time	获取当前本地日期与时间（桩：固定返回）。
+calculate	精确计算一个数学表达式（桩：返回 expression 与固定 value）。
+stub_fail	桩：总是返回 result.error，用来验证 TUI 的红字分支。
+exit=0
+
+== --hint-test "/tool cal" @stub（按前缀过滤）==
+calculate	精确计算一个数学表达式（桩：返回 expression 与固定 value）。
+exit=0
+
+== --snapshot --input "/tool " @stub（提示条版面，桩 3 个工具）==
++------------------------------------------------------------------------+
+| QingYaoTP AILauncher 1.2.0  qwen3-5-4B-Q4_K_M.gguf  ctx 16384  工具开  |
+|────────────────────────────────────────────────────────────────────────|
+|                                                                        |
+|› 用一句话说明 KV 缓存为什么能加速多轮对话                              |
+|  🔧 get_current_time {} → 2ms                                          |
+|因为多轮对话的前缀完全一样，模型可以复用上一次已经算好的 KV，只对新增的 |
+|token 做前向计算，所以首字延迟从十几秒降到一秒左右。                    |
+|  38 tok · 1 次工具 · 3.2s                                              |
+|                                                                        |
+|                                                                        |
+|                                                                        |
+|                                                                        |
+|                                                                        |
+|                                                                        |
+|────────────────────────────────────────────────────────────────────────|
+|› /tool                                                                 |
+|▸ get_current_time  获取当前本地日期与时间（桩：固定返回）。            |
+|  calculate  精确计算一个数学表达式（桩：返回 expression 与固定 value）…|
+|  stub_fail  桩：总是返回 result.error，用来验证 TUI 的红字分支。       |
+| Tab 切换候选 · → 接受补全 · Esc 收起 · Enter 执行                      |
++------------------------------------------------------------------------+
+
+== --snapshot --input "/" --hint-idx 2（命令全集提示条：▸ 高亮第 3 个候选）==
++------------------------------------------------------------------------+
+| QingYaoTP AILauncher 1.2.0  qwen3-5-4B-Q4_K_M.gguf  ctx 16384  工具开  |
+|────────────────────────────────────────────────────────────────────────|
+|                                                                        |
+|› 用一句话说明 KV 缓存为什么能加速多轮对话                              |
+|  🔧 get_current_time {} → 2ms                                          |
+|因为多轮对话的前缀完全一样，模型可以复用上一次已经算好的 KV，只对新增的 |
+|token 做前向计算，所以首字延迟从十几秒降到一秒左右。                    |
+|  38 tok · 1 次工具 · 3.2s                                              |
+|                                                                        |
+|                                                                        |
+|                                                                        |
+|────────────────────────────────────────────────────────────────────────|
+|› /new                                                                  |
+|  /new  清空上下文（不删会话文件）                                      |
+|  /run  直接跑代码（python/js/c/cpp…）  · /run <语言> <代码>            |
+|▸ /web  联网开关（打开时隐含工具开）  · /web on|off                     |
+|  /exit  退出                                                           |
+|  /help  命令与用法总览                                                 |
+|  /tool  调用软件工具（名称 + 参数）  · /tool <name> [key=value …] [--j…|
+| Tab 切换候选 · → 接受补全 · Esc 收起 · Enter 执行                      |
++------------------------------------------------------------------------+
+
+== 管道 --plain @stub：/tools、/tool（含 --json、result.error、未知工具 404）==
+· 工具 3 个 · 调用：/tool <name> [key=value …] [--json '<json>']
+  get_current_time  （无参数）
+    获取当前本地日期与时间（桩：固定返回）。
+  calculate  expression:*
+    精确计算一个数学表达式（桩：返回 expression 与固定 value）。
+    · expression：要计算的表达式
+  stub_fail  （无参数）
+    桩：总是返回 result.error，用来验证 TUI 的红字分支。
+  🔧 get_current_time → 0ms
+{
+  "localTime": "2026/11/15 00:00:00",
+  "iso": "2026-11-15T00:00:00.000Z",
+  "weekday": "星期日",
+  "note": "stub"
+}
+  🔧 calculate → 0ms
+{
+  "expression": "6*7",
+  "value": 42
+}
+  🔧 calculate → 0ms
+{
+  "expression": "6*7",
+  "value": 42
+}
+  🔧 stub_fail → 0ms
+工具返回错误：桩故意失败：文件不存在
+{
+  "error": "桩故意失败：文件不存在"
+}
+HTTP 404：没有这个工具：nope
+exit=0
+
+== 伪终端交互冒烟 @stub（Phase A+B，12 条）==
+   A: /to → Tab → Enter → /tool get_current_time → Enter → /help → Enter → Ctrl+C×2
+   B: Tab（空输入出 /）→ Tab → Tab（连按切换候选到 /run）→ Esc（收起）→ /hel → →（接受补全）→ Enter（/help）→ Ctrl+C×2
+PASS  A1 进入全屏渲染
+PASS  A2 命令提示条出现（高亮 ▸）
+PASS  A3 提示条底部按键说明
+PASS  A4 Tab 补全后执行 /tool 用法
+PASS  A5 工具调用结果 localTime
+PASS  A6 /help 输出
+PASS  A7 正常退出（exit 0）
+PASS  B1 空输入 Tab 出 / 并显示提示条
+PASS  B2 连按 Tab 切换候选（/run）
+PASS  B3 Esc 收起提示条（末帧无 ▸ / 提示条）
+PASS  B4 → 接受行内补全并执行 /help
+PASS  B5 正常退出（exit 0）
+TUI 伪终端冒烟通过（12 项）
+exit=0

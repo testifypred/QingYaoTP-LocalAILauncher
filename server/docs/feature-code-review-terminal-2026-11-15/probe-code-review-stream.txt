@@ -1,0 +1,72 @@
+# 证据来源：隔离真跑（Lead 跑的 isolation 回归，8099 v1.7.0，2026-11-15）
+# 原始文件：probe-review-stream.iso.txt（UTF-16，本文件转 UTF-8）
+
+== 目标 http://127.0.0.1:8099 · 模型 qwen3-5-4B-Q4_K_M.gguf ==
+
+  ok   GET /api/state -> 200  [HTTP 200 {"models":[{"file":"DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf","path":"D:\\LocalModels\\DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf","sizeGB":4.68,"label":"DeepSeek-R1-05]
+  ok   拿到本机令牌（state.localToken）  [len=36]
+  当前模型: （未加载） · 模型库 5 个
+  ok   前置：模型已就绪（qwen3-5-4B-Q4_K_M.gguf）  [loaded=qwen3-5-4B-Q4_K_M.gguf]
+
+== A. 参数校验（403 / 400 / 404）==
+  ok   无令牌 -> 403  [HTTP 403 缺少或错误的本地令牌（x-local-token）]
+  ok   403 文案提到令牌 / token  [缺少或错误的本地令牌（x-local-token）]
+  ok   缺 code -> 400  [HTTP 400 缺少 code]
+  ok   缺 code 文案提到 code / 代码  [缺少 code]
+  ok   code 超过 20000 字符 -> 413（契约笔误写 400，按实现）  [HTTP 413 代码太长（上限 20000 字符）]
+  ok   指定不存在的模型 -> 404  [HTTP 404 找不到模型：no-such-model.gguf]
+
+== B. 真审查（SSE，模型约 20-90s）==
+  ok   POST /api/code/review/stream -> 200  [HTTP 200 data: {"type":"meta","model":"qwen3-5-4B-Q4_K_M.gguf","modelFile":"qwen3-5-4B-Q4_K_M.gguf","contextSize":8192,"switchedModel":false,"startedAt":1794729348615}
+
+（39.2s）]
+  ok   Content-Type 是 text/event-stream  [text/event-stream; charset=utf-8]
+  事件序列: meta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delt
+  ok   第一个事件是 meta  [types=meta,delta,delta]
+  ok   有 findings 事件  [i=175]
+  ok   有 done 事件  [i=176]
+  ok   顺序：meta 第一、delta>=1、findings 在 done 前、done 最后（容忍 phase）  [{"meta":0,"delta":173,"lastDelta":173,"phase":1,"findings":175,"done":176,"total":177}]
+  ok   delta 至少 1 段（逐段流式）  [deltaEvents=173]
+  ok   phase 事件（如有）在 delta 之后、findings 之前  [phase=1 lastDelta=173 findings=175]
+  ok   delta 文本非空  [len=330]
+  ok   delta 没漏出裸 JSON（无 issues 字段）  [- 第 4 行：循环条件 `i <= items.length` 会导致索引越界，当 `i` 等于数组长度时访问 `items[i]` 会抛出 `TypeError`。 - 第 5 行：在循环最后一次]
+  ok   delta 没漏出代码围栏标记  [- 第 4 行：循环条件 `i <= items.length` 会导致索引越界，当 `i` 等于数组长度时访问 `items[i]` 会抛出 `TypeError`。 - 第 5 行：在循环最后一次]
+  ok   全程没有 error 事件  [[]]
+  ok   meta.modelFile 非空  [modelFile=qwen3-5-4B-Q4_K_M.gguf]
+  ok   meta.contextSize 是正数  [contextSize=8192]
+  ok   meta.startedAt 是时间戳  [startedAt=1794729348615]
+  ok   findings.summary 是非空字符串  [循环边界错误导致索引越界及属性访问失败]
+  ok   findings.issues 是数组  [type=object]
+  ok   findings.lineCount 是正数  [lineCount=9]
+  ok   每个 issue 字段齐全（line/endLine/severity/title/detail/fix）  [n=2]
+  ok   issue 行号合法（1<=line<=endLine<=lineCount）  [n=2]
+  ok   这次审查真的报出了问题（issues >= 1）  [issues=2 severities=["error","error"]]
+  ok   done.seconds 是正数  [seconds=38.3]
+  ok   done.model 非空  [model=qwen3-5-4B-Q4_K_M.gguf]
+
+== C. 流式修正（/api/code/fix）==
+  ok   POST /api/code/fix -> 200  [HTTP 200 data: {"type":"meta","model":"qwen3-5-4B-Q4_K_M.gguf","modelFile":"qwen3-5-4B-Q4_K_M.gguf","contextSize":8192,"switchedModel":false,"startedAt":1794729387762,"s（11.7s）]
+  ok   fix 的 Content-Type 是 text/event-stream  [text/event-stream; charset=utf-8]
+  事件序列: meta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delt
+  ok   fix 顺序 meta -> delta* -> result -> done 最后  [{"meta":0,"delta":94,"result":95,"done":96,"total":97}]
+  ok   fix 没有 error 事件  [[]]
+  ok   result.code 是非空字符串（完整代码）  [len=259]
+  ok   result.changes 是数组且至少 1 段  [n=1]
+  ok   changes 每段 start<=end 且行号 >=1  [[{"start":3,"end":6}]]
+  ok   changes 有序（start 升序、不重叠）  [[{"start":3,"end":6}]]
+  ok   result.lineCount 是正数  [lineCount=11]
+  ok   changes 的行号落在新代码范围内（end<=lineCount）  [lineCount=11 changes=[{"start":3,"end":6}]]
+  ok   result.added / removed 是数字  [added=4 removed=2]
+  ok   fix done.seconds 是正数  [seconds=10.7]
+
+== D. 指定模型审查（meta.switchedModel）==
+  ok   指定模型审查 -> 200 且拿到 meta  [HTTP 200 data: {"type":"meta","model":"Phi-4-mini-instruct-Q4_K_M.gguf","modelFile":"Phi-4-mini-instruct-Q4_K_M.gguf","contextSize":8192,"switchedModel":true,"startedAt"]
+  ok   meta.switchedModel === true  [switchedModel=true modelFile=Phi-4-mini-instruct-Q4_K_M.gguf]
+  ok   meta.modelFile 是指定的 Phi-4-mini-instruct-Q4_K_M.gguf  [modelFile=Phi-4-mini-instruct-Q4_K_M.gguf]
+  指定模型事件数: 45 / 23.1s
+
+== E. 收尾：模型切回 qwen3-5-4B-Q4_K_M.gguf ==
+  ok   收尾：模型已切回 qwen3-5-4B-Q4_K_M.gguf  [loaded=qwen3-5-4B-Q4_K_M.gguf]
+
+== 结果: 48 通过 / 0 失败 ==
+

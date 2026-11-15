@@ -1,0 +1,139 @@
+﻿== 环境：2026-11-15 16:05:49 · node v24.17.0 · BASE http://127.0.0.1:8099 (dev v1.7.0) · localai-tui VER 1.2.0 ==
+== 管道（非 TTY）模式：/tools 与 /tool（真实服务 v1.7.0）==
+· 工具 10 个 · 调用：/tool <name> [key=value …] [--json '<json>']
+  get_current_time  （无参数）
+    获取当前本地日期与时间。凡是问「现在几点」「今天几号」「今天星期几」都必须调用，不要凭记忆回答。
+  calculate  expression:*
+    精确计算一个数学表达式，支持 + - * / % ** 和括号。涉及具体数值计算时必须调用，不要心算。
+    · expression：要计算的数学表达式，例如 (1234*56)+78
+  list_local_models  （无参数）
+    列出本机已下载的可用模型文件及其大小（GB）。
+  read_workspace_file  name path
+    只读取、不修改：读取 workspace 根目录下一个文本文件的内容（只接受文件名，不要带目录）。要看文件内容就用它，绝不要用 write_workspace_file。
+    · name：文件名，例如 note.txt；path：同 name（两种字段名都接受）
+  list_workspace_files  dir
+    列出工作目录 workspace 下的文件与子目录（相对路径），用于查看有哪些资料可读。
+    · dir：子目录，留空列根目录
+  write_workspace_file  path:* content:*
+    新建或覆盖一个文本文件（相对路径，最大 256KB），只在需要把结果保存成文件时用。它会写入/覆盖同名文件；只是要看内容请用 read_workspace_file。content 要…
+    · path：相对路径，例如 notes/todo.md
+  run_code  language:* code:*
+    在本机运行一段代码（javascript/python/c/cpp/java/go/rust），返回 stdout、stderr 与退出码；10 秒超时、输出上限 64KB。适合写完文件后立刻验证。
+    · language：语言：javascript / python / c / cpp / java / go / rust；code：完整源码
+  search_documents  query:* k
+    检索本机 workspace 里的文档（md / txt / log / csv / Word 的 docx / PDF），按相关度返回片段与出处文件。问「我的资料里怎么说」「文档/笔记里有没有提到」…
+    · query：要检索的关键词或短句，中文英文都行；k：返回几段，默认 5，最多 8
+  web_search  query:* engine
+    联网搜索网页（中文查询优先百度，被反爬拦截时自动改用 Bing）。适合查时效性信息、新闻、文档入口。返回标题、地址与摘要。
+    · query：搜索关键词，尽量具体；engine：可选：baidu / bing / auto，默认 auto
+  fetch_url  url:*
+    读取一个网页的正文（已去标签）。只支持 http/https，拒绝本机与内网地址。适合在搜索之后打开具体页面看细节。
+    · url：完整网址，必须以 http:// 或 https:// 开头
+  🔧 get_current_time → 17ms
+{
+  "localTime": "2026/11/15 16:05:57",
+  "iso": "2026-11-15T08:05:57.175Z",
+  "weekday": "星期日"
+}
+  🔧 calculate → 2ms
+{
+  "expression": "1234*56",
+  "value": 69104
+}
+  🔧 calculate → 1ms
+{
+  "expression": "(1234*56)+78",
+  "value": 69182
+}
+  🔧 list_workspace_files → 10ms
+{
+  "dir": "",
+  "entries": [
+    {
+      "name": "code",
+      "path": "code",
+      "dir": true,
+      "size": 0
+    },
+    {
+      "name": "rag",
+      "path": "rag",
+      "dir": true,
+      "size": 0
+    },
+    {
+      "name": "session-snapshots",
+      "path": "session-snapshots",
+      "dir": true,
+      "size": 0
+    },
+    {
+      "name": "2026年8月高三生物评分细则(2).docx",
+      "path": "2026年8月高三生物评分细则(2).docx",
+      "dir": false,
+      "size": 17037
+    },
+    {
+      "name": "backup.json",
+      "path": "backup.json",
+      "dir": false,
+      "size": 74
+    },
+    {
+      "name": "chat-2026-10-18_10-08-08.md",
+      "path": "chat-2026-10-18_10-08-08.md",
+      "dir": false,
+      "size": 7075
+    },
+    {
+      "name": "discovery.json",
+      "path": "discovery.json",
+      "dir": false,
+      "size": 119
+    },
+    {
+      "name": "note.txt",
+      "path": "note.txt",
+      "dir": false,
+      "size": 38
+    },
+    {
+      "name": "onboarding.json",
+      "path": "onboarding.json",
+      "dir": false,
+      "size": 89
+    },
+    {
+      "name": "plugins.json",
+      "path": "plugins.json",
+      "dir": false,
+      "size": 20
+    },
+    {
+      "name": "rag-seed.md",
+      "path": "rag-seed.md",
+      "dir": false,
+      "size": 170
+    },
+    {
+      "name": "star.py",
+      "path": "star.py",
+      "dir": false,
+      "size": 277
+    },
+    {
+      "name": "timer.py",
+      "path": "timer.py",
+      "dir": false,
+      "size": 2897
+    }
+  ]
+}
+  🔧 read_workspace_file → 5ms
+工具返回错误：ENOENT: no such file or directory, stat 'D:\LocalModels\workspace\nope.txt'
+{
+  "error": "ENOENT: no such file or directory, stat 'D:\\LocalModels\\workspace\\nope.txt'"
+}
+HTTP 404：没有这个工具：nope
+--json 不是合法 JSON：Unexpected token 'o', "not-json" is not valid JSON
+exit=0

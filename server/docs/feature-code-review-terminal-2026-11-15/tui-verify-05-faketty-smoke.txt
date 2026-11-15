@@ -1,0 +1,18 @@
+﻿== 环境：2026-11-15 16:05:49 · node v24.17.0 · BASE http://127.0.0.1:8099 (dev v1.7.0) · localai-tui VER 1.2.0 ==
+== 伪终端交互冒烟（--require tui-faketty.cjs 把管道伪装成 TTY，喂按键跑交互循环）==
+   Phase A: /to → Tab → Enter（执行 /tool 用法）→ /tool get_current_time → Enter → /help → Enter → Ctrl+C×2
+   Phase B: Tab（空输入出 /）→ Tab → Tab（连按切换候选到 /run）→ Esc（收起）→ /hel → →（接受补全）→ Enter（/help）→ Ctrl+C×2
+PASS  A1 进入全屏渲染
+PASS  A2 命令提示条出现（高亮 ▸）
+PASS  A3 提示条底部按键说明
+PASS  A4 Tab 补全后执行 /tool 用法
+PASS  A5 工具调用结果 localTime
+PASS  A6 /help 输出
+PASS  A7 正常退出（exit 0）
+PASS  B1 空输入 Tab 出 / 并显示提示条
+PASS  B2 连按 Tab 切换候选（/run）
+PASS  B3 Esc 收起提示条（末帧无 ▸ / 提示条）
+PASS  B4 → 接受行内补全并执行 /help
+PASS  B5 正常退出（exit 0）
+TUI 伪终端冒烟通过（12 项）
+exit=0

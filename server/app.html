@@ -33,6 +33,8 @@
   --glow-c:rgba(34,211,238,.35); --glow-v:rgba(139,92,246,.30);
   --overlay:rgba(3,6,12,.78);
   --mono:"Cascadia Code","JetBrains Mono",Consolas,"SF Mono",monospace;
+  /* 代码审查行高亮（v1.7.0）：设置 → 代码 里可改；JS 启动时用 localai.cwColors 覆盖 */
+  --cw-err-bg:#7f1d1d66; --cw-warn-bg:#78350f66; --cw-info-bg:#164e6366; --cw-changed-bg:#14532d66;
 }
 :root[data-theme="light"]{
   color-scheme:light;
@@ -765,6 +767,47 @@ math-field:focus-within{border-color:var(--cyan)}
 .cwReviewBody strong{color:var(--text)}
 .cwReviewErr{color:var(--err)}
 .cwReviewEmpty{color:var(--dim)}
+/* ---- v1.7.0 代码审查/修正：新建语言 / 审查模型 / 思考块 / 问题卡片 / 行高亮 ---- */
+.cwToolbar{flex-wrap:wrap}
+.cwToolbar select#cwNewLang{flex:1 1 100%;min-width:0;height:26px;padding:2px 6px;border-radius:5px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:11.5px var(--mono);outline:none}
+.cwToolbar select#cwNewLang:focus{border-color:var(--cyan)}
+.cwReviewHead{flex-wrap:wrap}
+#cwReviewModel{flex:1 1 100%;min-width:0;height:25px;padding:1px 5px;border-radius:5px;border:1px solid var(--line);background:var(--panel);color:var(--text-2);font:400 11px var(--mono);outline:none}
+#cwReviewModel:focus{border-color:var(--cyan)}
+.cwReviewActions{display:flex;align-items:center;gap:6px;padding:2px 10px 8px;flex-wrap:wrap}
+.cwReviewActions button{padding:3px 8px;font-size:11.5px}
+.cwReviewSummary{min-height:0}
+.cwThink{margin:6px 0 10px;border:1px dashed var(--line-2);border-radius:6px;background:var(--accent-soft)}
+.cwThink[hidden]{display:none}
+.cwThink summary{cursor:pointer;padding:5px 9px;font-size:12px;color:var(--text-2);user-select:none}
+.cwThink summary::marker{color:var(--cyan)}
+#cwThinkText{margin:0;padding:0 9px 8px;max-height:34vh;overflow:auto;white-space:pre-wrap;word-break:break-word;font:11.5px/1.65 var(--mono);color:var(--text-2)}
+.cwIssues{display:flex;flex-direction:column;gap:7px;margin:8px 0}
+.cwIssue{border:1px solid var(--line);border-left:3px solid var(--line-2);border-radius:6px;background:var(--panel);padding:7px 9px;cursor:pointer}
+.cwIssue:hover{border-color:var(--cyan)}
+.cwIssue[data-severity="error"]{border-left-color:var(--err)}
+.cwIssue[data-severity="warn"]{border-left-color:var(--warn)}
+.cwIssue[data-severity="info"]{border-left-color:var(--cyan)}
+.cwIssueHead{font-size:12px;font-weight:600;color:var(--text);line-height:1.5}
+.cwIssueHead .sev{font-weight:700;padding:0 3px;border-radius:3px}
+.cwIssue[data-severity="error"] .sev{color:var(--err);background:var(--cw-err-bg)}
+.cwIssue[data-severity="warn"] .sev{color:var(--warn);background:var(--cw-warn-bg)}
+.cwIssue[data-severity="info"] .sev{color:var(--cyan);background:var(--cw-info-bg)}
+.cwIssueDetail{margin-top:3px;font-size:11.5px;line-height:1.6;color:var(--text-2);white-space:pre-wrap}
+.cwIssueFix{margin-top:4px;font-size:11.5px;line-height:1.6;color:var(--ok);white-space:pre-wrap}
+.cwIssueApply{margin-top:5px;padding:2px 8px;font-size:11px}
+.cwReviewState{margin-top:8px;font-size:11.5px;line-height:1.6;color:var(--dim)}
+.cwReviewState.err{color:var(--err)}
+.cwReviewState.ok{color:var(--ok)}
+/* CodeMirror 行背景：审查问题（error/warn/info）与改动行（changed），颜色走 CSS 变量 */
+.CodeMirror .cwLineErr{background:var(--cw-err-bg)}
+.CodeMirror .cwLineWarn{background:var(--cw-warn-bg)}
+.CodeMirror .cwLineInfo{background:var(--cw-info-bg)}
+.CodeMirror .cwLineChanged{background:var(--cw-changed-bg)}
+/* 设置 → 代码 页：颜色选择 */
+.cwColorRow{display:flex;align-items:center;gap:9px;margin:7px 0}
+.cwColorRow input[type=color]{width:40px;height:26px;padding:0;border:1px solid var(--line);border-radius:5px;background:var(--panel-2);cursor:pointer}
+.cwColorRow .hintText{font-family:var(--mono);font-size:11px;color:var(--dim)}
 /* Agent 模式自动收录提示条 */
 .codeCaptured{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:6px;border:1px dashed var(--line-2);background:var(--accent-soft);font-size:12px;color:var(--text-2)}
 .codeCaptured button{font-size:11.5px;padding:3px 10px;font-weight:500}
@@ -1511,6 +1554,24 @@ header::before{
           <input id="cwNewName" placeholder="new.js（回车新建）" spellcheck="false">
           <button id="cwNew" class="ghost">新建</button>
           <button id="cwRefresh" class="ghost">刷新</button>
+          <select id="cwNewLang" title="新建文件的语言：没写扩展名时自动补上，并按该语言高亮">
+            <option value="">按文件名</option>
+            <option value="js">JavaScript（js）</option>
+            <option value="ts">TypeScript（ts）</option>
+            <option value="py">Python（py）</option>
+            <option value="c">C（c）</option>
+            <option value="cpp">C++（cpp）</option>
+            <option value="java">Java（java）</option>
+            <option value="go">Go（go）</option>
+            <option value="rust">Rust（rs）</option>
+            <option value="html">HTML（html）</option>
+            <option value="css">CSS（css）</option>
+            <option value="json">JSON（json）</option>
+            <option value="md">Markdown（md）</option>
+            <option value="sh">Shell（sh）</option>
+            <option value="sql">SQL（sql）</option>
+            <option value="txt">纯文本（txt）</option>
+          </select>
         </div>
         <div id="cwList" class="cwList"></div>
         <div id="cwEmpty" class="cwEmpty" hidden>还没有代码。Agent 模式下的代码会自动收进这里。</div>
@@ -1529,9 +1590,23 @@ header::before{
         <div id="cwOutput" class="codeOut" hidden></div>
       </div>
       <div id="cwReviewPanel" class="cwReview">
-        <div class="cwReviewHead">模型审查 <span id="cwReviewMeta" class="hintText"></span></div>
+        <div class="cwReviewHead">模型审查 <span id="cwReviewMeta" class="hintText"></span>
+          <select id="cwReviewModel" title="用哪个模型审查：默认本对话已加载的模型">
+            <option value="">本对话模型（未加载）</option>
+          </select>
+        </div>
         <textarea id="cwIntent" placeholder="用户意图（留空 = 自动取当前会话最后一条提问）"></textarea>
-        <div id="cwReviewBody" class="cwReviewBody"></div>
+        <div class="cwReviewActions">
+          <button id="cwFixAll" class="ghost" disabled title="把审查发现的问题一次性改掉">一键纠正</button>
+          <button id="cwReReview" class="ghost" title="清空本次结论与高亮，重新审查">重新审查</button>
+          <button id="cwSendChat" class="ghost" title="把当前编辑器里的代码包成代码块填进聊天输入框（不自动发送）">发回对话</button>
+        </div>
+        <div id="cwReviewBody" class="cwReviewBody">
+          <div id="cwReviewSummary" class="cwReviewSummary"></div>
+          <details id="cwThink" class="cwThink" hidden><summary id="cwThinkSum">审查思路（思考中…）</summary><pre id="cwThinkText"></pre></details>
+          <div id="cwIssues" class="cwIssues"></div>
+          <div id="cwReviewState" class="cwReviewState"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1550,6 +1625,7 @@ header::before{
       <button type="button" class="stab" data-tab="vision">视觉</button>
       <button type="button" class="stab" data-tab="tts">朗读</button>
       <button type="button" class="stab" data-tab="tools">工具</button>
+      <button type="button" class="stab" data-tab="code">代码</button>
       <button type="button" class="stab" data-tab="appear">外观</button>
       <button type="button" class="stab" data-tab="about">关于</button>
     </div>
@@ -1786,6 +1862,24 @@ header::before{
           <button id="setQuitOpen" class="ghost danger">退出 QingYaoTP AILauncher 服务</button>
           <span class="hintText">会先确认；退出后可用桌面图标重新启动</span>
         </div>
+      </div>
+    </div>
+    <div class="settingsBody" id="paneCode" data-pane="code" hidden>
+      <div class="field">
+        <span class="lbl">审查高亮颜色</span>
+        <div class="cwColorRow"><input type="color" id="cwColorErr" value="#7f1d1d" title="错误行背景色"><span class="hintText">error 错误行</span></div>
+        <div class="cwColorRow"><input type="color" id="cwColorWarn" value="#78350f" title="警告行背景色"><span class="hintText">warn 警告行</span></div>
+        <div class="cwColorRow"><input type="color" id="cwColorInfo" value="#164e63" title="提示行背景色"><span class="hintText">info 提示行</span></div>
+        <div class="cwColorRow"><input type="color" id="cwColorChanged" value="#14532d" title="一键纠正后改动行的背景色"><span class="hintText">changed 改动行</span></div>
+        <div class="exportRow" style="margin-top:6px">
+          <button id="cwColorReset" class="ghost">恢复默认颜色</button>
+          <span id="cwColorState" class="hintText">存在本机（localai.cwColors）</span>
+        </div>
+        <em>只影响代码面板里的行背景：审查发现的问题按严重度上色，一键纠正 / 一键更改后改动的行用「改动行」色，好对照改了什么。颜色存在本机浏览器里，改完立刻生效。</em>
+      </div>
+      <div class="field">
+        <span class="lbl">审查与修正</span>
+        <em>代码面板的「模型审查」会先流式显示审查思路，再列出问题卡片；点卡片跳到对应行，可以「一键纠正」全部问题或单条「一键更改」。改完的行会高亮，代码仍处于未保存状态——点「保存」才落盘，点「发回对话」则把当前代码包成代码块填进聊天输入框（不会自动发送）。审查 / 纠正默认用本对话已加载的模型，也可以在审查面板顶上指定另一个模型。</em>
       </div>
     </div>
     <div class="settingsBody" id="paneAbout" data-pane="about" hidden>
@@ -3447,6 +3541,11 @@ async function refresh() {
   // 联网开关的可点状态依赖「调用工具」与已加载模型：放在 refresh 里同步，
   // 否则刚打开页面时工具没勾、联网却看起来能点（点了也发不出 web 标记）
   try { if (typeof renderWebState === 'function' && $('webChk')) renderWebState(); } catch {}
+  // 代码面板开着时，让「审查模型」下拉跟上当前模型 / 模型列表变化（契约 2.2）
+  try {
+    const cmEl = document.getElementById('codeModal');
+    if (cmEl && !cmEl.hidden) cwPopulateReviewModels();
+  } catch {}
   return s;
 }
 
@@ -4439,6 +4538,11 @@ const cwNewNameEl = $('cwNewName'), cwSaveEl = $('cwSave'), cwDeleteEl = $('cwDe
 const cwRunEl = $('cwRun'), cwReviewEl = $('cwReview');
 const cwReviewPanelEl = $('cwReviewPanel'), cwReviewToggleEl = $('cwReviewToggle');
 const cwReviewBodyEl = $('cwReviewBody'), cwReviewMetaEl = $('cwReviewMeta'), cwIntentEl = $('cwIntent');
+const cwReviewSummaryEl = $('cwReviewSummary'), cwReviewStateEl = $('cwReviewState');
+const cwThinkEl = $('cwThink'), cwThinkSumEl = $('cwThinkSum'), cwThinkTextEl = $('cwThinkText');
+const cwIssuesEl = $('cwIssues');
+const cwNewLangEl = $('cwNewLang'), cwReviewModelEl = $('cwReviewModel');
+const cwFixAllEl = $('cwFixAll'), cwReReviewEl = $('cwReReview'), cwSendChatEl = $('cwSendChat');
 
 const CW_DIR = 'code';                             // 代码文件统一放工作区 code/ 下（契约第二节）
 const CW_OPEN_KEY = 'localai.cwOpen';              // 上次打开的文件
@@ -4446,11 +4550,45 @@ const CW_INTENT_KEY = 'localai.cwIntent';          // 审查意图草稿
 const CW_REVIEW_OPEN_KEY = 'localai.cwReviewOpen'; // 审查面板是否展开
 const CW_MODES = {
   js: 'javascript', mjs: 'javascript', cjs: 'javascript', json: 'javascript',
+  ts: 'javascript', // 没随包带 TS 模式：按 JS 高亮，关键字/字符串/注释基本对得上
   py: 'python',
   c: 'text/x-csrc', h: 'text/x-csrc',
   cpp: 'text/x-c++src', cc: 'text/x-c++src', cxx: 'text/x-c++src', hpp: 'text/x-c++src',
   java: 'text/x-java', go: 'text/x-go', rs: 'text/x-rustsrc',
+  html: 'text/html', htm: 'text/html', css: 'text/css',
+  md: 'text/plain', markdown: 'text/plain', sh: 'text/plain', bash: 'text/plain',
+  sql: 'text/plain', txt: 'text/plain',
 };
+/** 新建文件可选语言：值 = 下拉框 value，ext = 没写扩展名时自动补的扩展名 */
+const CW_NEW_LANG_EXT = {
+  js: 'js', ts: 'ts', py: 'py', c: 'c', cpp: 'cpp', java: 'java', go: 'go', rust: 'rs',
+  html: 'html', css: 'css', json: 'json', md: 'md', sh: 'sh', sql: 'sql', txt: 'txt',
+};
+const CW_NEW_LANG_PH = {
+  '': 'new.js（回车新建）',
+  js: 'main.js（回车新建）', ts: 'main.ts（回车新建）', py: 'main.py（回车新建）',
+  c: 'main.c（回车新建）', cpp: 'main.cpp（回车新建）', java: 'Main.java（回车新建）',
+  go: 'main.go（回车新建）', rust: 'main.rs（回车新建）',
+  html: 'index.html（回车新建）', css: 'style.css（回车新建）', json: 'data.json（回车新建）',
+  md: 'README.md（回车新建）', sh: 'run.sh（回车新建）', sql: 'query.sql（回车新建）',
+  txt: 'note.txt（回车新建）',
+};
+/** 扩展名 → 发回对话时的围栏语言标记 */
+const CW_FENCE_LANG = {
+  js: 'javascript', mjs: 'javascript', cjs: 'javascript', ts: 'typescript',
+  py: 'python', c: 'c', cpp: 'cpp', cc: 'cpp', cxx: 'cpp', h: 'c', hpp: 'cpp',
+  java: 'java', go: 'go', rs: 'rust', rust: 'rust',
+  html: 'html', css: 'css', json: 'json', md: 'markdown', sh: 'bash', bash: 'bash', sql: 'sql',
+};
+const CW_NEWLANG_KEY = 'localai.cwNewLang';       // 新建文件语言（重启后保留）
+const CW_COLOR_KEY = 'localai.cwColors';          // 行高亮颜色 {err,warn,info,changed}
+const CW_COLOR_DEF = { err: '#7f1d1d66', warn: '#78350f66', info: '#164e6366', changed: '#14532d66' };
+const CW_COLOR_FIELDS = [
+  ['err', 'cwColorErr', '--cw-err-bg'],
+  ['warn', 'cwColorWarn', '--cw-warn-bg'],
+  ['info', 'cwColorInfo', '--cw-info-bg'],
+  ['changed', 'cwColorChanged', '--cw-changed-bg'],
+];
 /** 扩展名 → /api/run 的语言（只列可运行类型；没有映射就不发请求） */
 const CW_RUN_LANGS = {
   js: 'javascript', mjs: 'javascript', cjs: 'javascript',
@@ -4475,10 +4613,19 @@ let cwTabs = [];        // 打开过的标签（按打开顺序）
 let cwLangs = null;     // /api/run/langs 结果：判断本机能不能运行
 let cwReviewTimer = null;
 let cwReviewBusy = false;
+let cwIssues = [];            // 最近一次审查的问题（Claude/契约字段：line/endLine/severity/title/detail/fix）
+let cwChangedRanges = [];     // 最近一次修正 changes（新代码里的行号区间，1 起始闭区间）
+let cwFixInfo = null;         // 最近一次修正的 added/removed
+let cwLineMarks = [];         // 已加到 CodeMirror 行上的 {h, cls}，用于下一次清掉
+let cwReviewModelSig = '';    // 审查模型下拉的「当前内容签名」，避免 refresh 每 3 秒重建
+let cwColors = Object.assign({}, CW_COLOR_DEF); // 行高亮颜色（localStorage localai.cwColors）
 
 function cwExt(p) { return (String(p || '').split('.').pop() || '').toLowerCase(); }
 function cwModeFor(p) { return CW_MODES[cwExt(p)] || 'text/plain'; }
 function cwLangFor(p) { return CW_RUN_LANGS[cwExt(p)] || ''; }
+function cwFenceLang(p) { return CW_FENCE_LANG[cwExt(p)] || cwExt(p) || ''; }
+/** 名字最后一段有没有扩展名（.env 这种点文件也算有） */
+function cwHasExtName(name) { return /\.[A-Za-z0-9]+$/.test(String(name || '').split('/').pop()); }
 
 /** 状态栏文字：kind=err 红字 / ok 绿字 / 其余暗色 */
 function cwSetStatus(text, kind) {
@@ -4634,8 +4781,31 @@ function cwNormalizePath(name) {
   return p;
 }
 
+/** 新建文件语言下拉：跟着变 placeholder、记 localStorage（契约 2.1） */
+function cwSyncNewLangUI() {
+  const v = cwNewLangEl ? (cwNewLangEl.value || '') : '';
+  cwNewNameEl.placeholder = CW_NEW_LANG_PH[v] || CW_NEW_LANG_PH[''];
+  try {
+    if (v) localStorage.setItem(CW_NEWLANG_KEY, v);
+    else localStorage.removeItem(CW_NEWLANG_KEY);
+  } catch {}
+}
+
+function cwInitNewLang() {
+  if (!cwNewLangEl) return;
+  let v = '';
+  try { v = localStorage.getItem(CW_NEWLANG_KEY) || ''; } catch {}
+  if (v && CW_NEW_LANG_EXT[v]) cwNewLangEl.value = v;
+  cwSyncNewLangUI();
+}
+
 async function cwNewFile() {
-  const p = cwNormalizePath(cwNewNameEl.value);
+  let name = cwNewNameEl.value.trim();
+  const lang = cwNewLangEl ? (cwNewLangEl.value || '') : '';
+  // 选了语言且名字没扩展名 → 自动补；写了扩展名就尊重用户（契约 2.1）
+  if (lang && CW_NEW_LANG_EXT[lang] && name && !cwHasExtName(name)) name += '.' + CW_NEW_LANG_EXT[lang];
+  if (!name && lang && CW_NEW_LANG_EXT[lang]) name = 'snippet.' + CW_NEW_LANG_EXT[lang];
+  const p = cwNormalizePath(name);
   try {
     await apiJson('/api/workspace/save', {
       method: 'POST',
@@ -4749,7 +4919,328 @@ function cwLastUserAsk() {
   return '';
 }
 
-function cwSetReviewBody(html) { cwReviewBodyEl.innerHTML = html; }
+// ---- v1.7.0 审查/修正：思考块 / 问题卡片 / 行高亮 / 一键纠正（契约 §2.3–2.5） ----
+function cwSetReviewBody(html) { cwReviewSummaryEl.innerHTML = html || ''; }
+
+function cwSetReviewState(text, kind) {
+  cwReviewStateEl.textContent = text || '';
+  cwReviewStateEl.className = 'cwReviewState' + (kind ? ' ' + kind : '');
+}
+
+function cwThinkBegin(title) {
+  if (!cwThinkEl) return;
+  cwThinkEl.hidden = false;
+  cwThinkEl.open = true;
+  cwThinkSumEl.textContent = title || '审查思路（思考中…）';
+  cwThinkTextEl.textContent = '';
+}
+
+function cwThinkAppend(text) {
+  if (!text) return;
+  cwThinkTextEl.textContent += String(text);
+  if (cwThinkEl.open) cwReviewBodyEl.scrollTop = cwReviewBodyEl.scrollHeight;
+}
+
+function cwThinkEnd(label) {
+  if (!cwThinkEl || cwThinkEl.hidden) return;
+  cwThinkEl.open = false;
+  if (label) cwThinkSumEl.textContent = label;
+}
+
+function cwThinkHide() {
+  if (!cwThinkEl) return;
+  cwThinkEl.hidden = true;
+  cwThinkEl.open = false;
+  cwThinkSumEl.textContent = '审查思路';
+  cwThinkTextEl.textContent = '';
+}
+
+/** 问题字段规整：行号 clamp 到 >=1；endLine 不小于 line；severity 只认 error/warn/info */
+function cwNormIssue(it, i) {
+  const o = it || {};
+  const line = Math.max(1, Math.round(Number(o.line) || 1));
+  const endLine = Math.max(line, Math.round(Number(o.endLine) || line));
+  const sev = String(o.severity || 'info').toLowerCase();
+  return {
+    line,
+    endLine,
+    severity: sev === 'error' || sev === 'warn' || sev === 'info' ? sev : 'info',
+    title: String(o.title || ('问题 ' + (i + 1))).slice(0, 200),
+    detail: String(o.detail || ''),
+    fix: String(o.fix || ''),
+  };
+}
+
+const CW_SEV_LABEL = { error: '错误', warn: '警告', info: '提示' };
+
+function cwLineRangeText(it) {
+  return it.endLine > it.line ? '行 ' + it.line + '–' + it.endLine : '行 ' + it.line;
+}
+
+/** 渲染 #cwIssues 问题卡片；卡片本身可点（跳行选中），「一键更改」按钮单独处理 */
+function cwRenderIssues(list) {
+  if (!cwIssuesEl) return;
+  cwIssuesEl.textContent = '';
+  (list || []).forEach((it, i) => {
+    const card = document.createElement('div');
+    card.className = 'cwIssue';
+    card.dataset.line = String(it.line);
+    card.dataset.endLine = String(it.endLine);
+    card.dataset.severity = it.severity;
+    card.dataset.index = String(i);
+    const head = document.createElement('div');
+    head.className = 'cwIssueHead';
+    head.appendChild(document.createTextNode(cwLineRangeText(it) + ' · '));
+    const sev = document.createElement('span');
+    sev.className = 'sev';
+    sev.textContent = CW_SEV_LABEL[it.severity] || it.severity;
+    head.appendChild(sev);
+    head.appendChild(document.createTextNode(' · ' + it.title));
+    card.appendChild(head);
+    if (it.detail) {
+      const d = document.createElement('div');
+      d.className = 'cwIssueDetail';
+      d.textContent = it.detail;
+      card.appendChild(d);
+    }
+    if (it.fix) {
+      const fx = document.createElement('div');
+      fx.className = 'cwIssueFix';
+      fx.textContent = '建议：' + it.fix;
+      card.appendChild(fx);
+    }
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cwIssueApply';
+    btn.textContent = '一键更改';
+    btn.title = '只改这一条问题';
+    btn.onclick = (e) => { e.stopPropagation(); cwFixIssues('single', [it]); };
+    card.appendChild(btn);
+    card.onclick = () => cwGotoIssue(it);
+    cwIssuesEl.appendChild(card);
+  });
+  cwRefreshActionButtons();
+}
+
+/** 点问题卡片：跳到对应行并选中行范围（契约 2.4） */
+function cwGotoIssue(it) {
+  const cm = cwEnsureEditor();
+  if (!cm) return;
+  const cnt = Math.max(1, cm.lineCount());
+  const l = Math.max(1, Math.min(cnt, it.line));
+  const e = Math.max(l, Math.min(cnt, it.endLine));
+  // 反向 setSelection（anchor=区间尾、head=区间首）：选中整段不动，但光标记在问题起始行，
+  // 这样 cm.getCursor() 落在 issues[].line 上（探针与用户预期都是「跳到报告的那一行」）。
+  cm.setSelection({ line: e - 1, ch: cm.getLine(e - 1).length }, { line: l - 1, ch: 0 });
+  cm.focus();
+  cm.scrollIntoView({ line: l - 1, ch: 0 }, 120);
+}
+
+/** 行高亮清理：只移除自己加过的 class（cls 为空 = 全清） */
+function cwClearLineClass(cls) {
+  const cm = cwEnsureEditor();
+  const keep = [];
+  for (const mk of cwLineMarks) {
+    if (cls && mk.cls !== cls) { keep.push(mk); continue; }
+    try { if (cm) cm.removeLineClass(mk.h, 'background', mk.cls); } catch {}
+  }
+  cwLineMarks = keep;
+}
+
+/** 按 issues[].line..endLine 给错误/警告/提示行上色；每次新审查先清旧（契约 2.4） */
+function cwApplyIssueHighlights(list) {
+  cwClearLineClass(null);
+  const cm = cwEnsureEditor();
+  if (!cm) return;
+  const cnt = Math.max(1, cm.lineCount());
+  const clsOf = { error: 'cwLineErr', warn: 'cwLineWarn', info: 'cwLineInfo' };
+  cm.operation(() => {
+    for (const it of list || []) {
+      const cls = clsOf[it.severity] || 'cwLineInfo';
+      const l = Math.max(1, Math.min(cnt, it.line));
+      const e = Math.max(l, Math.min(cnt, it.endLine));
+      for (let n = l; n <= e; n++) {
+        const h = cm.getLineHandle(n - 1);
+        if (!h) continue;
+        cm.addLineClass(h, 'background', cls);
+        cwLineMarks.push({ h, cls });
+      }
+    }
+  });
+}
+
+/** 一键纠正后按 changes（新代码行号）加 .cwLineChanged（另一颜色，契约 2.5） */
+function cwApplyChangedHighlights(changes) {
+  cwClearLineClass('cwLineChanged');
+  const cm = cwEnsureEditor();
+  if (!cm) return;
+  const cnt = Math.max(1, cm.lineCount());
+  cm.operation(() => {
+    for (const r of changes || []) {
+      const l = Math.max(1, Math.min(cnt, Number(r.start) || 1));
+      const e = Math.max(l, Math.min(cnt, Number(r.end) || l));
+      for (let n = l; n <= e; n++) {
+        const h = cm.getLineHandle(n - 1);
+        if (!h) continue;
+        cm.addLineClass(h, 'background', 'cwLineChanged');
+        cwLineMarks.push({ h, cls: 'cwLineChanged' });
+      }
+    }
+  });
+}
+
+/** 清空本次审查的一切：问题 / 行高亮 / 思考块 / 状态（重新审查也走这里） */
+function cwResetReviewView() {
+  cwIssues = [];
+  cwChangedRanges = [];
+  cwFixInfo = null;
+  cwRenderIssues([]);
+  cwClearLineClass(null);
+  cwSetReviewBody('');
+  cwThinkHide();
+  cwSetReviewState('');
+  cwRefreshActionButtons();
+}
+
+function cwRefreshActionButtons() {
+  if (cwFixAllEl) cwFixAllEl.disabled = cwReviewBusy || !cwIssues.length;
+  if (cwReReviewEl) cwReReviewEl.disabled = cwReviewBusy;
+  if (cwSendChatEl) cwSendChatEl.disabled = false;
+  if (cwIssuesEl) for (const b of cwIssuesEl.querySelectorAll('.cwIssueApply')) b.disabled = cwReviewBusy;
+}
+
+/** 审查模型下拉：首项「本对话模型（当前）」，其余来自 /api/state.models 的 file（契约 2.2） */
+function cwPopulateReviewModels() {
+  if (!cwReviewModelEl) return;
+  const files = (modelsCache || []).map((m) => m && m.file).filter(Boolean);
+  const curName = loaded ? prettyName(loaded) : '未加载';
+  const sig = curName + '|' + files.join(',');
+  if (sig === cwReviewModelSig && cwReviewModelEl.options.length > 0) return;
+  cwReviewModelSig = sig;
+  const prev = cwReviewModelEl.value || '';
+  cwReviewModelEl.textContent = '';
+  const add = (v, label) => {
+    const o = document.createElement('option');
+    o.value = v;
+    o.textContent = label;
+    cwReviewModelEl.appendChild(o);
+  };
+  add('', '本对话模型（' + curName + '）');
+  for (const f of files) add(f, prettyName(f));
+  cwReviewModelEl.value = prev && files.includes(prev) ? prev : '';
+}
+
+/**
+ * 读 SSE：response.body.getReader() + TextDecoder，按空行切事件（契约 2.3）。
+ * handler 收到解析后的 JSON 事件；handler 抛错会中断整个读取并向上抛。
+ */
+async function cwStreamSSE(url, payload, handler) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-local-token': localToken },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    const err = new Error((j.error && j.error.message) || ('HTTP ' + r.status));
+    err.status = r.status;
+    throw err;
+  }
+  if (!r.body || typeof r.body.getReader !== 'function') throw new Error('这个浏览器不支持流式读取');
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const step = await reader.read();
+    if (step.done) break;
+    buf += dec.decode(step.value, { stream: true });
+    let cut;
+    while ((cut = buf.indexOf('\n\n')) >= 0) {
+      const chunk = buf.slice(0, cut);
+      buf = buf.slice(cut + 2);
+      for (const line of chunk.split('\n')) {
+        if (!line.startsWith('data:')) continue;
+        const raw = line.slice(5).trim();
+        if (!raw) continue;
+        let ev = null;
+        try { ev = JSON.parse(raw); } catch { continue; }
+        if (ev) handler(ev);
+      }
+    }
+  }
+  // 收尾：最后一个事件后面没跟空行也尽量吃掉
+  const tail = buf.trim();
+  if (tail.startsWith('data:')) {
+    try { handler(JSON.parse(tail.slice(5).trim())); } catch {}
+  }
+}
+
+// ---- 高亮颜色（设置 → 代码；localStorage localai.cwColors + CSS 变量，契约 2.7） ----
+function cwHex6(v) {
+  const s = String(v || '').trim();
+  const m = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(s);
+  return m ? '#' + m[1].toLowerCase() + (m[2] ? m[2].toLowerCase() : '') : '';
+}
+
+function cwApplyColors() {
+  const st = document.documentElement.style;
+  for (const f of CW_COLOR_FIELDS) st.setProperty(f[2], cwColors[f[0]]);
+}
+
+function cwSyncColorInputs() {
+  for (const f of CW_COLOR_FIELDS) {
+    const el = $(f[1]);
+    if (el) el.value = cwColors[f[0]].slice(0, 7);
+  }
+}
+
+function cwSaveColors() {
+  try {
+    localStorage.setItem(CW_COLOR_KEY, JSON.stringify({
+      err: cwColors.err, warn: cwColors.warn, info: cwColors.info, changed: cwColors.changed,
+    }));
+  } catch {}
+  cwApplyColors();
+}
+
+function cwLoadColors() {
+  try {
+    const j = JSON.parse(localStorage.getItem(CW_COLOR_KEY) || '{}') || {};
+    for (const f of CW_COLOR_FIELDS) {
+      const v = cwHex6(j[f[0]]);
+      if (v) cwColors[f[0]] = v.length === 7 ? v + '66' : v;
+    }
+  } catch {}
+  cwApplyColors();
+  cwSyncColorInputs();
+}
+
+function cwBindColorInputs() {
+  for (const f of CW_COLOR_FIELDS) {
+    const el = $(f[1]);
+    if (!el) continue;
+    el.addEventListener('input', () => {
+      const hex = /^#[0-9a-f]{6}$/i.test(el.value) ? el.value.toLowerCase() : CW_COLOR_DEF[f[0]].slice(0, 7);
+      cwColors[f[0]] = hex + '66'; // <input type=color> 没有透明度：统一 40%
+      cwSaveColors();
+      const info = $('cwColorState');
+      if (info) info.textContent = '已保存 · ' + f[0] + ' ' + cwColors[f[0]];
+    });
+  }
+  const reset = $('cwColorReset');
+  if (reset) reset.onclick = () => {
+    cwColors = Object.assign({}, CW_COLOR_DEF);
+    cwSaveColors();
+    cwSyncColorInputs();
+    const info = $('cwColorState');
+    if (info) info.textContent = '已恢复默认（localai.cwColors）';
+    showToast('代码高亮颜色已恢复默认', 'ok', 3200);
+  };
+}
+
+cwInitNewLang();
+cwBindColorInputs();
+cwLoadColors();
 
 function cwResetReviewTimer() {
   if (cwReviewTimer) { clearInterval(cwReviewTimer); cwReviewTimer = null; }
@@ -4770,57 +5261,245 @@ function cwToggleReviewPanel() {
   try { localStorage.setItem(CW_REVIEW_OPEN_KEY, open ? '1' : '0'); } catch {}
 }
 
+/** 一次审查：优先流式 /api/code/review/stream；旧后端 404 时退回 /api/code/review（兼容契约 2.8） */
 async function cwReviewCode() {
   if (cwReviewBusy) return;
   const code = cwValue();
   if (!code.trim()) { showToast('先打开或写点代码', 'warn', 3200); return; }
+  if (!localToken) { try { await refresh(); } catch {} }
   const lang = cwLangFor(cwCurrent) || cwExt(cwCurrent) || '';
   const file = cwCurrent ? cwCurrent.split('/').pop() : '';
   let intent = cwIntentEl.value.trim();
   if (!intent) intent = cwLastUserAsk();
   intent = intent.slice(0, 500);
   try { localStorage.setItem(CW_INTENT_KEY, cwIntentEl.value); } catch {}
+  const modelSel = cwReviewModelEl ? (cwReviewModelEl.value || '') : '';
   // 审查结果总要看得到：开始前自动展开面板
   cwApplyReviewOpen(true);
   try { localStorage.setItem(CW_REVIEW_OPEN_KEY, '1'); } catch {}
   cwReviewBusy = true;
+  cwRefreshActionButtons();
   const old = cwReviewEl.textContent;
   cwReviewEl.disabled = true;
   const t0 = Date.now();
   cwReviewEl.textContent = '审查中…（已用 0.0s）';
   cwReviewMetaEl.textContent = '';
+  cwResetReviewView();
   cwSetReviewBody('<span class="cwReviewEmpty">模型正在结合意图读代码…</span>');
+  cwThinkBegin('审查思路（思考中…）');
+  if (modelSel && modelSel !== loaded) cwSetReviewState('正在切换模型…' + prettyName(modelSel), '');
   cwResetReviewTimer();
   cwReviewTimer = setInterval(() => {
     cwReviewEl.textContent = '审查中…（已用 ' + ((Date.now() - t0) / 1000).toFixed(1) + 's）';
   }, 200);
+  const payload = { code, lang, file, intent };
+  if (modelSel) payload.model = modelSel;
   try {
-    const r = await fetch('/api/code/review', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ code, lang, file, intent }),
-    });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      if (r.status === 404) throw new Error('后端接口还没就绪（/api/code/review 未实现）');
-      throw new Error(j.error?.message || ('HTTP ' + r.status));
+    try {
+      await cwRunReviewStream(payload);
+    } catch (e) {
+      if (e && e.status === 404) await cwReviewLegacy(payload); // 流式接口还没上线
+      else throw e;
     }
-    cwSetReviewBody(renderMarkdown(j.review || '（模型没有给出内容）'));
-    const model = String(j.model || '').split(/[\\/]/).pop() || '模型';
-    cwReviewMetaEl.textContent = model + ' · ' + Number(j.seconds || 0).toFixed(1) + 's';
   } catch (e) {
     cwSetReviewBody('<div class="cwReviewErr">审查失败：' + escapeHtml(e.message) + '</div>');
+    cwSetReviewState('审查失败：' + e.message, 'err');
+    cwThinkEnd('审查思路（中断）');
     showToast('审查失败：' + e.message, 'err', 5200);
   } finally {
     cwResetReviewTimer();
     cwReviewBusy = false;
     cwReviewEl.disabled = false;
     cwReviewEl.textContent = old;
+    cwRefreshActionButtons();
   }
+}
+
+async function cwRunReviewStream(payload) {
+  let gotFindings = false;
+  await cwStreamSSE('/api/code/review/stream', payload, (ev) => {
+    if (ev.type === 'meta') {
+      const name = prettyName(ev.modelFile || ev.model || '');
+      cwReviewMetaEl.textContent = name + (ev.switchedModel ? ' · 已切换' : '');
+      if (ev.switchedModel) showToast('已切换到 ' + name + ' 进行审查', 'ok', 5200);
+    } else if (ev.type === 'delta') {
+      cwThinkAppend(ev.text);
+    } else if (ev.type === 'phase') {
+      // 后端两阶段：思路流完之后再单独要 JSON，这里只提示进度（契约外补充事件，忽略也不影响）
+      if (ev.phase === 'findings') cwSetReviewState('审查思路已生成，正在整理问题清单…', '');
+    } else if (ev.type === 'findings') {
+      gotFindings = true;
+      cwApplyFindings(ev);
+    } else if (ev.type === 'done') {
+      const secs = Number(ev.seconds);
+      const n = cwIssues.length;
+      const secTxt = Number.isFinite(secs) ? ' · ' + secs.toFixed(1) + 's' : '';
+      if (ev.model) cwReviewMetaEl.textContent = prettyName(ev.model) + secTxt;
+      cwSetReviewState('审查完成 · ' + n + ' 个问题' + secTxt, 'ok');
+    } else if (ev.type === 'error') {
+      throw new Error(ev.message || '审查失败');
+    }
+  });
+  if (!gotFindings) throw new Error('审查流没有返回问题列表（模型输出可能被截断）');
+}
+
+/** findings 到达：摘要 markdown + 问题卡片 + 行高亮（契约 2.3 / 2.4） */
+function cwApplyFindings(ev) {
+  const issues = Array.isArray(ev && ev.issues) ? ev.issues.map(cwNormIssue) : [];
+  cwIssues = issues;
+  const summary = String((ev && ev.summary) || '').trim();
+  cwSetReviewBody(renderMarkdown(summary || (issues.length ? '审查发现问题。' : '没有发现问题。')));
+  cwRenderIssues(issues);
+  cwApplyIssueHighlights(issues);
+  const chars = cwThinkTextEl.textContent.length;
+  cwThinkEnd('审查思路（已完成' + (chars ? ' · ' + chars + ' 字' : '') + '）');
+  cwSetReviewState(issues.length ? '发现 ' + issues.length + ' 个问题 · 点卡片跳转到对应行' : '没有发现问题', issues.length ? '' : 'ok');
+}
+
+/** 旧的非流式审查（后端还没升级时的兜底，渲染进入 #cwReviewBody） */
+async function cwReviewLegacy(payload) {
+  const r = await fetch('/api/code/review', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ code: payload.code, lang: payload.lang, file: payload.file, intent: payload.intent }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    if (r.status === 404) throw new Error('后端接口还没就绪（/api/code/review/stream 与 /api/code/review 都未实现）');
+    throw new Error((j.error && j.error.message) || ('HTTP ' + r.status));
+  }
+  cwThinkHide();
+  cwSetReviewBody(renderMarkdown(j.review || '（模型没有给出内容）'));
+  let model = String(j.model || '');
+  model = model.split('/').pop().split('\\').pop() || '模型';
+  cwReviewMetaEl.textContent = model + ' · ' + Number(j.seconds || 0).toFixed(1) + 's';
+  cwSetReviewState('审查完成（旧接口，无流式思考）', 'ok');
+}
+
+/** 一键纠正（全部）/ 一键更改（单条）：POST /api/code/fix（SSE），契约 2.5 */
+async function cwFixIssues(scope, issues) {
+  if (cwReviewBusy) return;
+  const code = cwValue();
+  if (!code.trim()) { showToast('先打开或写点代码', 'warn', 3200); return; }
+  if (!localToken) { try { await refresh(); } catch {} }
+  const list = (issues || []).filter(Boolean);
+  if (!list.length) { showToast('没有可修改的问题', 'warn', 3200); return; }
+  const lang = cwLangFor(cwCurrent) || cwExt(cwCurrent) || '';
+  const file = cwCurrent ? cwCurrent.split('/').pop() : '';
+  let intent = cwIntentEl.value.trim();
+  if (!intent) intent = cwLastUserAsk();
+  intent = intent.slice(0, 500);
+  const modelSel = cwReviewModelEl ? (cwReviewModelEl.value || '') : '';
+  cwApplyReviewOpen(true);
+  try { localStorage.setItem(CW_REVIEW_OPEN_KEY, '1'); } catch {}
+  cwReviewBusy = true;
+  cwRefreshActionButtons();
+  const old = cwReviewEl.textContent;
+  cwReviewEl.disabled = true;
+  const t0 = Date.now();
+  cwReviewEl.textContent = '纠正中…（已用 0.0s）';
+  cwSetReviewState('正在生成修正代码…', '');
+  cwThinkBegin(scope === 'all'
+    ? '一键纠正（全部 ' + list.length + ' 个问题）· 思考中…'
+    : '一键更改（' + cwLineRangeText(list[0]) + '）· 思考中…');
+  cwResetReviewTimer();
+  cwReviewTimer = setInterval(() => {
+    cwReviewEl.textContent = '纠正中…（已用 ' + ((Date.now() - t0) / 1000).toFixed(1) + 's）';
+  }, 200);
+  const payload = { code, lang, file, intent, issues: list, scope };
+  if (modelSel) payload.model = modelSel;
+  try {
+    await cwStreamSSE('/api/code/fix', payload, (ev) => {
+      if (ev.type === 'meta') {
+        const name = prettyName(ev.modelFile || ev.model || '');
+        cwReviewMetaEl.textContent = name;
+        if (ev.switchedModel) showToast('已切换到 ' + name + ' 生成修正代码', 'ok', 5200);
+      } else if (ev.type === 'delta') {
+        cwThinkAppend(ev.text);
+      } else if (ev.type === 'result') {
+        cwApplyFixResult(ev);
+      } else if (ev.type === 'error') {
+        throw new Error(ev.message || '修改失败');
+      }
+    });
+  } catch (e) {
+    const msg = e && e.status === 404 ? '后端接口还没就绪（/api/code/fix 未实现）' : e.message;
+    cwSetReviewState('修改失败：' + msg, 'err');
+    cwThinkEnd('修正思路（中断）');
+    showToast('修改失败：' + msg, 'err', 6000);
+  } finally {
+    cwResetReviewTimer();
+    cwReviewBusy = false;
+    cwReviewEl.disabled = false;
+    cwReviewEl.textContent = old;
+    cwRefreshActionButtons();
+  }
+}
+
+/** result 到达：代码写进编辑器（保持 dirty、不落盘），按 changes 加 .cwLineChanged */
+function cwApplyFixResult(ev) {
+  const code = String((ev && ev.code) || '');
+  if (!code.trim()) throw new Error('修正接口没有返回代码');
+  const changes = (Array.isArray(ev.changes) ? ev.changes : []).map((r) => {
+    const start = Math.max(1, Math.round(Number(r && r.start) || 1));
+    const end = Math.max(start, Math.round(Number(r && r.end) || start));
+    return { start, end };
+  });
+  const cm = cwEnsureEditor();
+  if (cm) {
+    cm.setValue(code);
+    cm.clearHistory();
+    cm.setOption('mode', cwModeFor(cwCurrent));
+  } else {
+    cwEditorEl.value = code;
+  }
+  cwDirty = true;
+  if (cwCurrent) cwFileEl.textContent = cwCurrent + ' · 未保存（已修改）';
+  cwRenderTabs();
+  cwApplyChangedHighlights(changes);
+  cwChangedRanges = changes;
+  cwFixInfo = { added: Number(ev.added) || 0, removed: Number(ev.removed) || 0, lineCount: Number(ev.lineCount) || 0 };
+  cwThinkEnd('修正思路（已完成）');
+  const segs = changes.map((r) => (r.start === r.end ? '第 ' + r.start + ' 行' : '第 ' + r.start + '–' + r.end + ' 行')).join('、');
+  cwSetReviewState('已修改 ' + (changes.length || 1) + ' 处（新增 ' + cwFixInfo.added + ' / 删除 ' + cwFixInfo.removed + '）· 可保存或发回对话', 'ok');
+  cwSetStatus('修正完成：' + (segs || '已写入编辑器') + '（未保存）', 'ok');
+  showToast('修正完成：' + (changes.length || 1) + ' 处改动已写进编辑器（未保存）', 'ok', 5200);
+}
+
+/** 重新审查：清空 issues/高亮后重新走审查流 */
+function cwReReview() {
+  if (cwReviewBusy) return;
+  cwResetReviewView();
+  cwReviewCode();
+}
+
+/** 发回对话：把编辑器里的代码包成围栏块 + 说明填进输入框（不自动发送，契约 2.6） */
+function cwSendChat() {
+  const code = cwValue();
+  if (!code.trim()) { showToast('编辑器里没有代码，先打开或写点代码', 'warn', 3600); return; }
+  const file = cwCurrent ? cwCurrent.split('/').pop() : '代码片段';
+  const lang = cwFenceLang(cwCurrent) || 'text';
+  const lines = ['这是修正后的版本：' + file + '（' + lang + '）'];
+  if (cwChangedRanges.length) {
+    const segs = cwChangedRanges.map((r) => (r.start === r.end ? '第 ' + r.start + ' 行' : '第 ' + r.start + '–' + r.end + ' 行')).join('、');
+    lines.push('改动行：' + segs + (cwFixInfo ? '（新增 ' + cwFixInfo.added + ' / 删除 ' + cwFixInfo.removed + '）' : ''));
+  }
+  const text = lines.join('\n') + '\n\n```' + lang + '\n' + String(code).replace(/\n$/, '') + '\n```\n';
+  input.value = input.value.trim() ? input.value.replace(/\s+$/, '') + '\n\n' + text : text;
+  saveDraftNow();
+  const hi = document.getElementById('heroInput');
+  if (hi) hi.value = input.value;
+  // 回到对话：面板收起，但绝不自动保存修正后的代码（契约 2.5「不落盘」）
+  cwResetReviewTimer();
+  codeModal.hidden = true;
+  input.focus();
+  showToast('已把当前代码填入输入框（未发送，可补一句说明再回车）', 'ok', 5200);
 }
 
 async function openCodePanel(path) {
   codeModal.hidden = false;
+  cwInitNewLang();
+  cwPopulateReviewModels();
   try { await cwLoadLangs(); } catch (e) { cwSetStatus('语言列表读取失败：' + e.message, 'err'); }
   let files = [];
   try { files = await cwLoadList(); } catch (e) { cwSetStatus('列表读取失败：' + e.message, 'err'); }
@@ -4994,6 +5673,15 @@ $('cwDelete').onclick = () => cwDeleteFile();
 $('cwRun').onclick = () => cwRunFile();
 $('cwReview').onclick = () => cwReviewCode();
 $('cwReviewToggle').onclick = () => cwToggleReviewPanel();
+// v1.7.0：一键纠正 / 重新审查 / 发回对话 / 新建语言 / 审查模型
+$('cwFixAll').onclick = () => cwFixIssues('all', cwIssues);
+$('cwReReview').onclick = () => cwReReview();
+$('cwSendChat').onclick = () => cwSendChat();
+if (cwNewLangEl) cwNewLangEl.addEventListener('change', cwSyncNewLangUI);
+if (cwReviewModelEl) cwReviewModelEl.addEventListener('change', () => {
+  const v = cwReviewModelEl.value;
+  if (v && v !== loaded) showToast('审查时会切换到 ' + prettyName(v) + '（需要装模型，可能更慢）', 'warn', 4600);
+});
 cwNewNameEl.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); cwNewFile(); }
 });
@@ -6789,6 +7477,8 @@ function showSettingsTab(name) {
   if (name === 'gpu') loadGpuTab().catch(() => {});
   // 视觉页每次打开都重新读一遍：sidecar 可能被发图请求或别的操作启停了
   if (name === 'vision') loadVisionTab().catch(() => {});
+  // 代码页：把 localStorage 里的高亮颜色同步到取色器（契约 2.7）
+  if (name === 'code') { try { cwSyncColorInputs(); } catch {} }
 }
 for (const b of settingsTabs) b.onclick = () => showSettingsTab(b.dataset.tab);
 

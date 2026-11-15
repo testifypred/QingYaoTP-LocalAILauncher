@@ -2,19 +2,23 @@
 /**
  * localai-tui —— QingYaoTP AILauncher（本地 AI）的全屏终端界面（零依赖，纯 ANSI）
  *
- *   localai tui                    正常进入
+ *   localai tui                                正常进入
  *   localai tui --model Phi-4-mini-instruct-Q4_K_M.gguf
- *   node localai-tui.mjs --selftest    宽度/折行自检（不需要服务）
- *   node localai-tui.mjs --snapshot    把一帧渲染成纯文本打印出来（便于检查版面）
+ *   node localai-tui.mjs --hint-test "/to"     打印命令补全候选（每行 cmd<TAB>说明，不需要服务）
+ *   node localai-tui.mjs --selftest            宽度/折行/补全/参数解析自检（不需要服务）
+ *   node localai-tui.mjs --snapshot            把一帧渲染成纯文本打印出来（便于检查版面）
+ *   node localai-tui.mjs --plain               （管道/重定向时自动）逐行模式，/tools /tool 也能跑
  *
  * 设计要点：
  *  - 内容先清洗再上屏：模型输出里的 ESC 序列一律剥掉，防止终端被注入控制码；
  *  - 中文按 2 列宽计算，折行/截断/补空格都走同一套 wcwidth，否则整屏会歪；
+ *  - 宽度统计会跳过 ANSI 转义（ESC 序列零宽），否则彩色行会被截断/错位；
+ *  - 命令提示：输入以 / 开头时行内灰字补全 + 输入框下方提示条（Tab 切换候选、→ 接受、Esc 收起）；
  *  - 非 TTY（被管道/重定向）自动降级成逐行模式，方便脚本里跑。
  */
 import process from "node:process";
 
-const VER = "1.1.0";
+const VER = "1.2.0";
 const DEFAULT_URL = "http://127.0.0.1:8099";
 
 const argv = process.argv.slice(2);
@@ -23,10 +27,19 @@ const val = (f, d = null) => {
   const i = argv.indexOf(f);
   return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[i + 1] : d;
 };
+/** --hint-test 的值以 / 开头，也可能没有值（空串 = 列出全部命令） */
+function flagValue(name) {
+  const i = argv.indexOf(name);
+  if (i < 0) return null;
+  const v = argv[i + 1];
+  return v === undefined || v.startsWith("--") ? "" : v;
+}
 const BASE = (val("--url", process.env.LOCALAI_URL || DEFAULT_URL)).replace(/\/+$/, "");
 const NO_COLOR = has("--no-color") || Boolean(process.env.NO_COLOR);
 const SELFTEST = has("--selftest");
 const SNAPSHOT = has("--snapshot");
+const HINT_TEST = has("--hint-test");
+const HINT_INPUT = HINT_TEST ? flagValue("--hint-test") : null;
 const PLAIN = has("--plain") || !process.stdout.isTTY;
 
 // ---------------------------------------------------------------- 宽度
@@ -54,24 +67,53 @@ function charWidth(cp) {
   ) return 2;
   return 1;
 }
+// ANSI 转义序列：ESC [ ... 终止字节 / 单字符 ESC 序列。统计宽度时必须当零宽跳过。
+const ANSI_RE = /^\u001b(?:\[[0-9;?]*[ -/]*[@-~]|[@-Z\\-_])/;
+function ansiLenAt(str, i) {
+  if (str.charCodeAt(i) !== 0x1b) return 0;
+  const m = ANSI_RE.exec(str.slice(i));
+  return m ? m[0].length : 1;
+}
 function strWidth(s) {
+  const str = String(s);
   let w = 0;
-  for (const ch of s) w += charWidth(ch.codePointAt(0));
+  let i = 0;
+  while (i < str.length) {
+    const n = ansiLenAt(str, i);
+    if (n) { i += n; continue; }
+    const cp = str.codePointAt(i);
+    w += charWidth(cp);
+    i += cp > 0xffff ? 2 : 1;
+  }
   return w;
 }
 function truncWidth(s, max) {
   if (max <= 0) return "";
-  let w = 0, out = "";
-  for (const ch of s) {
-    const cw = charWidth(ch.codePointAt(0));
-    if (w + cw > max) break;
-    out += ch; w += cw;
+  const str = String(s);
+  let w = 0, out = "", i = 0, sawAnsi = false, cut = false;
+  while (i < str.length) {
+    const n = ansiLenAt(str, i);
+    if (n) { out += str.slice(i, i + n); i += n; sawAnsi = true; continue; }
+    const cp = str.codePointAt(i);
+    const cw = charWidth(cp);
+    if (w + cw > max) { cut = true; break; }
+    out += String.fromCodePoint(cp);
+    w += cw;
+    i += cp > 0xffff ? 2 : 1;
   }
+  // 只有真截断时才可能丢掉结尾的 reset，补一个防止颜色漏到后面的补白
+  if (cut && sawAnsi && C.reset) out += C.reset;
   return out;
 }
 function padWidth(s, max) {
   const w = strWidth(s);
-  return w >= max ? truncWidth(s, max) : s + " ".repeat(max - w);
+  if (w > max) return truncWidth(s, max);
+  return w === max ? s : s + " ".repeat(max - w);
+}
+/** 超宽就截断并补省略号（给人看的提示/说明都用它，别直接硬切） */
+function clipWidth(s, max) {
+  if (strWidth(s) <= max) return String(s);
+  return truncWidth(s, Math.max(1, max - 1)) + "…";
 }
 /** 按显示宽度折行；保留原有换行；超长无空格串也能硬切。 */
 function wrapText(text, width) {
@@ -104,16 +146,23 @@ const C = NO_COLOR
     };
 
 // ---------------------------------------------------------------- HTTP
-async function api(path, { method = "GET", body, headers } = {}) {
+async function api(path, { method = "GET", body, headers, timeout = 0 } = {}) {
   let r;
+  const opts = {
+    method,
+    headers: body ? { "content-type": "application/json", ...(headers || {}) } : headers,
+    body: body ? JSON.stringify(body) : undefined,
+  };
+  if (timeout > 0 && typeof AbortSignal !== "undefined" && AbortSignal.timeout) {
+    opts.signal = AbortSignal.timeout(timeout);
+  }
   try {
-    r = await fetch(BASE + path, {
-      method,
-      headers: body ? { "content-type": "application/json", ...(headers || {}) } : headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    r = await fetch(BASE + path, opts);
   } catch (e) {
     const c = String(e?.cause?.code || e?.code || "");
+    if (e?.name === "TimeoutError" || e?.name === "AbortError" || c.includes("UND_ERR_CONNECT_TIMEOUT")) {
+      throw new Error("请求超时（" + BASE + "）：服务没起或端口被占");
+    }
     throw new Error(c.includes("ECONNREFUSED")
       ? "连不上 " + BASE + "：先把 QingYaoTP AILauncher.exe 开起来"
       : "请求失败：" + (e?.message ?? e));
@@ -144,8 +193,266 @@ const S = {
   status: "",
   last: { tok: 0, ms: 0, tool: 0 },
   quitArmed: false,
+  token: null,        // /api/state.localToken 缓存
+  toolList: null,     // GET /api/tools 归一化后的缓存
+  hints: { idx: -1, closed: false, cycle: null },
 };
 
+// ---------------------------------------------------------------- 工具命令辅助
+/** 把 /api/tools 的两种形状（新 args[] / 老 params[]）归一化 */
+function normalizeTools(data) {
+  const list = Array.isArray(data?.tools) ? data.tools : [];
+  return list.map((t) => {
+    const name = String(t?.name ?? "");
+    let args = [];
+    if (Array.isArray(t?.args) && t.args.length) {
+      args = t.args.map((a) => ({
+        name: String(a?.name ?? ""),
+        type: String(a?.type ?? ""),
+        required: a?.required === true || (Array.isArray(t?.required) && t.required.includes(a?.name)),
+        desc: String(a?.description ?? ""),
+      }));
+    } else {
+      const names = Array.isArray(t?.params) ? t.params : [];
+      const req = Array.isArray(t?.required) ? t.required : [];
+      args = names.map((n) => ({ name: String(n), type: "", required: req.includes(n), desc: "" }));
+    }
+    const argsText = args.length ? args.map((a) => a.name + (a.required ? "*" : "")).join(" ") : "";
+    return { name, desc: String(t?.description ?? ""), args, argsText };
+  });
+}
+/** 终端里打印工具清单：名字 + 参数 + 一行说明（长说明截断） */
+function formatTools(list) {
+  const out = ["工具 " + list.length + " 个 · 调用：/tool <name> [key=value …] [--json '<json>']"];
+  for (const t of list) {
+    out.push("  " + t.name + (t.args.length ? "  " + t.args.map((a) => a.name + (a.required ? ":*" : "")).join(" ") : "  （无参数）"));
+    out.push("    " + clipWidth(t.desc, 150));
+    const detail = t.args.filter((a) => a.desc).map((a) => a.name + "：" + a.desc);
+    if (detail.length) out.push("    · " + clipWidth(detail.join("；"), 180));
+  }
+  return out.join("\n");
+}
+/** key=value 的值类型推断：数字 / true / false / null / 其余字符串 */
+function coerceValue(raw) {
+  const s = String(raw);
+  if (s === "true") return true;
+  if (s === "false") return false;
+  if (s === "null") return null;
+  if (/^-?\d+$/.test(s)) return Number(s);
+  if (/^-?\d+\.\d+$/.test(s) && Number.isFinite(Number(s))) return Number(s);
+  return s;
+}
+/** 按空白切词，支持单双引号（引号内的空格保留；不做反斜杠转义，Windows 路径原样保留） */
+function splitTokens(text) {
+  const out = [];
+  let cur = "", q = null, hasCur = false;
+  for (const ch of String(text)) {
+    if (q) {
+      if (ch === q) q = null; else cur += ch;
+      hasCur = true;
+      continue;
+    }
+    if (ch === '"' || ch === "'") { q = ch; hasCur = true; continue; }
+    if (/\s/.test(ch)) {
+      if (hasCur) { out.push(cur); cur = ""; hasCur = false; }
+      continue;
+    }
+    cur += ch;
+    hasCur = true;
+  }
+  if (hasCur) out.push(cur);
+  return out;
+}
+/**
+ * /tool 参数解析：key=value 推断类型；--json 之后「整段」都当 JSON（优先，忽略前面的 key=value）。
+ * 注意这里吃的是原始字符串而不是切好的词：切词会吃掉引号，把 {"a":"b"} 弄坏。
+ */
+function parseToolArgs(raw) {
+  const s = String(raw ?? "");
+  let jsonArg = null;
+  let rest = s;
+  const m = /(?:^|\s)--json(?==|\s|$)/.exec(s);
+  if (m) {
+    const start = m.index + m[0].length;
+    rest = s.slice(0, m.index);
+    let after = s.slice(start).trim();
+    if (after.startsWith("=")) after = after.slice(1).trim();
+    jsonArg = after;
+  }
+  const args = {};
+  for (const t of splitTokens(rest)) {
+    const eq = t.indexOf("=");
+    if (eq > 0) { args[t.slice(0, eq)] = coerceValue(t.slice(eq + 1)); continue; }
+    if (t !== "") args[t] = true;
+  }
+  if (jsonArg !== null) {
+    if (!jsonArg) throw new Error("--json 后面缺少 JSON，例如 --json '{\"query\":\"天气\"}'");
+    let parsed;
+    try { parsed = JSON.parse(jsonArg); } catch (e) { throw new Error("--json 不是合法 JSON：" + (e?.message ?? e)); }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("--json 必须是 JSON 对象，例如 {\"query\":\"天气\"}");
+    return { args: parsed, fromJson: true };
+  }
+  return { args, fromJson: false };
+}
+/** 深拷贝并把超长字符串/数组截断，避免一屏刷不完 */
+function trimDeep(v) {
+  if (typeof v === "string") {
+    return v.length > 2000 ? v.slice(0, 2000) + "…（共 " + v.length + " 字，已截断）" : v;
+  }
+  if (Array.isArray(v)) {
+    const arr = v.slice(0, 30).map((x) => trimDeep(x));
+    if (v.length > 30) arr.push("…（还有 " + (v.length - 30) + " 项）");
+    return arr;
+  }
+  if (v && typeof v === "object") {
+    const keys = Object.keys(v);
+    const o = {};
+    for (const k of keys.slice(0, 60)) o[k] = trimDeep(v[k]);
+    if (keys.length > 60) o["…"] = "还有 " + (keys.length - 60) + " 个字段";
+    return o;
+  }
+  return v;
+}
+/** result → 美化 JSON，整体过长再截一刀 */
+function formatJson(v) {
+  if (v === undefined) return "（无返回）";
+  let s;
+  try { s = JSON.stringify(trimDeep(v), null, 2); } catch (e) { s = String(v); }
+  if (s === undefined) s = String(v);
+  if (s.length > 12000) s = s.slice(0, 12000) + "\n…（输出过长，已截断，共 " + s.length + " 字）";
+  return s;
+}
+async function localToken(force = false) {
+  if (!force && S.token) return S.token;
+  const st = await api("/api/state", { timeout: 15000 });
+  S.token = st?.localToken ?? null;
+  return S.token;
+}
+/** 拉工具清单（/tools 与 /tool 提示条共用）；force=false 时用缓存 */
+async function loadTools(force = false, timeout = 10000) {
+  if (!force && S.toolList) return S.toolList;
+  const data = await api("/api/tools", { timeout });
+  S.toolList = normalizeTools(data);
+  return S.toolList;
+}
+/** POST /api/tool：令牌失效（403）时刷一次令牌重试 */
+async function callTool(name, args) {
+  let lastErr = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const tok = await localToken(attempt > 0);
+    try {
+      return await api("/api/tool", {
+        method: "POST",
+        body: { name, args },
+        headers: { "x-local-token": tok ?? "" },
+        timeout: 120000,
+      });
+    } catch (e) {
+      lastErr = e;
+      if (attempt === 0 && /HTTP 403/.test(String(e?.message ?? e))) continue;
+      throw e;
+    }
+  }
+  throw lastErr ?? new Error("调用工具失败");
+}
+
+// ---------------------------------------------------------------- 命令表 / 提示
+const COMMANDS = [
+  { cmd: "/help", desc: "命令与用法总览", usage: "/help" },
+  { cmd: "/clear", desc: "清屏（保留上下文）", usage: "/clear" },
+  { cmd: "/new", desc: "清空上下文（不删会话文件）", usage: "/new" },
+  { cmd: "/model", desc: "换模型（不给参数列出候选）", usage: "/model <文件>" },
+  { cmd: "/state", desc: "打印服务状态", usage: "/state" },
+  { cmd: "/tools", desc: "列出软件工具；on|off 切换工具调用", usage: "/tools [on|off]" },
+  { cmd: "/tool", desc: "调用软件工具（名称 + 参数）", usage: "/tool <name> [key=value …] [--json '<json>']" },
+  { cmd: "/run", desc: "直接跑代码（python/js/c/cpp…）", usage: "/run <语言> <代码>" },
+  { cmd: "/web", desc: "联网开关（打开时隐含工具开）", usage: "/web on|off" },
+  { cmd: "/think", desc: "深度思考开关", usage: "/think on|off" },
+  { cmd: "/exit", desc: "退出", usage: "/exit", aliases: ["/quit"] },
+];
+function findCommand(tok) {
+  const t = String(tok).toLowerCase();
+  return COMMANDS.find((c) => c.cmd === t || (c.aliases || []).includes(t)) || null;
+}
+/**
+ * 补全候选：{ kind:"cmd"|"tool", cmd, desc, usage, insert }
+ *  - 还没打空格：匹配命令前缀，短的排前（/to → /tool 再 /tools）
+ *  - 已经打空格：/tool 列工具名（首个参数位），其它命令给一行用法
+ */
+function computeHints(input) {
+  const s = String(input ?? "");
+  if (!s.startsWith("/")) return [];
+  const body = s.slice(1);
+  const spaced = /\s/.test(body);
+  const tok = "/" + (body.split(/\s+/)[0] ?? "");
+  if (!spaced) {
+    const q = tok.toLowerCase();
+    const hits = COMMANDS.filter((c) => c.cmd.startsWith(q) || (c.aliases || []).some((a) => a.startsWith(q)));
+    hits.sort((a, b) => a.cmd.length - b.cmd.length || a.cmd.localeCompare(b.cmd));
+    return hits.map((c) => ({ kind: "cmd", cmd: c.cmd, desc: c.desc, usage: c.usage, insert: c.cmd }));
+  }
+  const cmd = findCommand(tok);
+  if (!cmd) return [];
+  const after = body.slice((tok.length - 1)).trim();
+  if (cmd.cmd === "/tool") {
+    const toks = after.split(/\s+/).filter(Boolean);
+    const list = S.toolList || [];
+    if (!list.length) {
+      return [{ kind: "cmd", cmd: "/tool", desc: cmd.desc + "（清单需服务在线，输入后会自动拉取 /api/tools）", usage: cmd.usage, insert: "" }];
+    }
+    if (toks.length <= 1) {
+      const p = toks[0] ?? "";
+      return list
+        .filter((t) => t.name.startsWith(p))
+        .map((t) => ({ kind: "tool", cmd: t.name, desc: t.desc, usage: t.name + (t.argsText ? " " + t.argsText : ""), insert: "/tool " + t.name + " " }));
+    }
+    const t = list.find((x) => x.name === toks[0]);
+    if (t) return [{ kind: "tool", cmd: t.name, desc: t.desc, usage: t.name + (t.argsText ? " " + t.argsText : ""), insert: "" }];
+    return [];
+  }
+  return [{ kind: "cmd", cmd: cmd.cmd, desc: cmd.desc, usage: cmd.usage, insert: "" }];
+}
+/** 输入变化/提交后复位提示状态（cycle = 本轮 Tab 循环用的固定候选表） */
+function resetHints() {
+  S.hints = { idx: -1, closed: false, cycle: null };
+}
+/** 行内灰字补全：只在光标贴尾、命令首词、未按 Esc 时给首个候选的剩余部分 */
+function inlineGhost() {
+  if (S.hints.closed) return "";
+  if (!S.input.startsWith("/") || /\s/.test(S.input)) return "";
+  if (S.cursor !== S.input.length) return "";
+  const c = computeHints(S.input)[0];
+  if (!c || !c.insert) return "";
+  if (!c.insert.startsWith(S.input) || c.insert === S.input) return "";
+  return c.insert.slice(S.input.length);
+}
+/** 输入框下方的提示条（≤6 行，高亮当前候选） */
+function hintBar(inner) {
+  if (S.hints.closed) return [];
+  let cands = computeHints(S.input);
+  // Tab 循环期间用固定的候选表（否则补全成 /new 后候选只剩 /new，就没法"连按 Tab 切换"了）
+  if (S.hints.cycle && S.hints.cycle.list.length && S.input.startsWith(S.hints.cycle.base)) {
+    cands = S.hints.cycle.list;
+  }
+  if (!cands.length) return [];
+  const active = S.hints.idx >= 0 && S.hints.idx < cands.length ? S.hints.idx : 0;
+  const rows = [];
+  // 最多 6 行；Tab 切到第 7 个以后把窗口滚过去，保证高亮那行永远看得见
+  const shown = Math.min(6, cands.length);
+  const from = cands.length > shown ? Math.min(Math.max(0, active - 2), cands.length - shown) : 0;
+  for (let i = from; i < from + shown; i += 1) {
+    const c = cands[i];
+    const on = i === active;
+    const marker = on ? C.bold + C.cyan + "▸ " + C.reset : C.gray + "  " + C.reset;
+    const name = (on ? C.bold + C.cyan : C.gray) + c.cmd + C.reset;
+    const use = c.usage && c.usage !== c.cmd ? "  · " + c.usage : "";
+    const room = Math.max(8, inner - 4 - strWidth(c.cmd));
+    rows.push(truncWidth(marker + name + "  " + clipWidth(c.desc + use, room), inner));
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- 日志
 function entry(role, text, meta) {
   const t = stripAnsi(text);
   S.log.push({ role, text: t, meta: meta ?? null });
@@ -206,11 +513,11 @@ async function streamChat(onDelta, onTool) {
 }
 
 // ---------------------------------------------------------------- 渲染
-function frame(cols, rows, opts = {}) {
+function frame(cols, rows) {
   const inner = Math.max(20, cols);
   const out = [];
-  const inputBar = 2, statusBar = 1, sep = 1;
-  const bodyH = Math.max(3, rows - inputBar - statusBar - 2);
+  const hints = hintBar(inner);
+  const bodyH = Math.max(3, rows - 5 - hints.length);
 
   const head = " QingYaoTP AILauncher " + VER + C.gray + "  " + (S.model || "（未指定）") + "  ctx " + (S.ctx || "?") +
     (S.tools ? "  " + C.green + "工具开" : "  " + C.gray + "工具关") +
@@ -229,12 +536,12 @@ function frame(cols, rows, opts = {}) {
       const rest = wrapText(e.text, inner - 2).slice(1);
       for (const l of rest) body.push("  " + l);
     } else if (e.role === "tool") {
-      body.push(C.gray + "  🔧 " + e.text + C.reset);
+      for (const l of String(e.text).split("\n")) body.push(C.gray + "  🔧 " + l + C.reset);
     } else if (e.role === "error") {
       body.push("");
       for (const l of wrapText(e.text, inner - 4)) body.push(C.red + "  " + l + C.reset);
     } else if (e.role === "sys") {
-      body.push(C.magenta + "  " + e.text + C.reset);
+      for (const l of String(e.text).split("\n")) body.push(C.magenta + "  " + l + C.reset);
     } else {
       for (const l of wrapText(e.text, inner)) body.push(l);
       if (e.meta) body.push(C.gray + "  " + e.meta + C.reset);
@@ -243,7 +550,7 @@ function frame(cols, rows, opts = {}) {
   if (!S.log.length) {
     body.push("");
     body.push(C.gray + "  直接输入问题回车发送。" + C.reset);
-    body.push(C.gray + "  /help 看命令 · Ctrl+C 中断生成，再按一次退出" + C.reset);
+    body.push(C.gray + "  输入 / 看命令提示（Tab 补全 / → 接受）· Ctrl+C 中断生成，再按一次退出" + C.reset);
   }
 
   const total = body.length;
@@ -264,7 +571,6 @@ function frame(cols, rows, opts = {}) {
   const cursorChars = [...S.input.slice(0, S.cursor)].length;
   const beforeCursor = S.input.slice(0, S.cursor);
   const cw = strWidth(beforeCursor);
-  // 光标超出可视宽度时，把窗口左移，保证光标始终停在行内
   let startIdx = 0;
   if (cw >= avail) {
     let w = 0, i = cursorChars;
@@ -278,17 +584,24 @@ function frame(cols, rows, opts = {}) {
   }
   const shown = truncWidth(chars.slice(startIdx).join(""), avail);
   const cursorCol = promptW + strWidth(chars.slice(startIdx, cursorChars).join(""));
-  const line = (S.generating ? C.yellow + "… " : C.cyan + "› ") + C.reset + shown;
+  const ghost = startIdx === 0 ? inlineGhost() : "";
+  const lineBase = (S.generating ? C.yellow + "… " : C.cyan + "› ") + C.reset;
+  const line = ghost ? lineBase + shown + C.dim + ghost + C.reset : lineBase + shown;
+  const inputRow = out.length;
   out.push(padWidth(line, inner));
+
+  for (const h of hints) out.push(padWidth(h, inner));
 
   const hint = S.generating
     ? C.yellow + " 生成中 · Ctrl+C 中断" + C.reset
-    : C.gray + " Enter 发送 · ↑↓ 历史 · PgUp/PgDn 滚动 · /help" + C.reset;
+    : hints.length
+      ? C.gray + " Tab 切换候选 · → 接受补全 · Esc 收起 · Enter 执行" + C.reset
+      : C.gray + " Enter 发送 · Tab 补全命令 · ↑↓ 历史 · PgUp/PgDn 滚动 · /help" + C.reset;
   const stat = S.status ? C.gray + " " + S.status + C.reset : hint;
   out.push(padWidth(stat, inner));
 
-  // cursorRow 是 1-based：输入行是倒数第二行
-  return { lines: out.slice(0, rows), cursorRow: rows - 1, cursorCol };
+  // inputRow 是 0 基下标，终端行号 1 基
+  return { lines: out.slice(0, rows), cursorRow: inputRow + 1, cursorCol };
 }
 
 let renderTimer = null;
@@ -309,32 +622,61 @@ function render() {
   process.stdout.write(s);
 }
 
-// ---------------------------------------------------------------- 命令
-const HELP = [
-  "/help            这份帮助",
-  "/new             清空上下文（不删会话文件）",
-  "/model <文件>     换模型（不给参数则列出候选）",
-  "/tools on|off    工具调用开关",
-  "/web on|off      联网开关（隐含 tools on）",
-  "/think on|off    深度思考开关",
-  "/state           打印服务状态",
-  "/run <语言> <代码> 直接跑代码（python/js/c/cpp…）",
-  "/clear           清屏",
-  "/exit            退出",
-].join("\n");
-
-async function handleSlash(line) {
+// ---------------------------------------------------------------- 命令实现
+function helpText() {
+  const width = Math.max(...COMMANDS.map((c) => strWidth(c.usage)));
+  const lines = ["命令（输入 / 开头可出现命令提示；Tab 补全、→ 接受、Esc 收起）："];
+  for (const c of COMMANDS) lines.push("  " + padWidth(c.usage, width) + "  " + c.desc);
+  lines.push("", "工具：/tools 看清单 · /tool <name> key=value … · /tool <name> --json '{\"k\":\"v\"}'");
+  return lines.join("\n");
+}
+async function slashCommand(line) {
   const [cmd, ...rest] = line.slice(1).split(/\s+/);
   const arg = rest.join(" ");
   const onoff = (v) => (v === "on" ? true : v === "off" ? false : null);
   switch ((cmd || "").toLowerCase()) {
-    case "help": entry("sys", HELP); return true;
+    case "help": entry("sys", helpText()); return true;
     case "exit": case "quit": return false;
     case "clear": S.log = []; return true;
     case "new": S.messages = []; entry("sys", "上下文已清空"); return true;
     case "tools": {
-      const v = onoff(arg); if (v === null) { entry("sys", "用法：/tools on|off"); return true; }
-      S.tools = v; if (!v) S.web = false; entry("sys", "工具 " + (v ? "开" : "关")); return true;
+      const v = onoff(arg);
+      if (arg && v === null) { entry("sys", "用法：/tools 看工具清单 · /tools on|off 切换工具调用"); return true; }
+      if (v !== null) {
+        S.tools = v; if (!v) S.web = false;
+        entry("sys", "工具调用 " + (v ? "开" : "关"));
+        return true;
+      }
+      const list = await loadTools(true);
+      if (!list.length) { entry("sys", "服务端没有可用工具"); return true; }
+      entry("sys", formatTools(list));
+      return true;
+    }
+    case "tool": {
+      const nm = /^(\S+)(?:\s+|$)/.exec(arg.trim());
+      if (!nm) {
+        entry("sys", "用法：/tool <name> [key=value …] [--json '<json>']\n先用 /tools 看可用工具（Tab 也能补全工具名）");
+        return true;
+      }
+      const name = nm[1];
+      const { args } = parseToolArgs(arg.trim().slice(nm[0].length));
+      let r;
+      try {
+        r = await callTool(name, args);
+      } catch (e) {
+        const msg = String(e?.message ?? e);
+        if (/HTTP 404/.test(msg) && /无此路由|not found/i.test(msg)) {
+          throw new Error("/api/tool 还没上线（" + msg + "）：后端本轮新增该接口，服务更新后即可；先 /tools 看清单");
+        }
+        throw e;
+      }
+      const used = r?.tool ?? name;
+      entry("tool", used + " → " + (r?.ms ?? "?") + "ms");
+      const result = r?.result;
+      const errText = result && typeof result === "object" ? result.error : null;
+      if (errText) entry("error", "工具返回错误：" + String(errText));
+      entry("assistant", formatJson(result));
+      return true;
     }
     case "web": {
       const v = onoff(arg); if (v === null) { entry("sys", "用法：/web on|off"); return true; }
@@ -345,14 +687,18 @@ async function handleSlash(line) {
       S.think = v; entry("sys", "思考 " + (v ? "开" : "关")); return true;
     }
     case "state": {
-      const st = await api("/api/state");
-      entry("sys", "模型 " + (st.loaded ?? "无") + " · ctx " + st.context + " · " + st.layers + " 层 · " + st.gpu);
+      const st = await api("/api/state", { timeout: 15000 });
+      entry("sys", "模型 " + (st.loaded ?? "无") + " · ctx " + st.context + " · " + st.layers + " 层 · " + st.gpu +
+        (st.loading ? " · 加载中" : ""));
       return true;
     }
     case "model": {
       if (!arg) {
-        const st = await api("/api/state");
-        entry("sys", "候选：" + st.models.map((m) => m.file + (m.file === st.loaded ? "（当前）" : "")).join("\n      "));
+        const st = await api("/api/state", { timeout: 15000 });
+        const ms = Array.isArray(st.models) ? st.models : [];
+        entry("sys", ms.length
+          ? "候选：" + ms.map((m) => m.file + (m.file === st.loaded ? "（当前）" : "")).join("\n      ")
+          : "模型目录里没有 .gguf");
         return true;
       }
       await api("/api/load", { method: "POST", body: { file: arg } });
@@ -364,8 +710,8 @@ async function handleSlash(line) {
       const lang = rest[0];
       const code = rest.slice(1).join(" ");
       if (!lang || !code) { entry("sys", "用法：/run python print(6*7)"); return true; }
-      const st = await api("/api/state");
-      const r = await api("/api/run", { method: "POST", body: { lang, code }, headers: { "x-local-token": st.localToken } });
+      const st = await api("/api/state", { timeout: 15000 });
+      const r = await api("/api/run", { method: "POST", body: { lang, code }, headers: { "x-local-token": st.localToken }, timeout: 60000 });
       entry("tool", lang + " → exit " + r.code + " · " + r.ms + "ms");
       if (r.stdout) entry("assistant", r.stdout.trimEnd());
       return true;
@@ -373,6 +719,14 @@ async function handleSlash(line) {
     default:
       entry("sys", "未知命令 /" + cmd + "，输入 /help");
       return true;
+  }
+}
+async function handleSlash(line) {
+  try {
+    return await slashCommand(line);
+  } catch (e) {
+    entry("error", String(e?.message ?? e));
+    return true;
   }
 }
 
@@ -417,7 +771,7 @@ async function send(text) {
 // ---------------------------------------------------------------- 主循环
 async function ensureModel() {
   if (S.model) return;
-  const st = await api("/api/state");
+  const st = await api("/api/state", { timeout: 15000 });
   S.ctx = st.context || 0;
   S.model = st.loaded || null;
   if (!S.model) {
@@ -430,7 +784,43 @@ async function ensureModel() {
   }
 }
 
+let toolLoadTimer = null;
+function maybeLoadTools() {
+  if (S.toolList || toolLoadTimer) return;
+  toolLoadTimer = setTimeout(async () => {
+    toolLoadTimer = null;
+    try { await loadTools(true, 4000); } catch {}
+    requestRender();
+  }, 150);
+}
+
+/** Tab：补全到当前候选；连按 Tab 在候选间切换 */
+function completeHint() {
+  if (!S.input) {
+    S.input = "/"; S.cursor = 1; resetHints();
+    render();
+    return;
+  }
+  if (!S.input.startsWith("/")) return;
+  let cycle = S.hints.cycle;
+  if (!cycle || S.hints.idx < 0) {
+    // 第一次 Tab：把当前输入对应的候选表固定下来，之后连按 Tab 只在这张表里循环
+    const list = computeHints(S.input);
+    if (!list.length) return;
+    cycle = { base: S.input, list };
+    S.hints.cycle = cycle;
+    S.hints.idx = 0;
+  } else {
+    S.hints.idx = (S.hints.idx + 1) % cycle.list.length;
+  }
+  S.hints.closed = false;
+  const c = cycle.list[S.hints.idx];
+  if (c.insert) { S.input = c.insert; S.cursor = S.input.length; }
+  render();
+}
+
 async function main() {
+  if (HINT_TEST) return hintTest(HINT_INPUT ?? "");
   if (SELFTEST) return selftest();
   if (SNAPSHOT) return snapshot();
   if (PLAIN) return plainMode();
@@ -451,6 +841,8 @@ async function main() {
   process.stdin.resume();
   process.stdin.setEncoding("utf8");
   render();
+  // 预先拉一次工具清单：输入 /tool 时提示条立刻有内容
+  loadTools(true, 4000).catch(() => {});
 
   // 挂完处理器就进入事件循环：这里必须挂住，否则 main() 一返回外层就 process.exit，窗口秒关
   const done = new Promise(() => {});
@@ -468,11 +860,18 @@ async function main() {
       return;
     }
     if (s === "\u000c") { S.log = []; render(); return; } // Ctrl+L
+    if (s === "\t") { completeHint(); return; }            // Tab 补全/切换候选
     if (s === "\r" || s === "\n") {
       // 生成中再回车不并发发问：服务端一次只跑一轮，并发只会让两边都卡
       if (S.generating) { S.status = "上一轮还在生成，Ctrl+C 可中断"; render(); return; }
-      const text = S.input;
-      S.input = ""; S.cursor = 0;
+      let text = S.input;
+      // 半截命令 + 回车：先补成首个候选（/he → /help），再执行
+      const head = text.trim();
+      if (head.startsWith("/") && !/\s/.test(head) && !findCommand(head)) {
+        const c = computeHints(head)[0];
+        if (c && c.insert) text = c.insert;
+      }
+      S.input = ""; S.cursor = 0; resetHints();
       if (text.trim().startsWith("/")) {
         const keep = await handleSlash(text.trim());
         if (!keep) return bye(0);
@@ -484,27 +883,43 @@ async function main() {
       return;
     }
     if (s === "\u007f" || s === "\b") {
-      if (S.cursor > 0) { S.input = S.input.slice(0, S.cursor - 1) + S.input.slice(S.cursor); S.cursor -= 1; render(); }
+      if (S.cursor > 0) {
+        S.input = S.input.slice(0, S.cursor - 1) + S.input.slice(S.cursor);
+        S.cursor -= 1;
+        resetHints();
+        render();
+      }
       return;
     }
     if (s === "\u001b[A") { // ↑ 历史
-      if (S.hist.length) { S.histIdx = Math.min(S.hist.length - 1, S.histIdx + 1); S.input = S.hist[S.hist.length - 1 - S.histIdx]; S.cursor = S.input.length; render(); }
+      if (S.hist.length) { S.histIdx = Math.min(S.hist.length - 1, S.histIdx + 1); S.input = S.hist[S.hist.length - 1 - S.histIdx]; S.cursor = S.input.length; resetHints(); render(); }
       return;
     }
     if (s === "\u001b[B") {
-      if (S.histIdx >= 0) { S.histIdx -= 1; S.input = S.histIdx < 0 ? "" : S.hist[S.hist.length - 1 - S.histIdx]; S.cursor = S.input.length; render(); }
+      if (S.histIdx >= 0) { S.histIdx -= 1; S.input = S.histIdx < 0 ? "" : S.hist[S.hist.length - 1 - S.histIdx]; S.cursor = S.input.length; resetHints(); render(); }
       return;
     }
     if (s === "\u001b[5~") { S.scroll = Math.min(S.scroll + 5, 9999); render(); return; }
     if (s === "\u001b[6~") { S.scroll = Math.max(0, S.scroll - 5); render(); return; }
     if (s === "\u001b[D") { S.cursor = Math.max(0, S.cursor - 1); render(); return; }
-    if (s === "\u001b[C") { S.cursor = Math.min(S.input.length, S.cursor + 1); render(); return; }
+    if (s === "\u001b[C") { // → ：有行内补全就接受，否则右移光标
+      const g = inlineGhost();
+      if (g) { S.input += g; S.cursor = S.input.length; S.hints.closed = true; S.hints.cycle = null; render(); return; }
+      S.cursor = Math.min(S.input.length, S.cursor + 1); render();
+      return;
+    }
+    if (s === "\u001b") { // Esc 收起提示条
+      if (!S.hints.closed) { S.hints.closed = true; S.hints.idx = -1; S.hints.cycle = null; render(); }
+      return;
+    }
     if (s.startsWith("\u001b")) return; // 其它转义序列忽略
     const printable = s.replace(/[\u0000-\u001f]/g, "");
     if (!printable) return;
     S.input = S.input.slice(0, S.cursor) + printable + S.input.slice(S.cursor);
     S.cursor += printable.length;
     S.quitArmed = false;
+    resetHints();
+    if (S.input.startsWith("/tool")) maybeLoadTools();
     render();
   });
 
@@ -513,10 +928,12 @@ async function main() {
 
 // ---------------------------------------------------------------- 降级：非 TTY
 async function plainMode() {
-  await ensureModel();
   const chunks = [];
   for await (const c of process.stdin) chunks.push(c);
   const lines = Buffer.concat(chunks).toString("utf8").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  // 全是 / 命令时不必加载模型：/tools /tool 这类脚本用法要快
+  const needModel = lines.some((l) => !l.startsWith("/"));
+  if (needModel) await ensureModel();
   for (const line of lines) {
     if (line.startsWith("/")) { if (!(await handleSlash(line))) break; continue; }
     S.messages.push({ role: "user", content: line });
@@ -531,28 +948,87 @@ async function plainMode() {
   return 0;
 }
 
-// ---------------------------------------------------------------- 自检 / 快照
-function selftest() {
-  const cases = [
-    ["abc", 3], ["中文", 4], ["a中b", 4], ["", 0],
-  ];
-  let bad = 0;
-  for (const [s, w] of cases) {
-    const got = strWidth(s);
-    if (got !== w) { console.log("FAIL width " + JSON.stringify(s) + " → " + got + " 期望 " + w); bad += 1; }
+// ---------------------------------------------------------------- 自检 / 快照 / 提示测试
+async function hintTest(input) {
+  const raw = String(input ?? "");
+  if (raw.startsWith("/tool") && /\s/.test(raw)) {
+    try { await loadTools(true, 4000); } catch {}
   }
+  const cands = computeHints(raw || "/");
+  if (!cands.length) {
+    process.stdout.write("（无匹配：" + raw + "）\n");
+    return 0;
+  }
+  for (const c of cands.slice(0, 40)) process.stdout.write(c.cmd + "\t" + c.desc + "\n");
+  return 0;
+}
+
+function selftest() {
+  let bad = 0, n = 0;
+  const check = (ok, label, extra) => {
+    n += 1;
+    if (!ok) { bad += 1; console.log("FAIL " + label + (extra === undefined ? "" : " → " + JSON.stringify(extra))); }
+  };
+  // 1) 宽度
+  for (const [s, w] of [["abc", 3], ["中文", 4], ["a中b", 4], ["", 0]]) check(strWidth(s) === w, "width " + JSON.stringify(s), strWidth(s));
+  // 2) ANSI 序列零宽
+  check(strWidth("\u001b[31m红\u001b[0m") === 2, "width ansi", strWidth("\u001b[31m红\u001b[0m"));
+  // 3) 折行
   const w1 = wrapText("这是一段需要折行的中文文本", 10);
-  if (!w1.every((l) => strWidth(l) <= 10)) { console.log("FAIL wrap 超宽", JSON.stringify(w1)); bad += 1; }
-  const w2 = wrapText("a\nb\n", 10);
-  if (w2.join("|") !== "a|b|") { console.log("FAIL wrap 换行", JSON.stringify(w2)); bad += 1; }
-  if (padWidth("中文", 6) !== "中文  ") { console.log("FAIL pad", JSON.stringify(padWidth("中文", 6))); bad += 1; }
-  if (truncWidth("中文字", 5) !== "中文") { console.log("FAIL trunc"); bad += 1; }
-  if (stripAnsi("\u001b[31m红\u001b[0m") !== "红") { console.log("FAIL stripAnsi"); bad += 1; }
-  console.log(bad ? "SELFTEST 失败 " + bad + " 项" : "SELFTEST 通过（7 组）");
+  check(w1.every((l) => strWidth(l) <= 10), "wrap 超宽", w1);
+  check(wrapText("a\nb\n", 10).join("|") === "a|b|", "wrap 换行", wrapText("a\nb\n", 10));
+  // 4) 补白 / 截断
+  check(padWidth("中文", 6) === "中文  ", "pad", padWidth("中文", 6));
+  check(truncWidth("中文字", 5) === "中文", "trunc", truncWidth("中文字", 5));
+  check(truncWidth("\u001b[31m中文字\u001b[0m", 4).startsWith("\u001b[31m中文"), "trunc ansi", truncWidth("\u001b[31m中文字\u001b[0m", 4));
+  // 5) 控制码清洗
+  check(stripAnsi("\u001b[31m红\u001b[0m") === "红", "stripAnsi");
+  // 6) 值类型推断
+  check(coerceValue("42") === 42 && coerceValue("-3.5") === -3.5, "coerce 数字", coerceValue("42"));
+  check(coerceValue("true") === true && coerceValue("false") === false && coerceValue("null") === null, "coerce 字面量");
+  check(coerceValue("abc") === "abc" && coerceValue("0x10") === "0x10", "coerce 字符串");
+  // 7) 切词（引号内空格保留）
+  check(splitTokens("a \"b c\" 'd e'").join("|") === "a|b c|d e", "splitTokens", splitTokens("a \"b c\" 'd e'"));
+  // 8) /tool 参数解析（原始串：key=value 推断 + --json 整段）
+  const pa = parseToolArgs('query="天气 北京" k=3 raw=true');
+  check(pa.args.query === "天气 北京" && pa.args.k === 3 && pa.args.raw === true, "parseToolArgs key=value", pa.args);
+  const pj = parseToolArgs('--json {"query":"x","k":2}');
+  check(pj.args.k === 2 && pj.fromJson === true, "parseToolArgs --json", pj.args);
+  check(parseToolArgs('x=1 --json={"y":"z"}').args.y === "z", "parseToolArgs --json=");
+  check(parseToolArgs("a=1 b=2").args.b === 2, "parseToolArgs 多键");
+  // 9) 补全候选
+  const h = computeHints("/to").map((c) => c.cmd);
+  check(h[0] === "/tool" && h.includes("/tools"), "hints /to", h);
+  check(computeHints("/")[0].insert.startsWith("/"), "hints /", computeHints("/").length);
+  check(computeHints("/help")[0].cmd === "/help", "hints /help");
+  check(computeHints("no-slash").length === 0, "hints 非命令");
+  // 10) 行内灰字补全
+  S.input = "/to"; S.cursor = S.input.length; resetHints();
+  check(inlineGhost() === "ol", "ghost /to", inlineGhost());
+  S.input = "/to "; S.cursor = S.input.length;
+  check(inlineGhost() === "", "ghost 带空格", inlineGhost());
+  S.input = ""; S.cursor = 0; resetHints();
+  // 10b) Tab 连按在固定候选表里循环："" → "/" → /new → /run
+  completeHint(); const tab1 = S.input;
+  completeHint(); const tab2 = S.input;
+  completeHint(); const tab3 = S.input;
+  check(tab1 === "/" && tab2 === "/new" && tab3 === "/run", "Tab 循环候选", [tab1, tab2, tab3]);
+  S.input = ""; S.cursor = 0; resetHints();
+  // 11) 工具清单归一化（新 args[] 与老 params[] 两种形状）
+  const norm = normalizeTools({ tools: [
+    { name: "a", description: "da", args: [{ name: "x", type: "string", required: true, description: "dx" }], required: ["x"] },
+    { name: "b", description: "db", params: ["p", "q"], required: ["p"] },
+  ] });
+  check(norm.length === 2 && norm[0].argsText === "x*" && norm[1].argsText === "p* q", "normalizeTools", norm.map((x) => x.argsText));
+  check(formatTools(norm).includes("a") && formatTools(norm).includes("dx"), "formatTools");
+  // 12) JSON 截断
+  const big = formatJson({ s: "x".repeat(5000) });
+  check(big.includes("已截断"), "formatJson 截断");
+  console.log(bad ? "SELFTEST 失败 " + bad + " 项（共 " + n + " 项）" : "SELFTEST 通过（" + n + " 项）");
   return bad ? 1 : 0;
 }
 
-function snapshot() {
+async function snapshot() {
   S.model = "qwen3-5-4B-Q4_K_M.gguf";
   S.ctx = 16384; S.tools = true;
   S.log = [
@@ -560,8 +1036,11 @@ function snapshot() {
     { role: "tool", text: "get_current_time {} → 2ms" },
     { role: "assistant", text: "因为多轮对话的前缀完全一样，模型可以复用上一次已经算好的 KV，只对新增的 token 做前向计算，所以首字延迟从十几秒降到一秒左右。", meta: "38 tok · 1 次工具 · 3.2s" },
   ];
-  S.input = "那它为什么会失效";
+  S.input = val("--input") ?? "那它为什么会失效";
   S.cursor = S.input.length;
+  S.hints = { idx: Number(val("--hint-idx", -1)), closed: false, cycle: null };
+  // 版面自检时顺手把工具清单拉下来：/tool 的提示条才有真实内容（服务没起就退化成一行命令提示）
+  if (S.input.startsWith("/tool")) { try { await loadTools(true, 1500); } catch {} }
   const cols = Number(val("--cols", 88));
   const rows = Number(val("--rows", 20));
   const f = frame(cols, rows);
@@ -573,8 +1052,14 @@ function snapshot() {
   return 0;
 }
 
-main().then((c) => { if (!PLAIN) process.exit(c ?? 0); }).catch((e) => {
-  process.stdout.write("\u001b[?25h\u001b[?1049l");
-  console.error("localai-tui: " + (e?.message ?? e));
-  process.exit(1);
-});
+main()
+  .then(async (c) => {
+    // 交互模式 main 永不 resolve；能走到这里说明是一次性模式，写完就退（顺带放掉 fetch 的 keep-alive 连接）
+    await new Promise((r) => process.stdout.write("", r));
+    process.exit(c ?? 0);
+  })
+  .catch((e) => {
+    process.stdout.write("\u001b[?25h\u001b[?1049l");
+    console.error("localai-tui: " + (e?.message ?? e));
+    process.exit(1);
+  });

@@ -3005,3 +3005,86 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 2. 可选：增强包「联网下载」入口（现在只支持本地 zip 与上传安装）。
 3. 交付包冒烟按契约 §8 走：起 dist → `POST /api/vision/pack/install {path: dist\...vision-pack.zip}` → `/api/vision/state` 的 `pairs ≥ 1` 且 `pack.installed === true` → `probe-version` 14/14、`probe-debug` 54/54 → 再 `probe-vision-api`（真 9B，最硬的一条）。
 4. 顺手修 1 行：`toolEnabled` 只在页面加载时赋值，勾 / 取消「调用工具」不同步它 → 在 `#toolChk` 的 `change` 里同步 `toolEnabled = toolChk.checked`（2026-11-15 由 probe-ui-web 定性时顺带发现，本轮未修，已记进交接文档已知限制第 18 条）。
+
+## 六十二、2026-11-15 傍晚：终端 TUI 升级 + 代码审查/修正工作流（v1.7.0）
+
+> 需求：终端要能「像聊天一样」用（命令提示 + 直接调软件工具）；代码面板要把「审查 → 改 → 发回对话」做成一条真能走通的工作流。
+> 口径：**本轮不重打发布包**（用户要求：别每个改动都往交付包里塞）。dist / zip 仍是 v1.6.0 的产物。
+
+### 一、目标与结果
+
+| 项 | 之前（v1.6.0） | 现在（v1.7.0） |
+|---|---|---|
+| 终端 TUI | 只有裸命令，调工具得让模型自己去调 | 输入 `/` 有行内灰字补全 + 提示条（Tab 连按切换 / → 接受 / Esc 收起）；`/tools` 列工具、`/tool 名字 key=value` 直接调；管道 `--plain` 也能跑 |
+| 代码审查 | 非流式、等 75–86s 才出整段，问题只能肉眼找 | 流式「审查思路」+ 问题清单；问题行高亮、点卡片跳行；一键纠正 / 单条更改，改动行另一色；发回对话；审查可选模型 |
+| 高亮色 | 写死 | 设置 → 代码 四色取色器 + 恢复默认（localStorage + CSS 变量） |
+| 审查并发 | 没有约束 | 审查/纠正期间 `/api/load` 一律 **409**（曾把 8099 卡死两次）；`codeJob` 串行锁 |
+| 版本 | 1.6.0 | **1.7.0**（TUI 自己 1.1.0 → **1.2.0**）；**dist 未重建** |
+
+### 二、设计
+
+| 层 | 设计 |
+|---|---|
+| 两阶段审查 | 第一阶段只流式输出「审查思路」（`delta`，逐条 `-` 带行号与理由）；第二阶段在**同一个**小 context 里单独要 JSON（`phase` 事件 → `findings`）。小模型一次要两样常给不出合法 JSON；服务端还会从文本里兜底抽 ```json 块 |
+| 独立小 context | 审查/修正用 8192 → 4096 → 2048 逐档回退的独立 context，**不碰主会话 sequence**（不毁下一轮 KV 缓存），用完 dispose |
+| 审查模型 | `model` 放请求体（gguf 文件名）：不指定 = 本对话已加载；指定另一个 = 任务锁内切过去（`meta.switchedModel=true`），探针收尾切回 4B |
+| 串行锁 + 互斥 | `codeJob` 串行锁（同一时刻只跑一个 review/fix）；**审查/修正期间 `POST /api/load` 一律 409**——切模型会把同一份权重的底层卸掉 → 原生层卡死（15:41 / 15:52 两次 8099「整体无响应」就是这么叠出来的） |
+| TUI 提示 | 命令表驱动：`/` 开头算候选（短命令优先），行内 ghost 只补首个候选；提示条最多 6 行、`▸` 标当前候选、窗口跟随 Tab 滚动；**第一次 Tab 把候选表固定下来**（否则补成 /new 后候选只剩 /new，没法连按切换）；`/tool ` 之后候选变成工具名 |
+| TUI 工具调用 | `/tool` → `POST /api/tool`（令牌来自 `/api/state.localToken`，403 时自动刷新重试一次）；`key=value` 类型推断、`--json` 整段按原始串解析（先切词会吃掉引号）；结果 JSON 美化 + 逐级截断，`result.error` 红字；所有 HTTP 调用加超时（state 15s / tools 10s / tool 120s / run 60s） |
+| 前端发回对话 | 当前代码 + 文件名/语言 + 「这是修正后的版本」+ 改动行摘要 → 围栏块写进聊天输入框 `#q`（**不是 `#input`**）并聚焦，不自动发送、不自动保存 |
+
+### 三、改动清单（文件级）
+
+| 文件 | 改动 |
+|---|---|
+| `server\app.mjs`（~8700 行） | 新增 `POST /api/code/review/stream`（SSE）、`POST /api/code/fix`（SSE）、`POST /api/tool`；`GET /api/tools` 增 `args[]/required`；`codeJob` 串行锁 + `pickCodeJobModel` + `openReviewContext`（8192/4096/2048 回退）+ `parseFindingsFromText` / `diffLineRanges`；`/api/load` 加 `codeJob.busy → 409`；版本 1.7.0 |
+| `server\app.html`（~9300 行） | 代码面板 7 项：`#cwNewLang`（15 语言 + 无扩展名自动补 + mode 跟着切 + 记 `localai.cwNewLang`）、`#cwReviewModel`（默认本对话模型）、`#cwThink/#cwThinkText` 流式思考块、`.cwLineErr/.cwLineWarn/.cwLineInfo` 行高亮 + 点卡片跳行、`#cwFixAll` / `.cwIssueApply` / `#cwReReview` + `.cwLineChanged` + 状态行「已修改 N 处（新增 a / 删除 b）」、`#cwSendChat`、设置 → 代码页（4 取色器 + 恢复，`localai.cwColors` + `--cw-*-bg` CSS 变量） |
+| `server\localai-tui.mjs`（~1070 行，VER 1.2.0） | 命令提示（行内补全 + 提示条 + Tab/→/Esc + 首次 Tab 固定候选表）；`/tools`、`/tool`（`/api/tool`）；`--hint-test`；`--selftest` 扩到 **29 项**；`--snapshot --input/--hint-idx`；顺手修 ANSI 零宽、多行 sys 日志、HTTP 超时 |
+| `server\probe-code-review-stream.mjs`（新） | **48 条** API+SSE（真模型，切一次 Phi-4-mini 再切回） |
+| `server\probe-code-panel-v2.mjs`（新） | **40 条** CDP UI 全流程（A–G，真模型） |
+| `server\probe-tui-tools.mjs`（新） | **23 条**（`--hint-test` / `--plain` `/tools` `/tool`） |
+| `server\docs\run-full.ps1` | 追加 3 条，59 → **62 条**；注入 `PROBE_SKIP_SWITCH=1` 跳过 `probe-code-review-stream` 的 Phi 切换分支（见五、r1 作废） |
+| `server\app.mjs`（超时兜底） | `review/stream` 与 `fix` 的生成加 `AbortController` 超时：默认 **300s**（`CODE_JOB_TIMEOUT_MS`，夹在 60s–900s），审查第二阶段 JSON 另有 120s 上限；超时发 504 `error` 事件 |
+| 版本 | `app.mjs` / `package.json` / `localai.mjs` 三处 1.7.0；TUI 自己 `VER` 1.2.0 |
+| 文档 | `README.md` / `交接文档.md` / `technique\02`、`06`、`07` / 本节；`新会话启动词.md` 由 Lead 改 |
+| **未动** | `dist\`、`build-portable.ps1`、`make-zip.ps1`（本轮不重打发布包） |
+
+### 四、实测数字（真机 31.4GB + Intel Arc / Vulkan / 4B；证据 `server\docs\feature-code-review-terminal-2026-11-15\`）
+
+| 项 | 值 |
+|---|---|
+| 代码面板真跑（`codeui-RESULT.md`） | **33/33**：首个思考段 **5.2s** 出现、整轮审查 **47.9s**（2 个问题：error 行 3–4 / warn 行 4）、`.cwLineErr`×2 + `.cwLineWarn`×1；一键纠正 **13.4s**（代码 187→270 字符、`.cwLineChanged`×5、状态「已修改 1 处（新增 5 / 删除 2）」、**服务端读回仍是原 bug 代码**=没自动落盘）；发回对话围栏进 `#q`；颜色 `#00ff00` → `localStorage` + `--cw-err-bg`、恢复默认回 `#7f1d1d66` |
+| 代码面板 v2 探针 | **40/40**（单实例串行）：入口 / 语言新建 / 流式思考块 / 问题卡片+行高亮 / 一键纠正+改动行 / 发回对话 `#q` / 颜色持久化 / 自复位。首跑 31/40 已定性为探针自身问题（少括号 + 共享页面并发串台，证据 `probe-code-panel-v2.r1-concurrent.txt`），**不计入正常口径** |
+| 代码面板 stub（不依赖后端） | **35/35**：单条 `scope=single`（只 1 行改动）、重新审查清旧高亮、`switchedModel` 的「正在切换模型…」、修正 delta 追加同一思考块 |
+| 审查流式探针 | **48/48**（隔离）；**全量内 45/45**（跳过 3 条 Phi 切换）：审查 **39.2s**（173 段 delta、issues 2、lineCount 9、delta 无裸 JSON/代码围栏）；修正 **11.7s**（code 259 字符、changes `[{3,6}]`、added 4 / removed 2、lineCount 11）；指定 Phi-4-mini 审查 23.1s、`switchedModel=true`、收尾切回 4B；校验 403 / 400 / **413** / 404 全对 |
+| 并发互斥（`concurrency-check.mjs`） | **7/7**：审查中 `/api/load` 409、`/api/state` 仍 200；两个并发 review 串行（65.2s / 45.3s / 106.1s > 单个）；空闲后 load 恢复 200 |
+| 后端冒烟（`lead-smoke-code.mjs`） | **25/25**：`/api/tools` 10 个工具且 `web_search.args[0].required=true`、旧 `params` 还在；`/api/tool` 无令牌 403 / 未知工具 404 / `get_current_time` 200 / `calculate`=145；review SSE 36.1s（190 事件、顺序对、delta 327 字无裸 JSON）；fix 12.1s（changes `[{2,3}]`、lineCount 9、`total` 有初始化） |
+| 响应性 | review 期间 `/api/state` **16–29ms**（8 次采样全 200）；`monitor-8099.txt` 整段 3–60ms 无超时（修复前同类叠加会整体无响应） |
+| TUI | `--selftest` **29 项**过；`--hint-test "/to"` → `/tool`、`/tools` 两行「cmd<TAB>说明」；`/tool ` 列出 10 个工具；`--plain` 管道 `/tools`、`/tool get_current_time`、`/exit` 正常；伪终端交互冒烟 Phase A+B **12/12**；`probe-tui-tools` **23/23** |
+| 回归 | `probe-code-workspace` **21/21**（跳过 1）、`probe-code-panel` **17/17**（跳过 1，跳过项=当前已加载模型） |
+| 全量驱动 | 59 → **62 条**、**62 条全绿 / 0 红**、断言口径 1031 → **1137**（`server\docs\probe-full-2026-11-15-v170-r2\RESULT.md`；全量内新增探针 **45/45**（跳过 3 Phi）+ **40/40** + **23/23**） |
+| 构建/交付 | **本轮未打发布包**：dist 与 zip 仍是 v1.6.0 的产物（258.5MB / 3447 文件、主包 127,852,310B）。下次交付要同步 `app.mjs` / `app.html` / `localai-tui.mjs` / `localai.mjs` / `package.json` + `README.md` + 3 个新探针 |
+
+### 五、验证
+
+| 项 | 结果 |
+|---|---|
+| 事故收口 | 15:41 / 15:52 两次 8099「整体无响应」：根因是「审查中 + 另一客户端切模型」把原生层卡死；修复 = `codeJob` 串行锁 + `/api/load` 409 + 前端审查模型下拉不先 load。隔离回归 **7/7**、响应性 16–29ms、monitor 全程 200 |
+| 兼容 | 老的非流式 `/api/code/review` 保留不动（前端只在流式 404 时兜底）；`/api/tools` 旧字段 `params` 保留；`probe-code-workspace` 21/21、`probe-code-panel` 17/17 |
+| 手工 | TUI：管道 `--plain` + 伪终端（Phase A+B）各跑一遍；代码面板：真机点完 审查 → 行高亮 → 一键纠正 → 发回对话 → 颜色设置 |
+| 真模型 | 本轮所有审查/修正都是真 4B（及一次 Phi-4-mini）跑出来的，不是 stub；stub 只用于补充分支（35/35） |
+| 全量 | **62 条全绿 / 0 红（1137）**，r2 见 `server\docs\probe-full-2026-11-15-v170-r2\RESULT.md`（16:19 → 16:41） |
+| r1 作废（Phi 卡死） | v1.7.0 全量首跑（`...-v170-r1-polluted`）跑到 `probe-code-review-stream` 切 **Phi-4-mini** 后 8099 整体卡死（就绪 8.7s → 生成不返回、`/api/state` 全超时、CPU 持续涨）；隔离单跑同一请求 22.3s 能过 → **Phi 在 Vulkan 上偶发原生层卡死**（日志 `Phi SWA is currently disabled`）。处理：review/fix 加 300s 超时兜底 + 全量注入 `PROBE_SKIP_SWITCH=1` + 文档写明别用 Phi 审查；r1 目录留证，**不计入口径**。另：驱动 `Ensure-Server` 把「活着但卡死」误判成退出，重启撞 `EADDRINUSE` |
+
+### 六、给用户的结论
+
+- **终端**：输入 `/` 就有提示（Tab 补全 / 连按切换、→ 接受、Esc 收起）；`/tools` 看有哪些工具、`/tool 名字 key=value` 直接调；`localai tui` 交互式照旧，管道里也能 `/tools` `/tool`。
+- **代码面板**：审查现在**边看边出**思路，问题行直接在代码里高亮、点卡片跳过去；不满意就「一键纠正」（或只改一条），改动行用另一种颜色标出；改完「发回对话」直接带进聊天输入框，不自动发。颜色在 设置 → 代码 里调。
+- **注意**：审查/纠正进行中别切模型（会提示 409，这是保护，不是坏）；**审查模型别选 Phi-4-mini**（Vulkan 上偶发卡死，实测 r1 因此作废）；**本轮没有更新发布包**（按你的要求），要马上用新功能就先跑源码 `node server\app.mjs`，或等下一轮统一交付。
+
+### 七、下一轮
+
+1. **交付 v1.7.0**（~0.5d）：重建 `dist` + 主包 zip，同步 5 个文件（`server\app.mjs`、`server\app.html`、`server\localai-tui.mjs`、`server\localai.mjs`、`server\package.json`）+ `README.md` + 3 个新探针；发布包冒烟覆盖 `/api/code/review/stream`、`/api/tool`、TUI `--hint-test`，`probe-version` 14/14。
+2. 代码工作区：多文件 / 整工作区一起审查；结论另存 `.review.md`；「一键纠正」的改动**一键写回文件**（现在要手动保存）；`scope=single` 补一次真模型跑。
+3. TUI：`localai.mjs` 放行 `--hint-test`；`/tool` 长结果支持分页/翻页；`/tools` 支持按关键词过滤。
+4. 全量已跑完（**62 条全绿 / 1137**，r2）；交付 v1.7.0 时把这份基线写进发布包冒烟清单。

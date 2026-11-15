@@ -1,0 +1,7 @@
+﻿== 环境：2026-11-15 16:02:39 · node v24.17.0 · localai-tui VER 1.2.0 ==
+== node --check localai-tui.mjs ==
+exit=0
+
+== node localai-tui.mjs --selftest ==
+SELFTEST 通过（29 项）
+exit=0

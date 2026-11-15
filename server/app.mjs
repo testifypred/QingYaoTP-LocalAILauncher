@@ -42,7 +42,7 @@ const DEBUG_UI = path.join(HERE, "debug.html");
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 /** 版本号：发版只改这一处；server\package.json 的 version 必须与它一致（probe-version 会查） */
-const APP_VERSION = "1.6.0";
+const APP_VERSION = "1.7.0";
 /** 产品正式名（2026-11-01 起）：QingYaoTP AILauncher；QingYaoTP = QingYaoTestifypred */
 const APP_NAME = "QingYaoTP AILauncher";
 const APP_SUB = "本地 AI";
@@ -3325,6 +3325,13 @@ const CODE_TOTAL_MAX_CHARS = 400000;
 const CODE_REVIEW_MAX_CHARS = 20000;
 /** 审查用小上下文的档位：首选 8192，模型训练上下文小就逐档回退（4096 → 2048） */
 const CODE_REVIEW_CONTEXT_SIZES = [8192, 4096, 2048];
+/**
+ * 审查/修正的生成上限：到点用 AbortSignal 掐掉（node-llama-cpp 的 promptWithMeta 支持 signal）。
+ * 为什么要这个：某些模型（实测 Phi-4-mini，日志有 "Phi SWA is currently disabled"）在 Vulkan 上
+ * 偶尔会卡在生成里不返回，界面就永远「审查中…」；有超时至少能给出明确错误。
+ * 注意：如果原生层彻底卡住（事件循环都不转），JS 定时器本身也发不出去，那种情况只能重启进程。
+ */
+const CODE_JOB_TIMEOUT_MS = Math.max(60000, Math.min(900000, Number(process.env.CODE_JOB_TIMEOUT_MS) || 300000));
 /** 代码审查的 system prompt（契约第三节 3.2 逐字）：四节固定标题，先结论后问题 */
 const CODE_REVIEW_SYSTEM =
   "你是严格的代码审查员。结合用户给出的意图，判断这段代码的实现是否合理：先给结论，再列主要问题（按严重度排序，指出具体位置或片段），再给可执行的改进建议，最后说明风险与边界。用中文、Markdown，四节标题固定为：## 结论 / ## 主要问题 / ## 改进建议 / ## 风险与边界。不要复述整段代码，不要客套。";
@@ -3481,6 +3488,458 @@ async function handleCodeReview(req, res) {
   } finally {
     if (ctx) await ctx.dispose().catch(() => {});
   }
+}
+
+// ---------------------------------------------------------------- 代码审查（流式）+ 修正（v1.7.0）
+/**
+ * 为什么要单开一条流式通道：非流式的 /api/code/review 要等模型整段写完（小模型 20–60s），
+ * 界面上只能看「审查中…」。这里把「审查思路」逐段推给界面（像深度思考），最后再给结构化的
+ * findings 让界面把问题行高亮出来；修正（/api/code/fix）则流式给出改好的完整代码 + 改动行区间。
+ *
+ * 仍然用独立小 context（不碰主会话 sequence，所以不会毁下一轮的 KV 缓存）；
+ * 模型可选：默认 = 本对话已加载的模型，显式指定另一个就先切过去（会卸载当前模型）。
+ */
+const FENCE = "\u0060\u0060\u0060";
+const CODE_REVIEW_THINK_SYSTEM = [
+  "你是严格的代码审查员。用户会给出【用户意图】【文件】【语言】【代码行数】和代码本身的围栏块。",
+  "这一轮只输出「审查思路」：逐条分析可疑点，每行以 - 开头，写清「行号 + 判断依据 + 可能后果」；",
+  "不要复述整段代码，不要客套，不要输出 JSON，不要输出代码块。",
+].join("\n");
+const CODE_REVIEW_JSON_SYSTEM = [
+  "你只输出一个 JSON 对象，不要解释、不要客套、不要代码块以外的内容。",
+  "对象的格式固定为：",
+  '{"summary":"一句话结论","issues":[{"line":12,"endLine":12,"severity":"error","title":"短标题","detail":"为什么是问题","fix":"具体怎么改"}]}',
+  "line/endLine 是 1 起始行号，必须落在给定代码的行数范围内；severity 只能是 error / warn / info；没有问题就是 issues: []。",
+].join("\n");
+const CODE_FIX_SYSTEM = [
+  "你是代码修复器。用户会给出代码、问题清单（可能为空）和意图。",
+  "请输出修正后的完整代码，放在一个带语言标记的围栏里；围栏之前最多 1–3 行说明改了什么。",
+  "只做必要修改，保持原有风格、缩进与结构；不要输出多个代码块，不要复述原代码，不要省略内容。",
+].join("\n");
+
+/** 代码审查/修正串行化：同一时刻只跑一个（抢同一份模型权重与内存） */
+const codeJob = { chain: Promise.resolve(), busy: false, pending: 0 };
+function codeJobLocked(fn) {
+  codeJob.pending += 1;
+  codeJob.busy = true;
+  const done = () => { codeJob.pending -= 1; if (codeJob.pending <= 0) { codeJob.pending = 0; codeJob.busy = false; } };
+  const run = codeJob.chain.then(fn, fn);
+  codeJob.chain = run.then(done, done).catch(() => {});
+  return run;
+}
+
+function sseOpen(res, extra = {}) {
+  res.writeHead(200, {
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-cache",
+    connection: "keep-alive",
+    "x-code-stream": "1",
+    ...extra,
+  });
+  return (obj) => {
+    try { res.write("data: " + JSON.stringify(obj) + "\n\n"); } catch {}
+  };
+}
+
+function codeJobError(status, message) {
+  const e = new Error(message);
+  e.status = status;
+  return e;
+}
+
+/**
+ * 选审查/修正用的模型：
+ *  - 没指定 → 本对话已加载的（没有就 409）
+ *  - 指定了 → 必须是模型目录里真实存在的（404）；与当前不同就先切过去（卸载当前模型）
+ */
+async function pickCodeJobModel(raw) {
+  const want = String(raw ?? "").trim();
+  if (!want) {
+    if (!state.model) throw codeJobError(409, "还没有加载模型：先在顶栏选一个，或在「审查模型」里选一个");
+    return { file: state.file || "", switched: false };
+  }
+  if (want.includes("/") || want.includes("\\") || want.includes("..")) throw codeJobError(400, "非法的模型文件名");
+  const models = await scanModels();
+  const hit = models.find((m) => m.file === want) || models.find((m) => String(m.file).toLowerCase() === want.toLowerCase());
+  if (!hit) throw codeJobError(404, "找不到模型：" + want);
+  if (state.model && state.file === hit.file) return { file: hit.file, switched: false };
+  if (state.loading) throw codeJobError(409, "已有模型正在加载，稍后再试");
+  if (activeChats > 0) throw codeJobError(409, "有对话正在进行，先等它结束（或点停止）再换审查模型");
+  if (vision.active > 0) throw codeJobError(409, "有视觉请求正在进行，先等它结束再换审查模型");
+  if (vision.starting) throw codeJobError(409, "视觉模型正在启动，稍后再换审查模型");
+  if (visionRunning()) {
+    log("代码审查换模型：先停视觉 sidecar（内存互斥）");
+    await stopVision();
+  }
+  log("代码审查：切换到模型 " + hit.file);
+  await loadModel(hit.file, DEFAULT_CONTEXT);
+  return { file: hit.file, switched: true };
+}
+
+/** 建审查用小上下文：8192 → 4096 → 2048 逐档回退 */
+async function openReviewContext() {
+  let ctx = null;
+  let size = 0;
+  let lastErr = null;
+  for (const s of CODE_REVIEW_CONTEXT_SIZES) {
+    try {
+      ctx = await state.model.createContext({ contextSize: s });
+      size = s;
+      break;
+    } catch (e) {
+      lastErr = e;
+      log("代码审查上下文 " + s + " 建不起来，降到下一档：" + String(e?.message ?? e).slice(0, 80));
+    }
+  }
+  if (!ctx) throw lastErr ?? new Error("无法创建代码审查用的上下文");
+  return { ctx, size };
+}
+
+/** 审查用的提示词（代码放最后一个围栏，模型最容易照着走） */
+function codeJobPrompt({ code, lang, file, intent, lineCount }) {
+  return [
+    "【用户意图】" + (String(intent ?? "").trim() || "（未提供，按代码本身判断）"),
+    "【文件】" + (String(file ?? "").trim() || "未命名"),
+    "【语言】" + (String(lang ?? "").trim() || "未知"),
+    "【代码行数】" + lineCount,
+    "",
+    "代码：",
+    FENCE + String(lang ?? "").trim(),
+    code,
+    FENCE,
+  ].join("\n");
+}
+
+/** 从自由文本里抠出最后一个 JSON 对象（按括号配对，忽略字符串里的括号）；抠不到返回 null */
+function extractJsonObject(text) {
+  const src = String(text ?? "");
+  for (let start = src.lastIndexOf("{"); start >= 0; start = src.lastIndexOf("{", start - 1)) {
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    let end = -1;
+    for (let i = start; i < src.length; i += 1) {
+      const ch = src[i];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (ch === "\\") esc = true;
+        else if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') { inStr = true; continue; }
+      if (ch === "{") depth += 1;
+      else if (ch === "}") {
+        depth -= 1;
+        if (depth === 0) { end = i; break; }
+      }
+    }
+    if (end > start) {
+      try {
+        const o = JSON.parse(src.slice(start, end + 1));
+        if (o && (Array.isArray(o.issues) || typeof o.summary === "string")) return o;
+      } catch {}
+    }
+  }
+  return null;
+}
+
+/** 从模型输出里取最后一个 json 围栏块解析成 findings；行号 clamp，字段一律转字符串 */
+function parseFindingsFromText(text, lineCount) {
+  const src = String(text ?? "");
+  const lower = src.toLowerCase();
+  const marker = FENCE + "json";
+  let obj = null;
+  let start = lower.lastIndexOf(marker);
+  while (start >= 0 && !obj) {
+    const bodyStart = src.indexOf("\n", start);
+    const end = bodyStart < 0 ? -1 : src.indexOf(FENCE, bodyStart);
+    if (bodyStart >= 0 && end > bodyStart) {
+      try { obj = JSON.parse(src.slice(bodyStart, end).trim()); } catch { obj = null; }
+    }
+    if (!obj) start = lower.lastIndexOf(marker, start - 1);
+  }
+  if (!obj) obj = extractJsonObject(src);
+  const maxLine = Math.max(1, Number(lineCount) || 1);
+  const issues = [];
+  if (obj && Array.isArray(obj.issues)) {
+    for (const it of obj.issues.slice(0, 60)) {
+      if (!it || typeof it !== "object") continue;
+      const line = Math.min(Math.max(1, Math.round(Number(it.line) || 1)), maxLine);
+      const endLine = Math.min(Math.max(line, Math.round(Number(it.endLine) || line)), maxLine);
+      const sev = String(it.severity ?? "").toLowerCase();
+      issues.push({
+        line,
+        endLine,
+        severity: sev === "error" || sev === "warn" || sev === "info" ? sev : "warn",
+        title: String(it.title ?? "").slice(0, 120) || "问题",
+        detail: String(it.detail ?? "").slice(0, 800),
+        fix: String(it.fix ?? "").slice(0, 800),
+      });
+    }
+  }
+  return {
+    summary: obj && typeof obj.summary === "string" ? obj.summary.slice(0, 300) : "",
+    issues,
+    parsed: Boolean(obj),
+  };
+}
+
+/** 从模型输出里取最长的那个围栏代码块（修正接口用）；没有围栏就返回空串（调用方退化成全文） */
+function extractFencedCode(text) {
+  const src = String(text ?? "");
+  let best = "";
+  let i = 0;
+  while (i < src.length) {
+    const s = src.indexOf(FENCE, i);
+    if (s < 0) break;
+    const lineEnd = src.indexOf("\n", s);
+    if (lineEnd < 0) break;
+    const e = src.indexOf(FENCE, lineEnd);
+    if (e < 0) break;
+    const body = src.slice(lineEnd + 1, e);
+    if (body.length > best.length) best = body;
+    i = e + FENCE.length;
+  }
+  return best.replace(/\s+$/, "");
+}
+
+/**
+ * 行级 diff：返回新代码里被改动（改了/新增）的行区间，给界面高亮「改动行」用。
+ * 用 LCS；代码 ≤20000 字符（几百行）时表很小；太大就退化成整篇变更。
+ */
+function diffLineRanges(oldText, newText) {
+  const a = String(oldText ?? "").replace(/\r\n/g, "\n").split("\n");
+  const b = String(newText ?? "").replace(/\r\n/g, "\n").split("\n");
+  const n = a.length;
+  const m = b.length;
+  if (!m) return { changes: [], added: 0, removed: n, lineCount: 0 };
+  if (n * m > 4000000) return { changes: [{ start: 1, end: m }], added: m, removed: n, lineCount: m, coarse: true };
+  const w = m + 1;
+  const dp = new Uint16Array((n + 1) * w);
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i * w + j] = a[i] === b[j] ? dp[(i + 1) * w + j + 1] + 1 : Math.max(dp[(i + 1) * w + j], dp[i * w + j + 1]);
+    }
+  }
+  const changed = new Uint8Array(m);
+  let i = 0;
+  let j = 0;
+  let added = 0;
+  let removed = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { i += 1; j += 1; continue; }
+    if (dp[(i + 1) * w + j] >= dp[i * w + j + 1]) { i += 1; removed += 1; }
+    else { changed[j] = 1; added += 1; j += 1; }
+  }
+  for (; i < n; i += 1) removed += 1;
+  for (; j < m; j += 1) { changed[j] = 1; added += 1; }
+  const changes = [];
+  let rs = -1;
+  for (let k = 0; k < m; k += 1) {
+    if (changed[k] && rs < 0) rs = k;
+    if (!changed[k] && rs >= 0) { changes.push({ start: rs + 1, end: k }); rs = -1; }
+  }
+  if (rs >= 0) changes.push({ start: rs + 1, end: m });
+  return { changes, added, removed, lineCount: m };
+}
+
+/** POST /api/code/review/stream —— 流式审查（SSE） */
+async function handleCodeReviewStream(req, res) {
+  if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
+    return sendJson(res, 403, { error: { message: "缺少或错误的本地令牌（x-local-token）" } });
+  }
+  let body;
+  try {
+    body = await readBody(req);
+  } catch (e) {
+    return sendJson(res, e?.code === "BODY_TOO_LARGE" ? 413 : 400, { error: { message: e?.message ?? "JSON 解析失败" } });
+  }
+  const code = typeof body?.code === "string" ? body.code : "";
+  if (!code.trim()) return sendJson(res, 400, { error: { message: "缺少 code" } });
+  if (code.length > CODE_REVIEW_MAX_CHARS) {
+    return sendJson(res, 413, { error: { message: "代码太长（上限 " + CODE_REVIEW_MAX_CHARS + " 字符）" } });
+  }
+  const lineCount = code.split("\n").length;
+  const rawMax = Number(body?.max_tokens);
+  const maxTokens = Math.max(128, Math.min(2000, Number.isFinite(rawMax) && rawMax > 0 ? Math.round(rawMax) : 1200));
+  const lang = String(body?.lang ?? "").trim().slice(0, 40);
+  const file = String(body?.file ?? "").trim().slice(0, 120);
+  const intent = String(body?.intent ?? "").trim().slice(0, 500);
+
+  return codeJobLocked(async () => {
+    const t0 = Date.now();
+    let send = null;
+    try {
+      const pick = await pickCodeJobModel(body?.model);
+      const { ctx, size } = await openReviewContext();
+      try {
+        send = sseOpen(res);
+        send({ type: "meta", model: path.basename(pick.file), modelFile: pick.file, contextSize: size, switchedModel: pick.switched, startedAt: t0 });
+        const session = new LlamaChatSession({
+          contextSequence: ctx.getSequence(),
+          // 和主聊天一致用「不思考」模板：审查思路靠 prompt 里要求的结构化输出来，别让思考链把 token 吃光
+          chatWrapper: state.wrapperNoThink ?? "auto",
+          systemPrompt: CODE_REVIEW_THINK_SYSTEM,
+        });
+        // 第一阶段：只流式输出「审查思路」（小模型一次要两样经常给不出合法 JSON，所以拆成两轮）
+        let thinkText = "";
+        const ac = new AbortController();
+        const watchdog = setTimeout(() => ac.abort(codeJobError(504, "审查超时（" + Math.round(CODE_JOB_TIMEOUT_MS / 1000) + "s 没有跑完）：换个模型或分段审查")), CODE_JOB_TIMEOUT_MS);
+        let meta;
+        try {
+          meta = await session.promptWithMeta(codeJobPrompt({ code, lang, file, intent, lineCount }), {
+            maxTokens,
+            temperature: 0.2,
+            signal: ac.signal,
+            onResponseChunk: (c) => {
+              if (c && c.text) {
+                thinkText += c.text;
+                send({ type: "delta", text: c.text });
+              }
+            },
+          });
+        } finally {
+          clearTimeout(watchdog);
+        }
+        const thinking = String(meta?.responseText ?? "") || thinkText;
+        // 第二阶段：把这一轮审查整理成 JSON（同一个 context 里问，很便宜）
+        send({ type: "phase", phase: "findings" });
+        const jsonPrompt = [
+          "【代码行数】" + lineCount,
+          "把上面这次审查整理成一个 JSON 对象，只输出 JSON，不要解释：",
+          CODE_REVIEW_JSON_SYSTEM.split("\n").slice(2).join("\n"),
+          "",
+          "审查思路原文（供你归纳，不要复述）：",
+          String(thinking).slice(-2000),
+        ].join("\n");
+        const ac2 = new AbortController();
+        const watchdog2 = setTimeout(() => ac2.abort(codeJobError(504, "审查结论整理超时")), Math.min(120000, CODE_JOB_TIMEOUT_MS));
+        let jm;
+        try {
+          jm = await session.promptWithMeta(jsonPrompt, { maxTokens: 700, temperature: 0.1, signal: ac2.signal });
+        } finally {
+          clearTimeout(watchdog2);
+        }
+        const findings = parseFindingsFromText(String(jm?.responseText ?? ""), lineCount);
+        const seconds = +((Date.now() - t0) / 1000).toFixed(1);
+        send({ type: "findings", summary: findings.summary, issues: findings.issues, parsed: findings.parsed, lineCount });
+        send({ type: "done", seconds, model: path.basename(pick.file) });
+        log("代码审查(流式) " + (file || "未命名") + " 上下文 " + size + " 问题 " + findings.issues.length + " " + seconds + "s" + (pick.switched ? "（切换模型）" : ""));
+      } finally {
+        await ctx.dispose().catch(() => {});
+      }
+    } catch (e) {
+      const status = e?.status || 500;
+      if (!send) {
+        return sendJson(res, status, { error: { message: String(e?.message ?? e) } });
+      }
+      send({ type: "error", message: String(e?.message ?? e) });
+      log("代码审查(流式) 失败 " + (file || "未命名") + ": " + String(e?.message ?? e));
+    } finally {
+      try { if (!res.writableEnded) res.end(); } catch {}
+    }
+  });
+}
+
+/** POST /api/code/fix —— 流式修正（SSE），返回修正后的完整代码 + 改动行区间 */
+async function handleCodeFix(req, res) {
+  if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
+    return sendJson(res, 403, { error: { message: "缺少或错误的本地令牌（x-local-token）" } });
+  }
+  let body;
+  try {
+    body = await readBody(req);
+  } catch (e) {
+    return sendJson(res, e?.code === "BODY_TOO_LARGE" ? 413 : 400, { error: { message: e?.message ?? "JSON 解析失败" } });
+  }
+  const code = typeof body?.code === "string" ? body.code : "";
+  if (!code.trim()) return sendJson(res, 400, { error: { message: "缺少 code" } });
+  if (code.length > CODE_REVIEW_MAX_CHARS) {
+    return sendJson(res, 413, { error: { message: "代码太长（上限 " + CODE_REVIEW_MAX_CHARS + " 字符）" } });
+  }
+  const lang = String(body?.lang ?? "").trim().slice(0, 40);
+  const file = String(body?.file ?? "").trim().slice(0, 120);
+  const intent = String(body?.intent ?? "").trim().slice(0, 500);
+  const scope = String(body?.scope ?? "all") === "single" ? "single" : "all";
+  const issues = Array.isArray(body?.issues) ? body.issues.slice(0, 40).map((it) => ({
+    line: Math.max(1, Math.round(Number(it?.line) || 1)),
+    endLine: Math.max(1, Math.round(Number(it?.endLine) || Number(it?.line) || 1)),
+    severity: String(it?.severity ?? "warn").slice(0, 12),
+    title: String(it?.title ?? "").slice(0, 200),
+    detail: String(it?.detail ?? "").slice(0, 600),
+    fix: String(it?.fix ?? "").slice(0, 600),
+  })) : [];
+  const rawMax = Number(body?.max_tokens);
+  const maxTokens = Math.max(256, Math.min(3000, Number.isFinite(rawMax) && rawMax > 0 ? Math.round(rawMax) : 1800));
+
+  return codeJobLocked(async () => {
+    const t0 = Date.now();
+    let send = null;
+    try {
+      const pick = await pickCodeJobModel(body?.model);
+      const { ctx, size } = await openReviewContext();
+      try {
+        send = sseOpen(res);
+        send({ type: "meta", model: path.basename(pick.file), modelFile: pick.file, contextSize: size, switchedModel: pick.switched, startedAt: t0, scope, issues: issues.length });
+        const session = new LlamaChatSession({
+          contextSequence: ctx.getSequence(),
+          chatWrapper: state.wrapperNoThink ?? "auto",
+          systemPrompt: CODE_FIX_SYSTEM,
+        });
+        const issueText = issues.length
+          ? issues.map((it, idx) => (idx + 1) + ". 行 " + it.line + (it.endLine > it.line ? "-" + it.endLine : "") + " [" + it.severity + "] " + it.title + "：" + it.detail + (it.fix ? " → 建议：" + it.fix : "")).join("\n")
+          : "（无，请自行检查并修正明显问题）";
+        const prompt = [
+          "【用户意图】" + (intent || "（未提供，按代码本身判断）"),
+          "【文件】" + (file || "未命名") + "　【语言】" + (lang || "未知"),
+          "【修正范围】" + (scope === "single" ? "只修下面这一条" : "修下面全部问题"),
+          "【问题清单】",
+          issueText,
+          "",
+          "原始代码：",
+          FENCE + lang,
+          code,
+          FENCE,
+        ].join("\n");
+        let streamed = "";
+        const ac = new AbortController();
+        const watchdog = setTimeout(() => ac.abort(codeJobError(504, "修正超时（" + Math.round(CODE_JOB_TIMEOUT_MS / 1000) + "s 没有跑完）")), CODE_JOB_TIMEOUT_MS);
+        let meta;
+        try {
+          meta = await session.promptWithMeta(prompt, {
+            maxTokens,
+            temperature: 0.15,
+            signal: ac.signal,
+            onResponseChunk: (c) => {
+              if (c && c.text) {
+                streamed += c.text;
+                send({ type: "delta", text: c.text });
+              }
+            },
+          });
+        } finally {
+          clearTimeout(watchdog);
+        }
+        const full = String(meta?.responseText ?? "") || streamed;
+        const fixedRaw = extractFencedCode(full);
+        const fixed = (fixedRaw || full).replace(/\r\n/g, "\n").replace(/\s+$/, "");
+        const diff = diffLineRanges(code, fixed);
+        const seconds = +((Date.now() - t0) / 1000).toFixed(1);
+        send({ type: "result", code: fixed, changes: diff.changes, added: diff.added, removed: diff.removed, lineCount: diff.lineCount, coarse: Boolean(diff.coarse) });
+        send({ type: "done", seconds, model: path.basename(pick.file) });
+        log("代码修正 " + (file || "未命名") + " 范围 " + scope + " 改 " + diff.added + " 行/删 " + diff.removed + " 行 " + seconds + "s" + (pick.switched ? "（切换模型）" : ""));
+      } finally {
+        await ctx.dispose().catch(() => {});
+      }
+    } catch (e) {
+      const status = e?.status || 500;
+      if (!send) return sendJson(res, status, { error: { message: String(e?.message ?? e) } });
+      send({ type: "error", message: String(e?.message ?? e) });
+      log("代码修正 失败 " + (file || "未命名") + ": " + String(e?.message ?? e));
+    } finally {
+      try { if (!res.writableEnded) res.end(); } catch {}
+    }
+  });
 }
 
 
@@ -6910,6 +7369,10 @@ async function handle(req, res) {
   }
 
   if (req.method === "POST" && url === "/api/load") {
+    // 代码审查/修正正在用小 context 跑：这时切模型会把底层权重卸掉，实测会把服务卡死（2026-11-15）
+    if (codeJob.busy) {
+      return sendJson(res, 409, { error: { message: "代码审查/修正正在进行，等它结束再切换模型" } });
+    }
     if (activeChats > 0) {
       return sendJson(res, 409, {
         error: { message: "有对话正在进行，先等它结束（或在界面点停止）再切换模型" },
@@ -7017,6 +7480,9 @@ async function handle(req, res) {
   // ---- 代码工作区：Agent 模式代码收录 / 模型审查 ----
   if (req.method === "POST" && url === "/api/code/capture") return handleCodeCapture(req, res);
   if (req.method === "POST" && url === "/api/code/review") return handleCodeReview(req, res);
+  // v1.7.0：流式审查（思路逐段 + findings）与流式修正（改好的代码 + 改动行区间）
+  if (req.method === "POST" && url === "/api/code/review/stream") return handleCodeReviewStream(req, res);
+  if (req.method === "POST" && url === "/api/code/fix") return handleCodeFix(req, res);
 
   // ---- 工作区（文件管理） ----
   if (url.startsWith("/api/workspace/")) {
@@ -7428,12 +7894,62 @@ async function handle(req, res) {
       status: ragStatus(),
     });
   }
-  // ---- 工具清单（只读，给界面与探针看） ----
+  // ---- 工具清单（只读，给界面、终端 TUI 与探针看） ----
+  // v1.7.0：多返回 args（名字/类型/是否必填/说明），终端里做补全与帮助时要显示参数；
+  // 原来的 name/description/params 三个字段保持不动（老探针按它断言）。
   if (url === "/api/tools" && req.method === "GET") {
     const reg = buildToolRegistry([], null, { web: true });
     return sendJson(res, 200, {
-      tools: reg.defs.map((d) => ({ name: d.name, description: d.description, params: Object.keys((d.params && d.params.properties) || {}) })),
+      tools: reg.defs.map((d) => {
+        const props = (d.params && d.params.properties) || {};
+        const required = Array.isArray(d.params && d.params.required) ? d.params.required : [];
+        return {
+          name: d.name,
+          description: d.description,
+          params: Object.keys(props),
+          args: Object.keys(props).map((k) => ({
+            name: k,
+            type: String((props[k] && props[k].type) || "string"),
+            required: required.includes(k),
+            description: String((props[k] && props[k].description) || ""),
+          })),
+          required,
+        };
+      }),
     });
+  }
+  // ---- 执行单个工具（v1.7.0，终端 TUI 的 /tool 用；会读写文件/跑代码，必须带令牌） ----
+  if (url === "/api/tool" && req.method === "POST") {
+    if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
+      return sendJson(res, 403, { error: { message: "缺少或错误的本地令牌（x-local-token）" } });
+    }
+    let body;
+    try {
+      body = await readBody(req);
+    } catch (e) {
+      return sendJson(res, e?.code === "BODY_TOO_LARGE" ? 413 : 400, { error: { message: e?.message ?? "JSON 解析失败" } });
+    }
+    const name = String(body?.name ?? "").trim();
+    if (!name) return sendJson(res, 400, { error: { message: "缺少 name（工具名）" } });
+    const args = body?.args === undefined || body?.args === null ? {} : body.args;
+    if (typeof args !== "object" || Array.isArray(args)) {
+      return sendJson(res, 400, { error: { message: "args 必须是对象（JSON）" } });
+    }
+    const reg = buildToolRegistry([], null, { web: true });
+    const def = reg.defs.find((d) => d.name === name);
+    if (!def) {
+      return sendJson(res, 404, {
+        error: { message: "没有这个工具：" + name, available: reg.defs.map((d) => d.name) },
+      });
+    }
+    try {
+      const t0 = Date.now();
+      const entry = await def.run(args);
+      return sendJson(res, 200, { ok: true, tool: name, ms: entry?.ms ?? Date.now() - t0, result: entry?.result ?? null });
+    } catch (e) {
+      // 工具自己已经 catch 成 {error} 的会走上面；这里是 run 抛出来的真异常
+      return sendJson(res, 500, { error: { message: "工具执行失败：" + String(e?.message ?? e) } });
+    }
   }
   // ---- 会话搜索：标题 + 正文，返回第一条命中附近的片段 ----
   if (req.method === "GET" && url.startsWith("/api/sessions/search")) {

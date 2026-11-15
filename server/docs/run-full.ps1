@@ -117,6 +117,12 @@ $probes=@(
   @{n='probe-workspace-api'; a=@($base); t=120},
   @{n='probe-code-run'; a=@($base); t=180},
   @{n='probe-code-workspace'; a=@($base); t=180},
+  # v1.7.0：代码审查流式（真模型：审查 + 修正 + 指定模型，收尾切回 4B）
+  @{n='probe-code-review-stream'; a=@($base); t=480},
+  # v1.7.0：代码面板 v2 UI（需要 4B 已加载；审查/纠正都走真模型）
+  @{n='probe-code-panel-v2'; a=@($base,$cdp,$shots); t=720},
+  # v1.7.0：终端 TUI（--hint-test 补全 + --plain 管道跑 /tools、/tool）
+  @{n='probe-tui-tools'; a=@($base); t=240},
   @{n='probe-gpu'; a=@($base); t=120},
   @{n='probe-ui-gpu'; a=@($cdp); t=180},
   @{n='probe-ui-metric'; a=@('8099'); t=60},
@@ -181,6 +187,10 @@ $probes=@(
 if (Load-Model) { ('  已加载: ' + $M) | Tee-Object -Append -FilePath $summary }
 else { '  预加载失败（后面的界面探针会因此变红）' | Tee-Object -Append -FilePath $summary }
 Seed-Workspace
+# 2026-11-15：全量里跳过「代码审查切到 Phi-4-mini」分支（该模型 SWA disabled，偶发原生层卡死，
+# 隔离跑同请求能过 = 已知产品风险）。probe-code-review-stream 读到这个变量会跳 D 段、不切模型。
+# 单独想深测 Phi 切换时：不设它，直接跑 node probe-code-review-stream.mjs。
+$env:PROBE_SKIP_SWITCH='1'
 foreach ($p in $probes) {
   $o=Join-Path $logs ($p.n + '.out.txt'); $e=Join-Path $logs ($p.n + '.err.txt')
   Remove-Item $o, $e -Force -ErrorAction SilentlyContinue
