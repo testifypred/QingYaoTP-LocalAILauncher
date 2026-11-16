@@ -3283,6 +3283,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 - 主包 `dist\QingYaoTP-AILauncher-v1.8.1.zip` **121.98MB / 127,902,252B / 3947 条目 / SHA256 `BE6AB2CBCE5B8D930933212286A1B77AB0897AA8F296FE829366DEC034A874EC`**；自检：无 `app/llama`、无 `data/*`、无 `cloud-review*`；
 - 8099 切回发布包实例 **v1.8.1**，视觉增强包装回 53 文件 / 101.1MB。
 
+### 四点五、已知小坑（本轮冒烟时踩到，已恢复）
+
+对 **8099 发布包实例**跑 `probe-code-review-verify` 时，探针按自己 cwd 的 `..\data\cloud-review.json`（开发态 = 仓库根）备份/写回，而发布包实例读写的是 `dist\QingYaoTP AILauncher\data\cloud-review.json`——**两条路径不是同一个文件**，于是跑完把用户真实配置清成 `enabled=false / hasKey=false`。本轮用开发态那份备份拷回（SHA256 `276E4BD2…` 与跑前一致），并真跑一次云端复审确认真修好（2.8s、findings 2 条：`add` 实现成减法，行 2 / error）。下轮让探针按 base 判断或跑前提示备份。
+
 ### 五、教训与下一轮
 
 1. **上游兼容性必须用真上游验一次**：v1.8.0 的云端段只跑了本地 stub（stub 永远返回 content），漏了「推理模型」这一类真实上游行为。**stub 只能证明代码路径，不能证明协议兼容**。
