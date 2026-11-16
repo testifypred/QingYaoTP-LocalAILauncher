@@ -189,4 +189,4 @@ workspace\                 会话、代码工作区、RAG 索引等用户数据
 
 - 版本号只有一处来源：`server\app.mjs` 的 `APP_VERSION`（`package.json` 必须一致，探针会对账）。
 - 现状与下一步：`交接文档.md`；时间流水与设计取舍：`DeveloperRealtimeLog.md`；技术专题：`technique\`。
-- 回归靠 **83 个探针**（`server\probe-*.mjs`），全量驱动 `server\docs\run-full.ps1`（**63 条** / 断言口径 **1210**）——这个项目没有 CI，探针就是 CI。
+- 回归靠 **83 个探针**（`server\probe-*.mjs`），全量驱动 `server\docs\run-full.ps1`（**63 条** / 断言口径 **1224**）——这个项目没有 CI，探针就是 CI。

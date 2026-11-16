@@ -42,7 +42,7 @@ const DEBUG_UI = path.join(HERE, "debug.html");
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 /** 版本号：发版只改这一处；server\package.json 的 version 必须与它一致（probe-version 会查） */
-const APP_VERSION = "1.8.0";
+const APP_VERSION = "1.8.1";
 /** 产品正式名（2026-11-01 起）：QingYaoTP AILauncher；QingYaoTP = QingYaoTestifypred */
 const APP_NAME = "QingYaoTP AILauncher";
 const APP_SUB = "本地 AI";
@@ -4745,6 +4745,10 @@ async function handleCloudReviewStream(req, res) {
   return codeJobLocked(async () => {
     const t0 = Date.now();
     let send = null;
+    // 重试阶梯计数（日志 / meta 用）：attempt1 默认，attempt2 兼容不认 thinking 的网关，attempt3 给推理型上游放大预算
+    let attempts = 0;
+    let thinkingDisabled = true;
+    let usedReasoningFallback = false;
     try {
       if (clientGone) {
         log("云端复审 " + host + " 客户端已断开，跳过请求");
@@ -4758,47 +4762,100 @@ async function handleCloudReviewStream(req, res) {
       ac = new AbortController();
       const timeoutSignal = AbortSignal.timeout(CLOUD_JOB_TIMEOUT_MS);
       const signal = typeof AbortSignal.any === "function" ? AbortSignal.any([timeoutSignal, ac.signal]) : timeoutSignal;
-      let up;
-      try {
-        up = await fetch(upstream, {
-          method: "POST",
-          headers: { "content-type": "application/json", authorization: "Bearer " + cfg.apiKey },
-          body: JSON.stringify({
-            model: cfg.model,
-            messages: [
-              { role: "system", content: CODE_CLOUD_SYSTEM },
-              { role: "user", content: prompt },
-            ],
-            temperature: 0.2,
-            max_tokens: maxTokens,
-            stream: false,
-          }),
-          signal,
-        });
-      } catch (e) {
-        if (clientGone) {
-          log("云端复审 " + host + " 已停止（客户端断开）");
-          return;
+      // v1.8.1：推理型上游（如 deepseek-flash）会把预算全烧在 reasoning_content 上，
+      // 表现为 HTTP 200 但 content 为空、finish_reason=length。默认先带顶层
+      // thinking:{type:"disabled"} 把推理关掉；下面的重试阶梯共享同一个 AbortController
+      // 和同一个 timeout signal，总时长仍受 CLOUD_JOB_TIMEOUT_MS 管（契约 §1.3.4）。
+      const callCloudUpstream = async ({ maxTokens: mt, thinking }) => {
+        const bodyObj = {
+          model: cfg.model,
+          messages: [
+            { role: "system", content: CODE_CLOUD_SYSTEM },
+            { role: "user", content: prompt },
+          ],
+          temperature: 0.2,
+          max_tokens: mt,
+          stream: false,
+        };
+        // thinking 只在上游认这个参数时才发；不认的网关会在 attempt2 里去掉
+        if (thinking) bodyObj.thinking = { type: "disabled" };
+        let up;
+        try {
+          up = await fetch(upstream, {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: "Bearer " + cfg.apiKey },
+            body: JSON.stringify(bodyObj),
+            signal,
+          });
+        } catch (e) {
+          if (clientGone) {
+            log("云端复审 " + host + " 已停止（客户端断开）");
+            return { stopped: true };
+          }
+          if (timeoutSignal.aborted) throw codeJobError(504, "云端复审超时（" + Math.round(CLOUD_JOB_TIMEOUT_MS / 1000) + "s 没有返回）：" + host);
+          throw codeJobError(502, "云端复审请求失败：" + String(e?.message ?? e).slice(0, 200));
         }
-        if (timeoutSignal.aborted) throw codeJobError(504, "云端复审超时（" + Math.round(CLOUD_JOB_TIMEOUT_MS / 1000) + "s 没有返回）：" + host);
-        throw codeJobError(502, "云端复审请求失败：" + String(e?.message ?? e).slice(0, 200));
+        if (!up.ok) {
+          const rawText = await up.text().catch(() => "");
+          return { ok: false, status: up.status, rawText: String(rawText).slice(0, 400) };
+        }
+        let data = null;
+        try {
+          data = await up.json();
+        } catch {}
+        const choice = data && Array.isArray(data.choices) ? data.choices[0] : null;
+        const msg = choice && choice.message ? choice.message : null;
+        return {
+          ok: true,
+          status: up.status,
+          content: String(msg?.content ?? "").trim(),
+          reasoning: String(msg?.reasoning_content ?? msg?.reasoning ?? "").trim(),
+          finishReason: String(choice?.finish_reason ?? ""),
+        };
+      };
+
+      // 重试阶梯（契约 v1.8.1）：
+      //  attempt1 = thinking 关 + max_tokens=M；
+      //  attempt2 = 仅当 attempt1 是 4xx（400/422/404）且报「不认识 thinking 参数」→ 去掉 thinking 原样重发；
+      //  attempt3 = 200 但正文空、推理非空（说明上游忽略了 thinking）→ 去掉 thinking + 放大 max_tokens 重发。
+      attempts += 1;
+      let r = await callCloudUpstream({ maxTokens, thinking: true });
+      if (r.stopped) return;
+      if (!r.ok && [400, 422, 404].includes(r.status) && /thinking/i.test(r.rawText)) {
+        log("云端复审 " + host + " 上游不认 thinking 参数，去掉后重发（attempts " + (attempts + 1) + "）");
+        attempts += 1;
+        thinkingDisabled = false;
+        r = await callCloudUpstream({ maxTokens, thinking: false });
+        if (r.stopped) return;
       }
-      if (!up.ok) {
-        const rawText = await up.text().catch(() => "");
-        throw codeJobError(502, "上游 " + up.status + "：" + String(rawText).slice(0, 200));
+      if (!r.ok) throw codeJobError(502, "上游 " + r.status + "：" + String(r.rawText || "").slice(0, 200));
+      if (!r.content && r.reasoning) {
+        // 上游把 thinking 当未知参数忽略了：去掉 thinking，并把 max_tokens 放大到够「推理 + 正文」
+        const bigMax = Math.min(6000, Math.max(2400, maxTokens * 3));
+        log("云端复审 " + host + " 正文空但推理非空，放大 max_tokens=" + bigMax + " 重发（attempts " + (attempts + 1) + "）");
+        attempts += 1;
+        thinkingDisabled = false;
+        r = await callCloudUpstream({ maxTokens: bigMax, thinking: false });
+        if (r.stopped) return;
+        if (!r.ok) throw codeJobError(502, "上游 " + r.status + "：" + String(r.rawText || "").slice(0, 200));
       }
-      let data = null;
-      try {
-        data = await up.json();
-      } catch {}
-      const text = data && Array.isArray(data.choices) && data.choices[0] && data.choices[0].message && typeof data.choices[0].message.content === "string"
-        ? data.choices[0].message.content
-        : "";
-      if (!String(text).trim()) throw codeJobError(502, "上游 " + up.status + " 但没有返回内容（不是 OpenAI 兼容响应？）");
+      // 兜底：放大后正文仍空、推理非空 → 拿 reasoning 当答案（streaming 照旧推），meta 里标记
+      let text = r.content;
+      if (!text && r.reasoning) {
+        text = r.reasoning;
+        usedReasoningFallback = true;
+        log("云端复审 " + host + " 正文仍空，改用推理内容当答案（attempts " + attempts + "）");
+      }
+      if (!text) {
+        // 别再误报「不是 OpenAI 兼容响应」：把 finish_reason 和解决方向直接写给用户
+        const emptyErr = codeJobError(502, "上游 200 但正文为空（finish_reason=" + (r.finishReason || "unknown") + "）：如果是推理模型，请换成非推理模型或加大 max_tokens");
+        emptyErr.code = "CLOUD_EMPTY";
+        throw emptyErr;
+      }
       if (clientGone) throw codeJobError(499, "客户端已断开（已停止）");
       send = sseOpen(res);
-      // 日志红线：只记 host / 模型 / 字符数 / 脱敏处数 / 秒数，绝不记 apiKey、绝不记代码正文
-      send({ type: "meta", provider: "cloud", host, model: cfg.model, sentChars: prompt.length, redactions: clean.total, startedAt: t0 });
+      // 日志红线：只记 host / 模型 / 字符数 / 脱敏处数 / 秒数 / attempts，绝不记 apiKey、不记代码正文、不记上游原文
+      send({ type: "meta", provider: "cloud", host, model: cfg.model, sentChars: prompt.length, redactions: clean.total, startedAt: t0, attempts, thinkingDisabled, usedReasoningFallback });
       const flat = String(text);
       const CHUNK = 80;
       for (let i = 0; i < flat.length; i += CHUNK) {
@@ -4812,17 +4869,18 @@ async function handleCloudReviewStream(req, res) {
       send({ type: "findings", summary: findings.summary, issues: findings.issues, parsed: findings.parsed, lineCount });
       send({ type: "done", seconds, model: cfg.model });
       try { if (!res.writableEnded) res.end(); } catch {}
-      log("云端复审 " + host + " 模型 " + cfg.model + " 发出 " + prompt.length + " 字符 / 脱敏 " + clean.total + " 处 " + seconds + "s");
+      log("云端复审 " + host + " 模型 " + cfg.model + " 发出 " + prompt.length + " 字符 / 脱敏 " + clean.total + " 处 " + seconds + "s / attempts " + attempts + (usedReasoningFallback ? "（推理兜底）" : ""));
     } catch (e) {
       if (clientGone) {
         log("云端复审 " + host + " 已停止（客户端断开）");
         return;
       }
       const status = e?.status || 500;
-      const code2 = status === 504 ? "CLOUD_TIMEOUT" : status === 502 ? "CLOUD_UPSTREAM" : (e?.status ? "CLOUD_FAILED" : "CLOUD_INTERNAL");
+      const code2 = e?.code === "CLOUD_EMPTY" ? "CLOUD_EMPTY" : status === 504 ? "CLOUD_TIMEOUT" : status === 502 ? "CLOUD_UPSTREAM" : (e?.status ? "CLOUD_FAILED" : "CLOUD_INTERNAL");
       if (!send) return cloudFail(res, status, code2, String(e?.message ?? e));
       send({ type: "error", message: String(e?.message ?? e) });
-      log("云端复审 失败 " + host + " " + status + ": " + String(e?.message ?? e).slice(0, 200));
+      // 日志红线：失败日志也不带上游原文、不带代码正文
+      log("云端复审 失败 " + host + " " + status + " " + code2 + " attempts " + attempts);
     } finally {
       res.off("close", onClientClose);
       try { if (!res.writableEnded) res.end(); } catch {}

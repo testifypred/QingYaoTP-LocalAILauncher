@@ -3,7 +3,7 @@
 > 原名 `HANDOFF.md`，由上一任开发者写于 **2026-10-18 21:45**。
 > 从 **2026-10-18 21:44** 起，本文件改为**按时间流水记录**：每一笔写清「几点、改了什么、落在哪、怎么验的」。
 > 第一节是日志索引，其后的一~七节是原交接正文（保留原样，仅修正两处日期笔误），八~十节是本次三项需求的详细设计说明。
-> 最新一笔：**2026-11-15 中午**（第六十节，**修「主页面很慢」**：工具分支改成流式 + 工具说明瘦身 717→548 token + 「调用工具」默认关并一次性迁移 + 开场白不再默认套 Agent 模式；新增 `probe-tool-stream` 9 条，全量 56 → **57 条**、口径 **877**；版本升 **1.5.1**）。全部时间均为 China Standard Time，本机时钟。
+> 最新一笔：**2026-11-16 深夜**（第六十六节，**v1.8.1：云端复审兼容推理型模型**——DeepSeek `deepseek-flash` 的 reasoning 会吃光 `max_tokens`，v1.8.0 误报「不是 OpenAI 兼容响应」；现在默认 `thinking:disabled` + 三段重试 + reasoning 兜底 + `CLOUD_EMPTY`；探针新增 F1–F4 四条 stub 分支）。全部时间均为 China Standard Time，本机时钟。
 >
 > **接手先读 [`交接文档.md`](交接文档.md)**（一页纸：定位、现状、代码地图、下一步）。
 > 技术专题已抽到 [`technique/`](technique/)：架构、接口、插件、模型、打包、探针、坑。本文件保留**按时间流水**的原始记录，作为「为什么这么做」的证据。
@@ -3238,3 +3238,53 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 2. 三栏对照（本地审查 / 他人复审 / 云端复审）复用一个比对表。
 3. 云端复审改流式上游、支持「只发选中片段」、把 `CLOUD_JOB_TIMEOUT_MS` 暴露到设置页。
 4. 老账：多文件/整工作区审查、一键纠正结果一键写回文件、`toolEnabled` 同步 1 行修。
+## 六十六、2026-11-16 深夜：云端复审兼容推理型模型（v1.8.1，按用户实测截图反馈）
+
+> 触发：用户在本机界面「设置 → 代码 → 云端复审」里配了 DeepSeek（`baseURL=https://api.deepseek.com`、`model=deepseek-flash`），点「云端复审」弹红字：**「云端复审失败：上游 200 但没有返回内容（不是 OpenAI 兼容响应？）」**。
+> 结论：不是用户配错，是 v1.8.0 只读 `choices[0].message.content`，而**推理型模型**先把 token 花在 `reasoning_content` 上。
+
+### 一、根因（用用户自己的配置实测，同一请求体）
+
+| 请求 | 结果 |
+|---|---|
+| 现状：`max_tokens=1200`、无参数 | HTTP 200，但 `finish_reason="length"`、`content` **0 字**、`reasoning_content` **4066 字**、`reasoning_tokens=1200` → 我们把 content 当空 → 误报「不是 OpenAI 兼容响应」 |
+| `max_tokens=4000` | 正常：`finish_reason="stop"`、content 1531 字、reasoning 3252 字 |
+| **顶层 `thinking:{type:"disabled"}` + 1200** | **2.1s 返回、reasoning 0 字、content 382 字** ← DeepSeek 认这个参数，最优解 |
+| `chat_template_kwargs.enable_thinking=false` + 1200 | DeepSeek **不认**，仍推理（6.9s，content 216 字但被 length 截断） |
+
+### 二、改了什么（只动 `server\app.mjs` + 版本三处，无新增 import）
+
+1. **默认关推理**：请求体顶层带 `thinking: { type: "disabled" }`。
+2. **重试阶梯**（三次尝试共用同一个 AbortController + `CLOUD_JOB_TIMEOUT_MS` 总超时）：
+   - attempt1：thinking disabled + `max_tokens=M`（默认 1200）；
+   - attempt2：**仅当 attempt1 是 4xx（400/422/404）且响应体提到 thinking/unknown** → 去掉 thinking 原样重发（兼容不认这个参数的网关）；
+   - attempt3：**200 但 content 空、reasoning 非空** → 去 thinking、`max_tokens=min(6000,max(2400,M*3))` 重发；
+   - 兜底：仍空但 reasoning 非空 → **reasoning 当正文推流**（`meta.usedReasoningFallback=true`）；两边都空 → **502 `CLOUD_EMPTY`**，message 带 `finish_reason` 并提示「换成非推理模型或加大 max_tokens」。
+3. **meta 新增三字段**：`attempts` / `thinkingDisabled` / `usedReasoningFallback`；SSE 顺序与其余字段不变。
+4. **日志红线**：成功只记 host/模型/字符数/脱敏数/秒数/attempts；失败只记 status+code+attempts —— 不记上游原文、不记代码正文、不记 key。
+5. 版本 1.8.0 → **1.8.1**（app.mjs / package.json / localai.mjs；TUI `VER` 不动）。
+
+### 三、验证
+
+| 项 | 结果 |
+|---|---|
+| 真 DeepSeek（dev 8299） | `deepseek-flash`：**1.5s**、`attempts=1`、`thinkingDisabled=true`、delta 288 字、findings 0 问题、无 error（另一轮 2.5s / 846 字 / findings 2 条） |
+| 真 DeepSeek（发布包 8099 v1.8.1） | **2.1s**、`attempts=1`、`thinkingDisabled=true`、delta 429 字、findings 0 问题、无 error |
+| 后端自测 `cloudfix-smoke`（真上游 + 4 类 stub） | **34/34**：stub「只回 reasoning」→ 重试 2 次后成功或 reasoning 兜底；stub「400 且提到 thinking」→ 去 thinking 重试成功；stub「两边全空」→ 502 `CLOUD_EMPTY` 且不重试；收尾恢复用户真实配置并校验 |
+| 探针 `probe-code-review-verify` 新增 **F 段（F1–F4，全 stub 不出网）** | F1 只回 reasoning → 重试 ≥2 次、`attempts=2`、无 502；F2 400+thinking → 第 2 次请求已去 thinking、成功；F3 永远只有 reasoning → `usedReasoningFallback=true`、delta 等于 reasoning 原文；F4 两边全空 → 502 `CLOUD_EMPTY` |
+| 发布包冒烟（8099 v1.8.1） | `probe-version` **14/14**、`probe-debug` **54/54**、`probe-code-review-verify` **75/75**（跳过 12 项 UI） |
+| 探针口径 | `probe-code-review-verify` 73 → **87**（带 cdp；不带 cdp 61 → 75），全量断言口径 1210 → **1224**；探针条目仍 **63 条** |
+| 用户配置保护 | 探针改为「开跑前整份备份 `data\cloud-review.json`、收尾原样写回（不打印 Key）」——实测收尾后 SHA256 与开跑前一致 |
+| 用户配置 | 重打包与重启后**原样保留**（`enabled=true / api.deepseek.com / deepseek-flash / hasKey=true`），用户不用重填 |
+
+### 四、交付
+
+- dist 重建 **258.6MB / 3447 文件**（主包仍无 `app\llama`）；
+- 主包 `dist\QingYaoTP-AILauncher-v1.8.1.zip` **121.98MB / 127,902,252B / 3947 条目 / SHA256 `BE6AB2CBCE5B8D930933212286A1B77AB0897AA8F296FE829366DEC034A874EC`**；自检：无 `app/llama`、无 `data/*`、无 `cloud-review*`；
+- 8099 切回发布包实例 **v1.8.1**，视觉增强包装回 53 文件 / 101.1MB。
+
+### 五、教训与下一轮
+
+1. **上游兼容性必须用真上游验一次**：v1.8.0 的云端段只跑了本地 stub（stub 永远返回 content），漏了「推理模型」这一类真实上游行为。**stub 只能证明代码路径，不能证明协议兼容**。
+2. 契约里要写「推理模型」这一维：`thinking` 开关、`attempts`、`usedReasoningFallback`、`CLOUD_EMPTY`（已补进 `technique/02-接口.md`）。
+3. 下一轮可做：设置页把「关闭推理」做成可选开关（有些模型关了推理质量会降）、`max_tokens` 可配、把 `attempts`/`fallback` 显示到面板状态行。

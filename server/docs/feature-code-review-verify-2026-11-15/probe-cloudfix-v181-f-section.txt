@@ -1,0 +1,61 @@
+probe-code-review-verify · v1.8.1「推理型模型」F 段证据
+====================================================
+时间：2026-11-16 23:39 ~ 2026-11-17 00:0x（Asia/Shanghai）
+目标实例：http://127.0.0.1:8299（v1.8.1，pid 8420；8099 全程未碰）
+执行：node probe-code-review-verify.mjs http://127.0.0.1:8299（API 段，不传 cdp）
+结论：75/75 通过（不带 cdp）· 失败项 0 · 加 cdp 口径 = 87 条
+
+一、本次新增 F 段（推理型模型，全部本地 stub，绝不真出网）
+------------------------------------------------------------
+stub 用路径前缀区分四种「推理型上游」（/f1/v1、/f2/v1、/f3/v1、/f4/v1），判定只看请求体，
+不含随机数/时间，可重复：
+  F1 上游忽略 thinking：content=""、reasoning_content 非空、finish_reason=length；
+     **仅当请求 max_tokens>=2000** 才回正常 content（含 json 围栏）。
+  F2 上游不认 thinking：请求体顶层含 thinking 就回 400 {"error":{"message":"unknown field: thinking"}}，
+     去掉后回正常 content。
+  F3 永远只回 reasoning（放多大 token 都一样）。
+  F4 content 与 reasoning_content 都空。
+
+断言（+14 条，探针总口径 73 -> 87【带 cdp】/ 61 -> 75【不带 cdp】）：
+  F1(4)：stub 命中 >=2（真重试）；首个请求体顶层 thinking:{type:"disabled"}；
+         重试后 200 SSE + findings 有 issues + 无 error/无 502；
+         meta.attempts>=2 且 thinkingDisabled=false。
+  F2(4)：stub 命中 >=2；首请求带 thinking、重试请求已无 thinking 字段；
+         重试后 200 SSE + findings 有 issues + 无 error/无 502；
+         meta.attempts>=2 且 thinkingDisabled=false。
+  F3(4)：200 且无 error/无 CLOUD_EMPTY；delta 拼接非空且 == 上游 reasoning 原文；
+         meta.usedReasoningFallback===true；findings 字段齐全
+         （parsed 是 bool、issues 是数组、summary string、行号/severity/title/detail/fix 合法；
+          按 backend-cloudfix 口径不强制 issues 非空——纯文本 reasoning 解析不出 JSON 也是合法结果）。
+  F4(2)：JSON 502（不是 SSE 200 空正文）；code/message 含 CLOUD_EMPTY（message 含「正文为空」）。
+每段 finally 恢复云端配置（enabled=false + 清 key），F 段结束再把正常 stub 配置装回去留给 E 段。
+
+二、实跑结果（run2，干净通过）
+------------------------------
+【run2 日志】D:\LocalModels\server\docs\feature-code-review-verify-2026-11-15\probe-cloudfix-api-run2.txt
+  F1 事件: meta -> delta*6 -> findings -> done；hits=2；attempts=2；thinkingDisabled=false；
+          issues=2；HTTP 200（无 error/无 502）。
+  F2 事件: meta -> delta*6 -> findings -> done；hits=2；首请求 thinking={"type":"disabled"}、
+          末请求无 thinking 字段；attempts=2；thinkingDisabled=false；issues=2。
+  F3 事件: meta -> delta*6 -> findings -> done；HTTP 200；delta 拼接 426 字 == 上游 reasoning 原文；
+          usedReasoningFallback=true；attempts=2；findings parsed=true / issues=2。
+  F4：HTTP 502 · application/json · code=CLOUD_EMPTY · message
+          「上游 200 但正文为空（finish_reason=stop）：如果是推理模型，请换成非推理模型或加大 max_tokens」。
+  收尾：云端配置已停用+清 key（断言通过），随后把开跑前的 data\cloud-review.json 原样写回：
+        enabled=true / hasKey=true / host=api.deepseek.com / model=deepseek-flash / ready=true。
+        SHA256 与开跑前备份完全一致（276E4BD2C68ED7A097ADA724279396670CC028A6765CE16602C5F95B899EACB6）。
+        模型状态还原：开跑前未加载 -> 收尾已卸载（loaded 空）。
+  A/B/C/D 段全绿（B 指定模型复审 58.8s、verdict=differs；C/D 云端 stub 段全绿）。
+
+【run1 日志】D:\LocalModels\server\docs\feature-code-review-verify-2026-11-15\probe-cloudfix-api-run1.txt
+  同一套 F1-F4 断言全部通过；仅「收尾写回真实配置」那步因新增代码的作用域 bug 抛
+  ReferenceError（cloudCfgBackup 未定义），已修（提到模块级）并用 run2 复验通过。
+  run1 结束后已立即从外部临时备份把真实配置手工写回，配置未丢失。
+
+三、探针改动（只改 probe 本体，未碰 app.mjs / app.html / run-full.ps1）
+---------------------------------------------------------------------
+1) 新增 F 段（4 个子段、14 条断言）与 stub 的 /f1../f4 四种上游模式（modeHits/modeBodies 计数）。
+2) 收尾新增：开跑前若已有真 Key，把 data\cloud-review.json 整份备份进内存、收尾原样写回
+   （GET 只回遮罩，读盘是唯一不打印 Key 又能恢复的路径）——避免探针把用户真实 DeepSeek 配置清掉。
+3) 文档头补 F 段说明 + 断言口径 73/61 -> 87/75。
+4) run-full.ps1 未改：探针条目仍是 63 条（已核对 ^\s*@\{n= 计数 = 63）。

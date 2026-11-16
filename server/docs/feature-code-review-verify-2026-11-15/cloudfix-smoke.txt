@@ -1,0 +1,53 @@
+== v1.8.1 云端复审 cloudfix 自测 · 目标 http://127.0.0.1:8299 · 2026-11-16T15:42:31.804Z ==
+
+-- 0. 前置（版本 / 令牌 / 用户真实云端配置） --
+  ok   GET /api/state -> 200  [HTTP 200 {"models":[{"file":"DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf","path":"D:\\LocalModels\\DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf","sizeGB":4.68,"label":"DeepSeek-R1-0528-Qwen3-8B-Q4_K_M","sharded":false},{"f]
+  ok   拿到本机令牌  [len=36]
+  ok   版本已是 1.8.1  [version=1.8.1]
+  ok   用户真实配置已就绪（enabled / baseURL / model / key）  [host=api.deepseek.com model=deepseek-flash keyLen=35]
+  ok   真实配置指向 api.deepseek.com  [host=api.deepseek.com]
+
+-- 1. 真 DeepSeek（deepseek-flash 推理型）POST /api/code/review/cloud --
+  ok   真跑 -> 200 + text/event-stream  [HTTP 200 ct=text/event-stream; charset=utf data: {"type":"meta","provider":"cloud","host":"api.deepseek.com","model":"deepseek-flash","sentChars":267,"redactions":0,"startedAt":1794843751831,"attempts":1,"thinkingDisabled":true,"usedReasoningF]
+  ok   无 error 事件（推理模型没把请求撑爆）  [meta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,findings,done]
+  ok   事件顺序 meta 第一 / done 最后  [meta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,delta,findings,done]
+  ok   meta.attempts === 1  [attempts=1]
+  ok   meta.thinkingDisabled === true  [thinkingDisabled=true]
+  ok   meta.usedReasoningFallback === false（推理被关掉，正文直接有）  [usedReasoningFallback=false]
+  ok   delta 正文非空  [len=846]
+  ok   findings 有内容（summary 或 issues 非空）  [{"summary":"循环上界多加了 1 导致索引越界，空列表也会崩溃","issues":2,"parsed":true}]
+  ok   done.seconds > 0  [seconds=2.5]
+  ok   总耗时 < 60s  [2.5s]
+  .. 真 DeepSeek 耗时 2.5s / attempts=1 / thinkingDisabled=true / delta 846 字 / findings 2 条
+
+-- 2. stub：只回 reasoning_content（content 空 / finish_reason=length） --
+  .. 本地 stub 端口 10518
+  ok   配置指到 stub（confirm host 非空）  [confirm host=127.0.0.1:10518]
+  ok   服务重试（stub 收到 >= 2 次请求）  [hits=2]
+  ok   没出现 502（200 SSE，无 error 事件）  [HTTP 200 ct=text/event-stream; charset=utf data: {"type":"meta","provider":"cloud","host":"127.0.0.1:10518","model":"stub-model","sentChars":267,"redactions":0,"startedAt":1794843754344,"attempts":2,"thinkingDisabled":false,"usedReasoningFallb]
+  ok   meta.usedReasoningFallback === true  [usedReasoningFallback=true]
+  ok   meta.attempts === 2（attempt1 + attempt3）  [attempts=2]
+  ok   meta.thinkingDisabled === false（attempt3 去掉了 thinking）  [thinkingDisabled=false]
+  ok   delta 拼起来 == 推理内容（reasoning 兜底）  [len=93]
+  ok   第 1 次请求带 thinking:{type:"disabled"} 且 max_tokens=1000  [{"thinking":{"type":"disabled"},"max_tokens":1000}]
+  ok   第 2 次请求不带 thinking 且 max_tokens 放大到 3000  [{"max_tokens":3000}]
+  .. reasoning stub 耗时 0.0s / hits=2 / attempts=2 / 兜底=true
+
+-- 3. stub：400 + body 提到 thinking（不认这个参数的上游） --
+  ok   配置指到 think400 stub  [confirm host=127.0.0.1:10518]
+  ok   stub 收到 2 次请求  [hits=2]
+  ok   第 1 次带 thinking / 第 2 次不带 thinking  [{"first":{"type":"disabled"}}]
+  ok   去掉 thinking 后重发成功（200 SSE，无 error 事件）  [HTTP 200 data: {"type":"meta","provider":"cloud","host":"127.0.0.1:10518","model":"stub-model","sentChars":267,"redactions":0,"startedAt":1794843754372,"attempts":2,"thinkingDisabled":false,"usedReasoningFallb]
+  ok   meta.attempts === 2 / thinkingDisabled === false  [{"attempts":2,"thinkingDisabled":false}]
+  ok   delta 拼起来 == stub 正文  [len=355]
+  .. 400-thinking stub 耗时 0.0s / hits=2 / attempts=2
+
+-- 4. stub：content 空且 reasoning 也空 → 502 CLOUD_EMPTY --
+  ok   -> 502 + code=CLOUD_EMPTY  [HTTP 502 code=CLOUD_EMPTY msg=上游 200 但正文为空（finish_reason=length）：如果是推理模型，请换成非推理模型或加大 max_t]
+  ok   文案带 finish_reason 和解决方向  [上游 200 但正文为空（finish_reason=length）：如果是推理模型，请换成非推理模型或加大 max_tokens]
+  ok   这种分支不重试（stub 只收到 1 次）  [hits=1]
+
+收尾：云端配置已恢复 host=api.deepseek.com model=deepseek-flash hasKey=true enabled=true
+  ok   真实配置已恢复（host/model 一致、key 在位、已启用）  [{"host":"api.deepseek.com","model":"deepseek-flash","hasKey":true,"enabled":true}]
+
+结果: 34/34 通过（失败 0，耗时 2.6s）

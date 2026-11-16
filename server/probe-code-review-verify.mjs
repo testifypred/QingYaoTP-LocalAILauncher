@@ -1,5 +1,5 @@
 /**
- * 质询 / 他人复审 / 云端复审 探针（v1.8.0 契约 §3）
+ * 质询 / 他人复审 / 云端复审 探针（v1.8.0 契约 §3 + v1.8.1 推理型模型 §F）
  *
  *   node probe-code-review-verify.mjs [base] [cdp]
  *
@@ -23,16 +23,27 @@
  *     delta 拼接 = stub 文本（且 >=3 段）、findings 解析、done.seconds；
  *     **stub 收到的 body 里没有原 key/邮箱/路径/IP，且出现脱敏标记**；上游 500 -> 502 CLOUD_UPSTREAM；
  *     上游慢（3s）不崩：正常 200 收尾或 error 事件带 message（契约 §3 明确不做超时断言）。绝不真出网。
+ *  F) 推理型模型（v1.8.1 契约，同一台本地 stub 按路径前缀 /f1../f4 造四种上游，全部确定性、绝不出网）：
+ *     F1 上游忽略 thinking、只回 reasoning（content=""、finish_reason=length），仅当 max_tokens>=2000 才回正常 content
+ *        -> 服务放大 token 重试：stub 命中 >=2、最终 200 SSE 有 findings、无 502、meta.attempts>=2；
+ *           首个请求体顶层带 thinking:{type:"disabled"}（契约①）；
+ *     F2 上游不认 thinking（带 thinking 就 400 {"error":{"message":"unknown field: thinking"}}）
+ *        -> 服务去掉 thinking 重试成功：meta.attempts>=2、无 502、首请求有 thinking / 重试请求已无 thinking；
+ *     F3 永远只回 reasoning（放大 token 也一样）-> **不报 502**，把 reasoning 当正文推流（delta 拼接非空）、
+ *        meta.usedReasoningFallback===true、findings 字段仍齐全；
+ *     F4 content 与 reasoning 都空 -> 502 且 code/message 含 CLOUD_EMPTY（后端若改用 error 事件则 message 含「正文为空」）。
+ *     每段 finally 恢复云端配置（enabled=false + 清 key）；F 段跑完再把正常 stub 配置装回去留给 E 段 UI。
  *  E) UI（有 cdp 参数才跑）：代码面板 #cwChallenge/#cwCross/#cwCrossModel/#cwCloud 存在、#cwCrossModel 无 Phi、
  *     点 #cwChallenge 展开 #cwChallengeBox；设置 -> 代码 有 #cloudBase/#cloudModel/#cloudKey/#cloudSave（key 是 password）；
  *     云端 ready 时 #cwCloud 弹 #cloudConfirmModal 且 #cloudConfirmHost 含 host；点取消不发请求（stub 计数不变）；
  *     点确认后状态行/meta 出现「云端」且 #cwIssues 渲染卡片。
  *
- * 收尾（finally）：恢复云端配置（停用 + 清 key）、关 stub、**模型状态原样恢复**（开跑前 loaded + context；
+ * 收尾（finally）：恢复云端配置（停用 + 清 key；开跑前若已有真 Key，则把 data\cloud-review.json 原样写回，
+ * 绝不让探针把用户的云端配置清掉）、关 stub、**模型状态原样恢复**（开跑前 loaded + context；
  * 未加载就 /api/unload 保持未加载）、删探针临时文件、UI 段导航回页面原地址。
  * 探针卫生（2026-11-15 全量教训）：别硬写 contextSize=8192！全量里驱动预加载 4B/16K，收尾写成 8K 会让后面的
  * probe-ctx-panel（按默认 16K 断言）假红 7 条。
- * 断言口径：带 cdp 73 条 / 不带 cdp 61 条（A-D + 收尾）；退出码 fail>0 -> 1。
+ * 断言口径：带 cdp 87 条 / 不带 cdp 75 条（A-F + 收尾）；退出码 fail>0 -> 1。
  */
 import http from "node:http";
 import fs from "node:fs";
@@ -158,7 +169,20 @@ const STUB_TEXT = [
   "综合判定：存在 2 处真实问题，先修循环边界，再补空值校验。",
   '{"summary":"发现 2 处问题：循环越界、缺少空值保护","issues":[{"line":6,"endLine":6,"severity":"error","title":"循环条件越界","detail":"i <= items.length 会访问 undefined","fix":"改成 i < items.length"},{"line":5,"endLine":5,"severity":"warn","title":"缺少空值保护","detail":"items 元素可能不含 price","fix":"读取前判空"}]}',
 ].join("\n");
-const stub = { server: null, port: 0, base: "", host: "", hits: 0, bodies: [] };
+// F 段（推理型模型）专用：上游只回 reasoning_content 的文本。故意把 JSON 放在 reasoning 里，
+// 用来验证「reasoning 兜底当正文」之后 findings 仍能照常解析、字段齐全。
+const REASON_TEXT = [
+  "思考过程（stub 只回 reasoning）：先看循环边界，再看空值保护。",
+  "- 行3 分析：i <= items.length 会多跑一轮，items[i] 是 undefined。",
+  "- 行4 分析：items[i] 可能没有 price，total += undefined 会得到 NaN。",
+  '{"summary":"发现 2 处问题：循环越界、缺少空值保护","issues":[{"line":3,"endLine":3,"severity":"error","title":"循环条件越界","detail":"i <= items.length 会访问 undefined","fix":"改成 i < items.length"},{"line":4,"endLine":4,"severity":"warn","title":"缺少空值保护","detail":"items 元素可能不含 price","fix":"读取前判空"}]}',
+].join("\n");
+const stub = {
+  server: null, port: 0, base: "", host: "", hits: 0, bodies: [],
+  // F 段统计：按路径前缀 /f1../f4 分开记命中次数与请求体（断言重试阶梯就靠它）
+  modeHits: { f1: 0, f2: 0, f3: 0, f4: 0 },
+  modeBodies: { f1: [], f2: [], f3: [], f4: [] },
+};
 function startStub() {
   return new Promise((resolve, reject) => {
     const srv = http.createServer((req, res) => {
@@ -175,6 +199,10 @@ function startStub() {
         }
         stub.hits += 1;
         stub.bodies.push(body);
+        // F 段：路径前缀 /f1../f4 区分四种「推理型上游」（只认路径；不真出网，全部本机回环）
+        const modeM = /^\/(f[1-4])(?:\/|$)/.exec(u.pathname);
+        const mode = modeM ? modeM[1] : "";
+        if (mode) { stub.modeHits[mode] += 1; stub.modeBodies[mode].push(body); }
         const fail = /(^|\/)fail(\/|$)/.test(u.pathname) || u.searchParams.get("fail") === "1";
         const slow = /(^|\/)slow(\/|$)/.test(u.pathname) || u.searchParams.get("slow") === "1";
         if (slow) await sleep(3000);
@@ -182,6 +210,35 @@ function startStub() {
           res.writeHead(500, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: { message: "stub 上游故意 500" } }));
           return;
+        }
+        // F 段：四种推理型上游的确定性行为（判定只用请求体，不看时间/随机数）
+        if (mode) {
+          let jb = null;
+          try { jb = JSON.parse(body); } catch {}
+          const mt = Number(jb && jb.max_tokens) || 0;
+          const hasThinking = Boolean(jb && typeof jb === "object" && Object.prototype.hasOwnProperty.call(jb, "thinking"));
+          const head = { id: "chatcmpl-probe-" + stub.hits, object: "chat.completion", created: Math.floor(Date.now() / 1000), model: "probe-stub" };
+          const usage = { prompt_tokens: 10, completion_tokens: 100, total_tokens: 110 };
+          const sendStub = (status, obj) => {
+            res.writeHead(status, { "content-type": "application/json" });
+            res.end(JSON.stringify(obj));
+          };
+          const normalChoice = () => sendStub(200, { ...head, choices: [{ index: 0, message: { role: "assistant", content: STUB_TEXT }, finish_reason: "stop" }], usage });
+          // F1/F3：200 但 content 空、只有 reasoning_content；finish_reason=length（真 deepseek-flash 被 reasoning 吃光时的形状）
+          const reasoningChoice = () => sendStub(200, { ...head, choices: [{ index: 0, message: { role: "assistant", content: "", reasoning_content: REASON_TEXT }, finish_reason: "length" }], usage });
+          if (mode === "f1") {
+            // 上游忽略 thinking：只有把 max_tokens 放大到 >=2000 才回正常 content
+            if (mt >= 2000) return normalChoice();
+            return reasoningChoice();
+          }
+          if (mode === "f2") {
+            // 上游不认 thinking 参数：带 thinking 一律 400，去掉就正常
+            if (hasThinking) return sendStub(400, { error: { message: "unknown field: thinking" } });
+            return normalChoice();
+          }
+          if (mode === "f3") return reasoningChoice();
+          // F4：content 与 reasoning_content 都空
+          return sendStub(200, { ...head, choices: [{ index: 0, message: { role: "assistant", content: "" }, finish_reason: "stop" }], usage });
         }
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({
@@ -239,6 +296,9 @@ let STUB_FAIL_BASE = "";
 let STUB_SLOW_BASE = "";
 
 let TOKEN = "";
+// 云端配置文件（开跑前整份备份进内存，收尾原样写回：GET 只回遮罩，读盘是唯一不打印 Key 的恢复路径）
+const CLOUD_CFG_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "data", "cloud-review.json");
+let cloudCfgBackup = null;
 let originalLoaded = "";
 let originalContext = 0;
 let initialCfg = {};
@@ -268,6 +328,9 @@ try {
   ok("前置：模型已就绪（他人复审要用同一个模型做指定分支）", currentModel.length > 0, "loaded=" + currentModel);
   let initialCfgR = await jsonReq("/api/cloud/config");
   initialCfg = initialCfgR.data || {};
+  // 开跑前若已有明文 Key（用户自己的云端配置），把 data\cloud-review.json 整份备份进内存（收尾会写回）
+  try { cloudCfgBackup = fs.readFileSync(CLOUD_CFG_FILE, "utf8"); } catch {}
+  if (initialCfg.hasKey === true) console.log("  开跑前已有云端 Key（配置文件将备份，收尾原样写回，不打印 Key）");
 
   // 干净基线：只发「必填可空」的字段（baseURL/model 各有校验，空串可能 400，不硬塞）；
   // 开跑前的原配置在 initialCfg 里，收尾按它恢复能恢复的字段（明文 key 看不到，只能清）。
@@ -454,6 +517,90 @@ try {
   ok("D. 上游慢（3s）不崩：200 收尾或 error 带 message", dSlow.status !== 0 && (slowOk || Boolean(dSlowErr) || Boolean(errText(dSlow))), "HTTP " + dSlow.status + " events=" + typesOf(dSlow.events).join(",") + " err=" + (dSlowErr || errText(dSlow)).slice(0, 100));
   ok("D. 慢上游确实等到 stub 延时（>=2s）", dSlow.status !== 0 && (dSlow.status !== 200 || dSlow.ms >= 2000), "ms=" + dSlow.ms + " HTTP " + dSlow.status);
 
+  // ---------- F. 推理型模型（v1.8.1：thinking disabled + 重试阶梯 + reasoning 兜底） ----------
+  console.log("\n== F. 推理型模型（本地 stub 造四种上游，绝不真出网） ==");
+  // baseURL 用路径前缀 /f1../f4 区分上游；host 仍是 stub.host，所以 confirm 照旧
+  const fBase = (m) => "http://127.0.0.1:" + stub.port + "/" + m + "/v1";
+  const fSaveCfg = (m) => jsonReq("/api/cloud/config", { enabled: true, baseURL: fBase(m), model: "probe-stub", apiKey: CLOUD_KEY }, TOKEN, 15000);
+  const fClearCfg = () => jsonReq("/api/cloud/config", { enabled: false, apiKey: "" }, TOKEN, 15000);
+  const fBodyOf = (m, i) => { try { return JSON.parse(String(stub.modeBodies[m][i] || "")); } catch { return null; } };
+  // 每段：装配置 -> 跑 -> finally 恢复云端配置（停用 + 清 key），下一段再装回 stub 目标
+  const fRun = async (m, file, extra) => {
+    const hit0 = stub.modeHits[m];
+    let r = null;
+    try {
+      await fSaveCfg(m);
+      r = await sse("/api/code/review/cloud", Object.assign({ code: CODE, lang: "javascript", file, confirm: stub.host, max_tokens: 1200 }, extra || {}), TOKEN, 120000);
+    } finally {
+      await fClearCfg();
+    }
+    return { r, hit0 };
+  };
+  const fEv = (r) => (r && r.events) || [];
+  const fMetaOf = (r) => fEv(r)[idxOf(fEv(r), "meta")] || {};
+  const fFindOf = (r) => fEv(r)[idxOf(fEv(r), "findings")] || {};
+  const fText = (r) => String([errText(r), String((r && r.text) || "")].join(" "));
+
+  // F1：上游忽略 thinking、只回 reasoning；只有 max_tokens>=2000 才回正常 content -> 服务放大 token 重试后成功
+  const f1 = await fRun("f1", "probe-f1.js");
+  const f1R = f1.r;
+  const f1Hits = stub.modeHits.f1 - f1.hit0;
+  const f1First = fBodyOf("f1", f1.hit0);
+  const f1Meta = fMetaOf(f1R);
+  const f1Find = fFindOf(f1R);
+  const f1Err = idxOf(fEv(f1R), "error");
+  console.log("  F1 事件序列: " + typesOf(fEv(f1R)).join(" -> ").slice(0, 220));
+  ok("F1. 上游只回 reasoning -> 服务真的重试（stub 收到 >=2 次）", f1Hits >= 2, "hits=" + f1Hits);
+  ok("F1. 首个请求体顶层带 thinking:{type:\"disabled\"}（契约①）", Boolean(f1First) && Boolean(f1First.thinking) && f1First.thinking.type === "disabled", JSON.stringify(f1First && f1First.thinking));
+  ok("F1. 重试后 200 SSE + findings 有 issues + 无 error/无 502", Boolean(f1R) && f1R.status === 200 && /text\/event-stream/i.test(f1R.ct) && Array.isArray(f1Find.issues) && f1Find.issues.length >= 1 && f1Err < 0, "HTTP " + (f1R && f1R.status) + " issues=" + (Array.isArray(f1Find.issues) ? f1Find.issues.length : "null") + " " + (f1Err >= 0 ? "有 error 事件" : ""));
+  ok("F1. meta.attempts>=2 且 thinkingDisabled=false（重试已去掉 thinking）", Number(f1Meta.attempts) >= 2 && f1Meta.thinkingDisabled === false, "attempts=" + f1Meta.attempts + " thinkingDisabled=" + f1Meta.thinkingDisabled + " usedReasoningFallback=" + f1Meta.usedReasoningFallback);
+
+  // F2：上游不认 thinking 参数（400 unknown field: thinking）-> 服务去掉 thinking 原样重发后成功
+  const f2 = await fRun("f2", "probe-f2.js");
+  const f2R = f2.r;
+  const f2Hits = stub.modeHits.f2 - f2.hit0;
+  const f2Bodies = stub.modeBodies.f2.slice(f2.hit0).map((b) => { try { return JSON.parse(b); } catch { return null; } });
+  const f2First = f2Bodies[0] || null;
+  const f2Last = f2Bodies.length ? f2Bodies[f2Bodies.length - 1] : null;
+  const f2Meta = fMetaOf(f2R);
+  const f2Find = fFindOf(f2R);
+  const f2Err = idxOf(fEv(f2R), "error");
+  console.log("  F2 事件序列: " + typesOf(fEv(f2R)).join(" -> ").slice(0, 220));
+  ok("F2. 上游不认 thinking（400）-> 服务去 thinking 重试（stub 收到 >=2 次）", f2Hits >= 2, "hits=" + f2Hits);
+  ok("F2. 首请求带 thinking、重试请求已去掉 thinking", Boolean(f2First) && Object.prototype.hasOwnProperty.call(f2First, "thinking") && Boolean(f2Last) && !Object.prototype.hasOwnProperty.call(f2Last, "thinking"), JSON.stringify({ first: f2First && f2First.thinking, lastHas: f2Last ? Object.prototype.hasOwnProperty.call(f2Last, "thinking") : null }));
+  ok("F2. 重试后 200 SSE + findings 有 issues + 无 error/无 502", Boolean(f2R) && f2R.status === 200 && /text\/event-stream/i.test(f2R.ct) && Array.isArray(f2Find.issues) && f2Find.issues.length >= 1 && f2Err < 0, "HTTP " + (f2R && f2R.status) + " issues=" + (Array.isArray(f2Find.issues) ? f2Find.issues.length : "null") + " " + (f2Err >= 0 ? "有 error 事件" : ""));
+  ok("F2. meta.attempts>=2 且 thinkingDisabled=false", Number(f2Meta.attempts) >= 2 && f2Meta.thinkingDisabled === false, "attempts=" + f2Meta.attempts + " thinkingDisabled=" + f2Meta.thinkingDisabled);
+
+  // F3：彻底只回 reasoning、放多大 token 都一样 -> 不报 502，把 reasoning 当正文推流
+  const f3 = await fRun("f3", "probe-f3.js");
+  const f3R = f3.r;
+  const f3Meta = fMetaOf(f3R);
+  const f3Find = fFindOf(f3R);
+  const f3Text = sumDelta(fEv(f3R));
+  const f3Issues = Array.isArray(f3Find.issues) ? f3Find.issues : null;
+  const f3Err = idxOf(fEv(f3R), "error");
+  const f3FindEvOk = (f) => Boolean(f && Object.keys(f).length) && typeof f.parsed === "boolean" && Array.isArray(f.issues) && Number.isFinite(Number(f.lineCount)) && typeof f.summary === "string";
+  console.log("  F3 事件序列: " + typesOf(fEv(f3R)).join(" -> ").slice(0, 220));
+  ok("F3. 永远只回 reasoning -> 200 且无 error/无 CLOUD_EMPTY", Boolean(f3R) && f3R.status === 200 && f3Err < 0 && !/CLOUD_EMPTY/.test(fText(f3R)), "HTTP " + (f3R && f3R.status) + " " + fText(f3R).replace(/\s+/g, " ").slice(0, 90));
+  ok("F3. 把 reasoning 当正文推流：delta 拼接非空且等于上游 reasoning 原文", f3Text.trim().length > 0 && norm(f3Text) === norm(REASON_TEXT), "len=" + f3Text.trim().length + " wantLen=" + REASON_TEXT.trim().length);
+  ok("F3. meta.usedReasoningFallback === true", f3Meta.usedReasoningFallback === true, "usedReasoningFallback=" + f3Meta.usedReasoningFallback + " attempts=" + f3Meta.attempts);
+  const f3BadIssue = (f3Issues || []).find((it) => !it || !Number.isFinite(Number(it.line)) || !Number.isFinite(Number(it.endLine)) || !SEVS.has(String(it.severity)) || typeof it.title !== "string" || !it.title.trim() || typeof it.detail !== "string" || typeof it.fix !== "string");
+  // 说明：reasoning 里没有 JSON 时 findings 允许 parsed=false / issues=[]（纯文本结论也是合法结果），
+  // 这里只断「findings 事件字段齐全」，不强制 issues 非空（backend-cloudfix 实测口径）。
+  ok("F3. findings 字段仍齐全（parsed 是 bool、issues 是数组、行号/severity/title/detail/fix 合法）", f3FindEvOk(f3Find) && ((f3Issues || []).length === 0 || !f3BadIssue), "parsed=" + f3Find.parsed + " n=" + (f3Issues ? f3Issues.length : "null") + " lineCount=" + f3Find.lineCount + (f3BadIssue ? " bad=" + JSON.stringify(f3BadIssue).slice(0, 120) : ""));
+
+  // F4：content 与 reasoning 都空 -> 502 CLOUD_EMPTY（不能静默 200 空正文）
+  const f4 = await fRun("f4", "probe-f4.js");
+  const f4R = f4.r;
+  const f4Code = respCode(f4R);
+  const f4Txt = fText(f4R);
+  console.log("  F4 结果: HTTP " + (f4R && f4R.status) + " code=" + f4Code + " " + f4Txt.replace(/\s+/g, " ").slice(0, 140));
+  ok("F4. content 与 reasoning 都空 -> JSON 502（不是 SSE 200 空正文）", Boolean(f4R) && f4R.status === 502 && !/text\/event-stream/i.test(f4R.ct), "HTTP " + (f4R && f4R.status) + " ct=" + (f4R && f4R.ct) + " " + f4Txt.slice(0, 100));
+  ok("F4. 错误码/正文含 CLOUD_EMPTY（或 message 含「正文为空」）", f4Code === "CLOUD_EMPTY" || /CLOUD_EMPTY/.test(f4Txt) || /正文为空/.test(f4Txt), "code=" + f4Code + " " + f4Txt.replace(/\s+/g, " ").slice(0, 140));
+
+  // F 段跑完：把正常 stub 配置装回去，留给 E 段 UI（E 的确认弹窗要 ready）
+  await jsonReq("/api/cloud/config", { enabled: true, baseURL: stub.base, model: "probe-stub", apiKey: CLOUD_KEY }, TOKEN, 15000);
+
   // 恢复成正常 stub，留给 E 段 UI
   await jsonReq("/api/cloud/config", { baseURL: stub.base }, TOKEN, 15000);
 
@@ -587,7 +734,17 @@ try {
     const gz = await jsonReq("/api/cloud/config");
     const cz = gz.data || {};
     ok("Z. 收尾：云端配置已停用 + Key 已清", cz.enabled === false && cz.hasKey === false, JSON.stringify({ enabled: cz.enabled, hasKey: cz.hasKey, baseURL: cz.baseURL }));
-    if (initialCfg.hasKey === true) console.log("  注意：开跑前已有 apiKey（明文不可见），收尾只能清除，需用户重新填写。");
+    // 开跑前有真 Key：把备份的配置文件原样写回（用户配置不该被探针清掉）；没 Key 就保持上面的干净停用态
+    if (cloudCfgBackup && initialCfg.hasKey === true) {
+      try {
+        fs.writeFileSync(CLOUD_CFG_FILE, cloudCfgBackup, "utf8");
+        const gRestored = await jsonReq("/api/cloud/config");
+        const cRestored = gRestored.data || {};
+        console.log("  已把开跑前的 data\\cloud-review.json 原样写回（含明文 Key，不打印）：enabled=" + cRestored.enabled + " hasKey=" + cRestored.hasKey + " host=" + cRestored.host);
+      } catch (e) {
+        console.log("  写回 cloud-review.json 备份失败（需用户重新填 Key）: " + String((e && e.message) || e));
+      }
+    }
   } catch (e) {
     fail += 1;
     failedNames.push("收尾云端配置恢复异常");
