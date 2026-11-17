@@ -40,7 +40,9 @@ jobs:
             throw "版本号不一致：app.mjs=$app package.json=$pkg localai.mjs=$cli"
           }
 
-      - name: 当前构建脚本的 PowerShell 语法（PS 5.1 Parser）
+      # 注意：shell: powershell 的步骤脚本是 UTF-8 无 BOM，PS 5.1 会按 ANSI 解码，
+      # 所以本步骤里绝不能出现中文（否则报 "Unexpected token" / 字符串未闭合）。
+      - name: PowerShell 5.1 syntax check (build scripts)
         shell: powershell
         run: |
           $files = @()
@@ -52,13 +54,13 @@ jobs:
             $tok = $null
             [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$tok, [ref]$errs) | Out-Null
             if ($errs.Count -gt 0) {
-              Write-Host "FAIL $($f.FullName)"
+              Write-Host ("FAIL " + $f.FullName)
               $errs | ForEach-Object { Write-Host ("  " + $_.Message) }
               $bad++
             }
           }
-          if ($bad -gt 0) { throw "$bad 个 .ps1 有语法错误" }
-          Write-Host "OK: $($files.Count) 个 .ps1 语法通过"
+          if ($bad -gt 0) { throw ($bad.ToString() + " .ps1 file(s) have syntax errors") }
+          Write-Host ("OK: " + $files.Count + " .ps1 parsed by Windows PowerShell 5.1")
 
       - name: 仓库卫生（模型 / 发布包 / 运行数据不入库）
         shell: pwsh
