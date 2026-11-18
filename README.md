@@ -66,7 +66,7 @@ QingYaoTP AILauncher 是**一台 Windows 电脑上的纯本地 AI 工作台**：
 
 **第 1 步：下载**
 
-- 主包：`QingYaoTP-AILauncher-v1.8.1.zip`（**约 122 MB**，SHA256 BE6AB2CB…74EC）
+- 主包：`QingYaoTP-AILauncher-v1.8.1.zip`（**约 122 MB**，SHA256 E3A70DE5…F4C0）
 - 可选看图包：`QingYaoTP-AILauncher-v1.6.0-vision-pack.zip`（**约 37 MB**，文件名版本与主包不同步是正常的，看图才需要）
 
 **第 2 步：解压到可写目录**
@@ -183,8 +183,8 @@ QingYaoTP AILauncher 是**一台 Windows 电脑上的纯本地 AI 工作台**：
 
 ## 十二、版本与更新
 
-- 当前版本：**v1.8.1**（2026-11-16）
-- 交付主包：`QingYaoTP-AILauncher-v1.8.1.zip` — **127,902,252 字节 / 3,947 条目 / SHA256 `BE6AB2CBCE5B8D930933212286A1B77AB0897AA8F296FE829366DEC034A874EC`**
+- 当前版本：**v1.8.1**（2026-11-16；2026-11-18 重打包，安装包内首启说明已换成客户端版）
+- 交付主包：`QingYaoTP-AILauncher-v1.8.1.zip` — **127,901,058 字节 / 3,947 条目 / SHA256 `E3A70DE5829DF15C430CB3FF4EF8838158E4481834891B4E6267018BD495F4C0`**
 - 解压后约 **258.6 MB / 3,447 个文件**（不含运行期缓存）
 - 看图能力单独发：`QingYaoTP-AILauncher-v1.6.0-vision-pack.zip`（**约 37 MB**，解压 101 MB / 53 个文件）；文件名里的 1.6.0 是打包时的版本，与主包版本无关。
 

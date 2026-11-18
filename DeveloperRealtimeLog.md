@@ -3,7 +3,7 @@
 > 原名 `HANDOFF.md`，由上一任开发者写于 **2026-10-18 21:45**。
 > 从 **2026-10-18 21:44** 起，本文件改为**按时间流水记录**：每一笔写清「几点、改了什么、落在哪、怎么验的」。
 > 第一节是日志索引，其后的一~七节是原交接正文（保留原样，仅修正两处日期笔误），八~十节是本次三项需求的详细设计说明。
-> 最新一笔：**2026-11-18 深夜**（第六十七节，**v1.8.1 发布到 GitHub**：仓库 public/main、68 提交、CI 四检绿；README 拆客户端版（首页+首启弹窗）/ 技术版；推送改 **SSH over 443**（本机 Watt Toolkit 劫持 https 域名）；踩坑：CI 的 `shell: powershell` 步骤脚本必须纯 ASCII）。全部时间均为 China Standard Time，本机时钟。
+> 最新一笔：**2026-11-18 深夜**（第六十八节，**v1.8.1 重打包：安装包首启说明变客户端版**：新主包 127,901,058B / 3947 条目 / SHA256 `E3A70DE5…F4C0`；仓库 public/main、71 提交、CI 四检绿；**Release 仍未创建**（本机无 `gh`/PAT）。上一笔第六十七节 = v1.8.1 发布到 GitHub / README 拆双版本 / 推送改 SSH over 443 / CI 的 `shell: powershell` 步骤必须纯 ASCII）。全部时间均为 China Standard Time，本机时钟。
 >
 > **接手先读 [`交接文档.md`](交接文档.md)**（一页纸：定位、现状、代码地图、下一步）。
 > 技术专题已抽到 [`technique/`](technique/)：架构、接口、插件、模型、打包、探针、坑。本文件保留**按时间流水**的原始记录，作为「为什么这么做」的证据。
@@ -3334,3 +3334,39 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 1. **v1.8.1 Release 附件还没上传**（正文草稿已在 `.github/RELEASE-v1.8.1.md`）；About 的 topics 也没填。
 2. **安装包内的首启说明仍是技术版**：`dist` 与 `v1.8.1.zip` 是 README 拆分之前打的；重打包才变客户端版，且 **zip SHA 会变**（现 `BE6AB2CB…74EC`），要同步 README / RELEASE / 交接文档。
 3. **真实上游兼容性冒烟**（可选）：v1.8.0 的翻车证明 stub 只证代码路径；建议加「默认跳过、配了 key 才跑」的最小真请求检查。
+
+---
+
+## 第六十八节（2026-11-18 深夜）v1.8.1 重打包：安装包「首启说明」变客户端版
+
+> 这是「发布收尾三件」的第 ② 件，**只重打包、不改一行代码**。目标：安装包首启弹窗与「设置 → 关于 → 使用说明」读的是 `app\README.md`，而 v1.8.1 首次打 zip 时 README 还没拆客户端/技术版，包内还是 16,669B 的技术版；重打后包内 = 14,523B 客户端版（与仓库根同哈希）。
+
+### 一、做了什么
+
+| 项 | 内容 |
+|---|---|
+| 构建 | `build-portable.ps1` **258.6MB / 3447 文件**，8 步全过，自检「主包无 app\llama」；日志 `server\docs\packaging-2026-11-18\build.out.txt` |
+| 交付 zip | `make-zip.ps1` → `dist\QingYaoTP-AILauncher-v1.8.1.zip` **122.0MB / 127,901,058B / 3947 条目 / SHA256 `E3A70DE5829DF15C430CB3FF4EF8838158E4481834891B4E6267018BD495F4C0`**；旧包（127,902,252B / `BE6AB2CB…74EC`）作废；日志 `makezip.out.txt` |
+| 包内首启说明 | `app/README.md` **14,523B**，SHA256 `2A6D762C…528805` = 仓库根 `README.md` 同哈希；`使用说明.txt`（6,647B，安装目录里的便携速查）不变 |
+| 自检 | 六份源码↔dist 哈希一致（app.mjs / app.html / doc-extract / vision-pack / localai-debug / diag-zip）；zip 无 `app/llama/`、无 `data/cloud-review*`（`data/` 只有空目录条目）；zip 内 `config.ini` 已消毒（`modelDir=` / `autoLoad=` / `vkDevices=` 空、无 cloud 键） |
+| dist 恢复 | 重打包会重置 config.ini 且删 `app\llama`：回填 `modelDir=D:\LocalModels`，用接口重装视觉增强包（source=pack / 53 文件 / 106,017,053B），启动 `QingYaoTP AILauncher.exe` → 8099 发布包实例 v1.8.1 / 5 模型 / 9 会话 |
+| 发布包冒烟 | `probe-version` **14/14**、`probe-debug` **54/54**、`probe-readme` **21/21**（首启弹窗渲染客户端版：16 标题 / 7 表 / 6,110 字，Esc / 关于页重开 / 复位全过） |
+| 证据 | `server\docs\packaging-2026-11-18\RESULT.md` + `release-probe-version.txt` / `release-probe-debug.txt` / `release-probe-readme.txt` |
+
+### 二、踩坑：构建报「app 目录被另一个进程使用」
+
+第一次 `build-portable.ps1` 在「清空旧产物」就红：
+`The process cannot access the file 'dist\QingYaoTP AILauncher\app' because it is being used by another process`。
+连 `Rename-Item app` 都失败 → 不是普通文件占用，而是**某个进程把 app 当 cwd 打开了目录句柄**。
+排查：`Get-CimInstance Win32_Process` 找到 `cmd.exe /K localai-tui.cmd`（pid 24176，上一轮留下的 TUI 子壳）——它的 cwd 就是 `dist\…\app`。
+杀掉该 cmd 与它的 node 子进程（pid 40188）后构建一次通过。**已写进启动词硬约束**：重打包前除了杀启动器，还要清 dist 里的 TUI 子壳。
+
+### 三、全库同步（SHA 变了，所有当前口径一起改）
+
+`README.md`（下载区 + 版本与更新）、`.github\RELEASE-v1.8.1.md`（下载表 + 加「2026-11-18 重打包」说明）、`交接文档.md`（交付物/发布包/服务/验证/已知限制 28/下一步）、`新会话启动词.md`（现状快照/仓库发布/交付 zip 口径/开场白）、本节。**日志只追加**：第六十七节里旧的 SHA 与遗留 2 保留原样（历史记录），以本节为准。
+
+### 四、遗留
+
+1. **Release 仍未创建**：本机没有 `gh`、也没有 GitHub PAT（remote 走 SSH，调不了写接口）→ 需要用户给 PAT 或手动在网页发。素材已就绪：本地已打并推送 tag `v1.8.1`；正文 `.github/RELEASE-v1.8.1.md`；附件新 zip；topics 清单在交接文档。
+2. **真实上游兼容性冒烟**（可选）：仍需用户 key；建议「默认跳过、配了 key 才跑」。
+3. 本轮未跑全量 63 条（没改代码，只打了包）：跑的是发布包实例三项冒烟；下一轮改功能后按硬约束跑全量（63 条 / 1224 断言）。

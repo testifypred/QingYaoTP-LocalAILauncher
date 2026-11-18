@@ -1,0 +1,21 @@
+   随包 node：D:\Node.js\node.exe
+   C# 编译器：C:\WINDOWS\Microsoft.NET\Framework64\v4.0.30319\csc.exe
+==> 清空旧产物 D:\LocalModels\dist\QingYaoTP AILauncher
+==> 复制服务端与界面
+   已附带 vc_redist.x64.exe（24MB）
+   已附带插件 3 个
+==> 复制 node-llama-cpp（剔除 cuda / arm64 变体）
+==> 复制 TTS 依赖（msedge-tts / ws 等，约 3MB）
+==> 视觉已拆分：主包不带 app\llama；用 server\make-vision-pack.ps1 生成增强包
+   不看图的人不用下这 101MB；需要「离线一体化包」时加 -BundleVision
+==> 复制 Node 运行时
+==> 编译启动器（带图标 + WebView2 内嵌窗口）
+==> 编译调试工具（独立窗口 + 自己的 ico）
+==> 写配置与说明
+   自检：主包无 app\llama（视觉已拆分）
+
+完成：D:\LocalModels\dist\QingYaoTP AILauncher
+  app\\      144.6 MB
+  视觉      已拆分：主包不含 app\llama；增强包用 make-vision-pack.ps1
+  合计       258.6 MB / 3447 个文件
+  另有 data\\  175.7 MB（运行期缓存，可随时删）
