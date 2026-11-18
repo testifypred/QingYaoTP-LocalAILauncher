@@ -3,7 +3,7 @@
 > 原名 `HANDOFF.md`，由上一任开发者写于 **2026-10-18 21:45**。
 > 从 **2026-10-18 21:44** 起，本文件改为**按时间流水记录**：每一笔写清「几点、改了什么、落在哪、怎么验的」。
 > 第一节是日志索引，其后的一~七节是原交接正文（保留原样，仅修正两处日期笔误），八~十节是本次三项需求的详细设计说明。
-> 最新一笔：**2026-11-16 深夜**（第六十六节，**v1.8.1：云端复审兼容推理型模型**——DeepSeek `deepseek-flash` 的 reasoning 会吃光 `max_tokens`，v1.8.0 误报「不是 OpenAI 兼容响应」；现在默认 `thinking:disabled` + 三段重试 + reasoning 兜底 + `CLOUD_EMPTY`；探针新增 F1–F4 四条 stub 分支）。全部时间均为 China Standard Time，本机时钟。
+> 最新一笔：**2026-11-18 深夜**（第六十七节，**v1.8.1 发布到 GitHub**：仓库 public/main、68 提交、CI 四检绿；README 拆客户端版（首页+首启弹窗）/ 技术版；推送改 **SSH over 443**（本机 Watt Toolkit 劫持 https 域名）；踩坑：CI 的 `shell: powershell` 步骤脚本必须纯 ASCII）。全部时间均为 China Standard Time，本机时钟。
 >
 > **接手先读 [`交接文档.md`](交接文档.md)**（一页纸：定位、现状、代码地图、下一步）。
 > 技术专题已抽到 [`technique/`](technique/)：架构、接口、插件、模型、打包、探针、坑。本文件保留**按时间流水**的原始记录，作为「为什么这么做」的证据。
@@ -3292,3 +3292,45 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 1. **上游兼容性必须用真上游验一次**：v1.8.0 的云端段只跑了本地 stub（stub 永远返回 content），漏了「推理模型」这一类真实上游行为。**stub 只能证明代码路径，不能证明协议兼容**。
 2. 契约里要写「推理模型」这一维：`thinking` 开关、`attempts`、`usedReasoningFallback`、`CLOUD_EMPTY`（已补进 `technique/02-接口.md`）。
 3. 下一轮可做：设置页把「关闭推理」做成可选开关（有些模型关了推理质量会降）、`max_tokens` 可配、把 `attempts`/`fallback` 显示到面板状态行。
+
+## 六十七、2026-11-17 → 11-18：v1.8.1 发布到 GitHub（客户端版 README / CI / 推送通道 / 提交身份）
+
+> 目标：把仓库搬到 GitHub，给客户一个能看的首页；顺手把「怎么发版」这件事固定下来。
+> 结果：仓库 https://github.com/testifypred/QingYaoTP-LocalAILauncher （public / main / 68 提交 / CI 绿），README 拆成客户端版与技术版，CI 四检，推送改 SSH over 443。
+
+### 一、做了什么
+
+| 项 | 内容 |
+|---|---|
+| 客户端版 README | 新写 `README-客户端.md`（220 行：出品/致谢、安装 3 步、9 个功能与真实耗时、3 个场景、隐私边界、10 条 FAQ、自救、版本与许可）→ 之后提为 `README.md`，技术版改名 `README-技术版.md`，两版互链；首启弹窗与 `/api/readme` 同源，`probe-readme` 的「>500 字 / 表格 ≥2」仍满足 |
+| GitHub 仓库 | `testifypred/QingYaoTP-LocalAILauncher`，public/main；首推 66 提交，随后 +2（CI 修复、仓库地址进文档）；README 首页 = 客户端版（14,523B，含「卿峣Testifypred 出品」与 powered-by-dsh 徽章） |
+| CI | `.github/workflows/ci.yml`：① 所有 `.mjs/.cjs` 语法（135 个）② 版本三处一致（app.mjs / package.json / localai.mjs）③ 当前构建脚本的 PS 5.1 Parser ④ 仓库卫生（模型/发布包/运行数据不许入库）⑤ README 同源；不跑真模型探针（Runner 没模型） |
+| Release 文案 | `.github/RELEASE-v1.8.1.md`：下载表（大小 + SHA256）、本次修复说明、升级步骤、已知限制、出品致谢 |
+| 送门检查 | 仓库 `.git` 28.25MB；最大历史 blob = `server/vendor/vc_redist.x64.exe` 25.6MB（<100MB 上限）；无 `.gguf`/`zip` 入库；`data/cloud-review.json` **从未进历史**；历史里唯一 `sk-` 串是自测脚本里的**假 key**（`sk-BACKENDSMOKE…`） |
+
+### 二、踩了三个坑（都已修，且写进硬约束）
+
+1. **push 403：不是权限，是加速器 + 用错身份**。Watt Toolkit（`Steam++.Accelerator`）监听 443，把 `github.com`/`github.io`/`raw.githubusercontent.com` 写进 hosts 指向 `127.0.0.1` → HTTPS push 稳定 403；同时 Windows 凭据管理器里缓存的是 `qingyaotp`（另一个号）→ 就算网络通了也会 `Permission ... denied`。**解法**：删掉旧凭据 + 改 **SSH over 443**（`~/.ssh/config` 里 `Host github.com → ssh.github.com:443`），remote 用 `git@github.com:...`；`ssh -T` 回 `Hi testifypred!`。
+2. **远端有自动 `Initial commit`**，本地 66 个提交历史无关 → 首推必须 `--force`（仓库刚建、只是一个自动 README，无损失）。
+3. **CI 第一次红：PS 5.1 + 无 BOM 的 UTF-8**。GitHub 把 `shell: powershell` 的步骤脚本写成 UTF-8 无 BOM，PS 5.1 按 ANSI 解码 → 中文吃掉引号 → `Unexpected token 'OK:'`、字符串未闭合。**解法**：该步骤脚本改**纯 ASCII**（输出也改英文），并在 YAML 里写注释说明原因；本地用「无 BOM 文件 + PS 5.1」复现验证后才推。CI #2 / #3 绿。
+
+### 三、提交身份（分清两件事）
+
+- **推送认证** = `testifypred`（SSH key 加在仓库 owner 账号上，`ssh -T` 证明）；
+- **提交作者** = 本地 `git config`（此前是 `qingyaotp <xiaomoon7@yeah.net>`）→ 68 个提交在 GitHub 上都记在 qingyaotp 名下。
+- 处理：把**本仓库**的 `user.name/user.email` 改为 `QingyaoTestifypred <testifypred@users.noreply.github.com>`（**全局不动**，其他仓库还是 qingyaotp）。历史**不改写**——改写会让所有 SHA 变化，而交接文档/启动词/日志里引用了 `3bd8a82`、`102ccc7`、`cab25ad`、`68745b8` 等提交号。
+
+### 四、验证
+
+| 项 | 结果 |
+|---|---|
+| CI | #1 红（PS 5.1 编码）→ #2 绿（修复后）→ #3 绿（文档提交）；8 个步骤全 success |
+| GitHub 内容 | 68 提交；`README.md` 14,523B 含出品与徽章；`README-技术版.md` 16,871B；`.github/workflows/ci.yml` 3,402B |
+| 本地/远端 | `local = origin/main = 68745b8`（本轮文档提交后继续前进） |
+| 推送通道 | `ssh -T git@github.com` → `Hi testifypred! You've successfully authenticated` |
+
+### 五、遗留（下一轮收尾三件）
+
+1. **v1.8.1 Release 附件还没上传**（正文草稿已在 `.github/RELEASE-v1.8.1.md`）；About 的 topics 也没填。
+2. **安装包内的首启说明仍是技术版**：`dist` 与 `v1.8.1.zip` 是 README 拆分之前打的；重打包才变客户端版，且 **zip SHA 会变**（现 `BE6AB2CB…74EC`），要同步 README / RELEASE / 交接文档。
+3. **真实上游兼容性冒烟**（可选）：v1.8.0 的翻车证明 stub 只证代码路径；建议加「默认跳过、配了 key 才跑」的最小真请求检查。
