@@ -42,7 +42,7 @@ const DEBUG_UI = path.join(HERE, "debug.html");
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 /** 版本号：发版只改这一处；server\package.json 的 version 必须与它一致（probe-version 会查） */
-const APP_VERSION = "1.8.1";
+const APP_VERSION = "1.9.0";
 /** 产品正式名（2026-11-01 起）：QingYaoTP AILauncher；QingYaoTP = QingYaoTestifypred */
 const APP_NAME = "QingYaoTP AILauncher";
 const APP_SUB = "本地 AI";
@@ -4324,6 +4324,380 @@ function compareReviewFindings(primaryIssues, secondIssues, lineCount) {
 }
 
 /**
+ * 三方对照（v1.9.0，纯函数）：把「本地审查 / 他人复审 / 云端复审」三份问题列表聚成一张表。
+ * 聚合口径与 compareReviewFindings 一致：行距 ≤2 或区间相交视为同一处问题（传递闭包，链式也归一行）。
+ * 注意：**同一来源的多条问题不会因行距被合并**（否则一份审查自己报的两条会被吃掉）。
+ * 返回 { verdict, stats, rows }：
+ *  - judgment：all3（三方都有且严重度一致）/ pair2（两方一致）/ single（只有一方提出）/
+ *              conflict3（三方都有但严重度不一致）/ conflict2（两方都有但严重度不一致）
+ *  - stats 自洽：rows = all3 + two + one；two 含 pair2 + conflict2；bySource 各 ≤ 该来源条数。
+ *  - verdict：contradicts（有矛盾）> differs（有一方独有的问题）> majority（两方一致、三方不全同）> consistent
+ */
+function compareThreeWayFindings(localIssues, crossIssues, cloudIssues, lineCount) {
+  let cap = Math.round(Number(lineCount) || 0);
+  if (!(cap >= 1)) {
+    cap = 1;
+    for (const list of [localIssues, crossIssues, cloudIssues]) {
+      for (const it of Array.isArray(list) ? list : []) {
+        cap = Math.max(cap, Math.round(Number(it?.line) || 1), Math.round(Number(it?.endLine) || 1));
+      }
+    }
+  }
+  const SRC = ["local", "cross", "cloud"];
+  const per = {
+    local: normalizeReviewIssues(localIssues, cap),
+    cross: normalizeReviewIssues(crossIssues, cap),
+    cloud: normalizeReviewIssues(cloudIssues, cap),
+  };
+  const nodes = [];
+  for (const src of SRC) for (const it of per[src]) nodes.push({ src, it });
+  const parent = nodes.map((_n, i) => i);
+  const find = (x) => (parent[x] === x ? x : (parent[x] = find(parent[x])));
+  const union = (a, b) => { const ra = find(a); const rb = find(b); if (ra !== rb) parent[rb] = ra; };
+  for (let i = 0; i < nodes.length; i += 1) {
+    for (let j = i + 1; j < nodes.length; j += 1) {
+      if (nodes[i].src === nodes[j].src) continue;
+      if (findingDistance(nodes[i].it, nodes[j].it) <= 2) union(i, j);
+    }
+  }
+  const groups = new Map();
+  nodes.forEach((n, i) => {
+    const r = find(i);
+    if (!groups.has(r)) groups.set(r, []);
+    groups.get(r).push(n);
+  });
+  const rows = [];
+  for (const arr of groups.values()) {
+    const bySrc = {};
+    for (const n of arr) if (!bySrc[n.src]) bySrc[n.src] = n.it;
+    const present = SRC.filter((s) => bySrc[s]);
+    const line = Math.min(...arr.map((n) => n.it.line));
+    const endLine = Math.max(...arr.map((n) => n.it.endLine));
+    const maxRank = Math.max(...arr.map((n) => SEVERITY_RANK[n.it.severity]));
+    const severity = maxRank === 2 ? "error" : maxRank === 1 ? "warn" : "info";
+    const ranks = present.map((s) => SEVERITY_RANK[bySrc[s].severity]);
+    const sameSeverity = new Set(ranks).size === 1;
+    let judgment;
+    if (present.length === 3) judgment = sameSeverity ? "all3" : "conflict3";
+    else if (present.length === 2) judgment = sameSeverity ? "pair2" : "conflict2";
+    else judgment = "single";
+    rows.push({ line, endLine, severity, present, local: bySrc.local || null, cross: bySrc.cross || null, cloud: bySrc.cloud || null, judgment });
+  }
+  rows.sort((a, b) => a.line - b.line || a.endLine - b.endLine);
+  const count = (fn) => rows.filter(fn).length;
+  const conflictCount = count((r) => r.judgment === "conflict2" || r.judgment === "conflict3");
+  const one = count((r) => r.judgment === "single");
+  const two = count((r) => r.judgment === "pair2" || r.judgment === "conflict2");
+  const all3 = count((r) => r.judgment === "all3" || r.judgment === "conflict3");
+  const stats = {
+    rows: rows.length,
+    all3,
+    two,
+    one,
+    conflict: conflictCount,
+    bySource: {
+      local: count((r) => Boolean(r.local)),
+      cross: count((r) => Boolean(r.cross)),
+      cloud: count((r) => Boolean(r.cloud)),
+    },
+    pair: {
+      lc: count((r) => Boolean(r.local) && Boolean(r.cross)),
+      lu: count((r) => Boolean(r.local) && Boolean(r.cloud)),
+      cu: count((r) => Boolean(r.cross) && Boolean(r.cloud)),
+    },
+    // judgments 是「按判定分桶」：all3（三方一致）与 conflict3（三方但严重度不一致）分开记，
+    // 探针用 stats.all3 === judgments.all3 + judgments.conflict3 等恒等式复算。
+    judgments: {
+      all3: count((r) => r.judgment === "all3"),
+      pair2: count((r) => r.judgment === "pair2"),
+      single: one,
+      conflict2: count((r) => r.judgment === "conflict2"),
+      conflict3: count((r) => r.judgment === "conflict3"),
+    },
+  };
+  let verdict = "consistent";
+  if (!rows.length) verdict = "consistent";
+  else if (conflictCount > 0) verdict = "contradicts";
+  else if (one > 0) verdict = "differs";
+  else if (two > 0) verdict = "majority";
+  return { verdict, stats, rows };
+}
+
+/** 导出文件名里的文件名片段：只留安全字符，空则 unnamed */
+function exportSlug(name) {
+  const base = String(name ?? "").split(/[\\/]/).pop() || "";
+  const s = base.replace(/\.[A-Za-z0-9]{1,8}$/, "").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  return (s || "unnamed").slice(0, 60);
+}
+
+/** 本地时间戳 YYYYMMDD-HHmm（导出文件名用；不依赖 UTC，跟用户看到的时间一致） */
+function exportStamp(ms) {
+  const d = new Date(Number.isFinite(Number(ms)) && Number(ms) > 0 ? Number(ms) : Date.now());
+  const p = (n) => String(n).padStart(2, "0");
+  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + "-" + p(d.getHours()) + p(d.getMinutes());
+}
+
+/** 导出文本只做密钥级脱敏（导出的是结论，不是代码；别把 sk- 之类带进可分享文件） */
+function redactExportText(text) {
+  return String(text ?? "").replace(/(sk-[A-Za-z0-9_\-]{8,})/g, "<API_KEY>");
+}
+
+const EXPORT_VERDICT_LABEL = { consistent: "一致", differs: "仅一方提出", contradicts: "互相矛盾", majority: "两方一致" };
+const EXPORT_JUDGMENT_LABEL = { all3: "三方一致", pair2: "两方一致", single: "仅一方提出", conflict3: "三方矛盾", conflict2: "两方矛盾" };
+
+function mdIssueList(issues, note) {
+  const list = Array.isArray(issues) ? issues : [];
+  if (!list.length) return ["", note || "（没有发现问题）", ""];
+  const out = [""];
+  for (const it of list.slice(0, 60)) {
+    const line = it.endLine > it.line ? it.line + "-" + it.endLine : String(it.line);
+    out.push("- **行 " + line + "** \`" + it.severity + "\` " + String(it.title || "") + (it.detail ? " —— " + String(it.detail).replace(/\s*\n\s*/g, " ") : "") + (it.fix ? "（建议：" + String(it.fix).replace(/\s*\n\s*/g, " ") + "）" : ""));
+  }
+  out.push("");
+  return out;
+}
+
+function mdMetaLines(meta, extra) {
+  const m = meta && typeof meta === "object" ? meta : {};
+  const when = new Date(Number(m.at) > 0 ? Number(m.at) : Date.now());
+  const pad = (n) => String(n).padStart(2, "0");
+  const stamp = when.getFullYear() + "-" + pad(when.getMonth() + 1) + "-" + pad(when.getDate()) + " " + pad(when.getHours()) + ":" + pad(when.getMinutes());
+  const file = String(m.file || "未命名").slice(0, 120);
+  const rows = [
+    "> **产品**：QingYaoTP AILauncher v" + APP_VERSION + " · **导出时间**： " + stamp + "（本地）",
+    "> **文件**：" + file + (Number(m.lineCount) > 0 ? "（" + Math.round(Number(m.lineCount)) + " 行）" : "") +
+      (m.lang ? " · **语言**：" + String(m.lang).slice(0, 40) : "") +
+      (m.intent ? " · **用户意图**：" + String(m.intent).slice(0, 200) : ""),
+  ];
+  const modelBits = [];
+  if (m.model) modelBits.push("本地审查模型 " + String(m.model).slice(0, 120));
+  if (m.crossModel) modelBits.push("第二审查员 " + String(m.crossModel).slice(0, 120));
+  if (m.cloudHost) modelBits.push("云端上游 " + String(m.cloudHost).slice(0, 160) + (m.cloudModel ? " / " + String(m.cloudModel).slice(0, 120) : ""));
+  if (modelBits.length) rows.push("> " + extra + modelBits.join(" · "));
+  return rows;
+}
+
+/** 质询记录 .challenge.md（纯函数，导出/存会话共用） */
+function buildChallengeMarkdown(payload) {
+  const p = payload && typeof payload === "object" ? payload : {};
+  const meta = p.meta && typeof p.meta === "object" ? p.meta : {};
+  const primary = p.primary && typeof p.primary === "object" ? p.primary : { summary: "", issues: [] };
+  const history = (Array.isArray(p.challenge?.history) ? p.challenge.history : []).slice(-20)
+    .map((h) => ({ question: String(h?.question ?? "").slice(0, 2000), answer: String(h?.answer ?? "").slice(0, 8000) }))
+    .filter((h) => h.question || h.answer);
+  const lines = [];
+  lines.push("# 质询记录 · " + String(meta.file || "未命名").split(/[\\/]/).pop());
+  lines.push("");
+  lines.push(...mdMetaLines(meta, "模型："));
+  lines.push("");
+  lines.push("## 原审查结论");
+  lines.push("");
+  const psum = String(primary.summary || "").trim();
+  lines.push(psum || "（原审查没有给出摘要）");
+  lines.push(...mdIssueList(primary.issues, "（原审查没有报告结构化问题）"));
+  lines.push("## 质询记录（" + history.length + " 轮）");
+  lines.push("");
+  if (!history.length) {
+    lines.push("（本轮还没有质询记录）");
+    lines.push("");
+  } else {
+    history.forEach((h, i) => {
+      lines.push("### 第 " + (i + 1) + " 轮");
+      lines.push("");
+      lines.push("**质疑**：" + h.question);
+      lines.push("");
+      lines.push("**回答**：" + h.answer);
+      lines.push("");
+    });
+  }
+  lines.push("## 说明");
+  lines.push("");
+  lines.push("- 质询是 stateless：每轮只回传最近 4 轮历史，服务端不保存质询会话。");
+  lines.push("- 回答的「成立 / 不成立 / 需验证」是模型判断，最终以你的代码与运行结果为准。");
+  lines.push("- 本文件由「审查面板 → 导出质询记录」生成，只含结论与问答，不含代码正文。");
+  return redactExportText(lines.join("\n"));
+}
+
+/** 审查结论 .review.md（纯函数）：本地审查 / 他人复审两栏+判定 / 云端复审 / 三方对照 / 质询记录 */
+function buildReviewMarkdown(payload) {
+  const p = payload && typeof payload === "object" ? payload : {};
+  const meta = p.meta && typeof p.meta === "object" ? p.meta : {};
+  const primary = p.primary && typeof p.primary === "object" ? p.primary : { summary: "", issues: [] };
+  const cross = p.cross && typeof p.cross === "object" ? p.cross : null;
+  const cloud = p.cloud && typeof p.cloud === "object" ? p.cloud : null;
+  const challenge = (Array.isArray(p.challenge?.history) ? p.challenge.history : []).slice(-20)
+    .map((h) => ({ question: String(h?.question ?? "").slice(0, 2000), answer: String(h?.answer ?? "").slice(0, 8000) }))
+    .filter((h) => h.question || h.answer);
+  const cmp = p.compare3 && typeof p.compare3 === "object" ? p.compare3 : null;
+  const lines = [];
+  lines.push("# 审查结论 · " + String(meta.file || "未命名").split(/[\\/]/).pop());
+  lines.push("");
+  lines.push(...mdMetaLines(meta, "模型："));
+  lines.push("");
+  lines.push("## 一、本地审查");
+  lines.push("");
+  lines.push(String(primary.summary || "").trim() || "（本地审查没有给出摘要）");
+  lines.push(...mdIssueList(primary.issues, "（本地审查没有发现问题）"));
+  lines.push("## 二、他人复审");
+  lines.push("");
+  if (!cross) {
+    lines.push("（没有运行他人复审）");
+    lines.push("");
+  } else {
+    const st = cross.stats && typeof cross.stats === "object" ? cross.stats : null;
+    lines.push("**第二审查员**：" + String(cross.model || "未知") + (cross.sameModel ? "（与当前相同，对抗式）" : ""));
+    if (cross.verdict) {
+      lines.push("");
+      lines.push("**判定**：" + (EXPORT_VERDICT_LABEL[cross.verdict] || String(cross.verdict)));
+      if (st) {
+        lines.push("");
+        lines.push("**计数**：原审查 " + num0(st.primary) + " · 他人 " + num0(st.second) + " · 一致 " + num0(st.agree) + " · 仅原审查 " + num0(st.onlyPrimary) + " · 仅他人 " + num0(st.onlySecond) + " · 矛盾 " + num0(st.conflicts));
+      }
+    }
+    lines.push("");
+    lines.push("**结论**：" + String(cross.summary || "").trim() || "（没有摘要）");
+    lines.push(...mdIssueList(cross.issues, "（他人复审没有发现问题）"));
+    const groups = [
+      ["agree", "一致", cross.agree],
+      ["onlyPrimary", "仅原审查提出", cross.onlyPrimary],
+      ["onlySecond", "仅他人复审提出", cross.onlySecond],
+      ["conflicts", "互相矛盾", cross.conflicts],
+    ];
+    lines.push("### 两栏对照");
+    lines.push("");
+    let anyGroup = false;
+    for (const [kind, label, arr] of groups) {
+      const list = Array.isArray(arr) ? arr : [];
+      if (!list.length) continue;
+      anyGroup = true;
+      lines.push("**" + label + "（" + list.length + " 处）**");
+      lines.push("");
+      for (const x of list.slice(0, 40)) {
+        const a = x && x.primary ? x.primary : (kind === "onlySecond" ? null : x);
+        const b = x && x.second ? x.second : (kind === "onlyPrimary" ? null : x);
+        const parts = [];
+        if (a) parts.push("原审查「" + String(a.title || "") + "」行 " + a.line);
+        if (b) parts.push("他人「" + String(b.title || "") + "」行 " + b.line);
+        if (kind === "conflicts" && x && x.reason) parts.push(String(x.reason));
+        lines.push("- " + parts.join(" ／ "));
+      }
+      lines.push("");
+    }
+    if (!anyGroup) {
+      lines.push("（两侧都没有可对照的条目）");
+      lines.push("");
+    }
+  }
+  lines.push("## 三、云端复审");
+  lines.push("");
+  if (!cloud) {
+    lines.push("（没有运行云端复审）");
+    lines.push("");
+  } else {
+    lines.push("**上游**：" + String(cloud.host || "未知") + (cloud.model ? " · **模型**：" + String(cloud.model) : ""));
+    lines.push("");
+    lines.push("**结论**：" + (String(cloud.summary || "").trim() || "（没有摘要）"));
+    lines.push(...mdIssueList(cloud.issues, "（云端复审没有发现问题）"));
+    lines.push("> 云端只收到脱敏后的代码（每次调用都会先确认目标域名）。");
+    lines.push("");
+  }
+  lines.push("## 四、三方对照（本地 / 他人 / 云端）");
+  lines.push("");
+  if (!cmp) {
+    lines.push("（还没有生成三方对照；点「三方对照」按钮后会自动带上）");
+    lines.push("");
+  } else {
+    lines.push("**判定**：" + (EXPORT_VERDICT_LABEL[cmp.verdict] || String(cmp.verdict || "未知")));
+    if (cmp.stats) {
+      lines.push("");
+      lines.push("**计数**：共 " + num0(cmp.stats.rows) + " 行 · 三方一致 " + num0(cmp.stats.all3) + " · 两方 " + num0(cmp.stats.two) + " · 仅一方 " + num0(cmp.stats.one) + " · 矛盾 " + num0(cmp.stats.conflict));
+      if (cmp.stats.bySource) lines.push("");
+      if (cmp.stats.bySource) lines.push("**各来源**：本地 " + num0(cmp.stats.bySource.local) + " · 他人 " + num0(cmp.stats.bySource.cross) + " · 云端 " + num0(cmp.stats.bySource.cloud));
+    }
+    lines.push("");
+    lines.push("| 行 | 原审查 | 他人复审 | 云端复审 | 判定 |");
+    lines.push("|---|---|---|---|---|");
+    for (const r of (Array.isArray(cmp.rows) ? cmp.rows : []).slice(0, 80)) {
+      const cell = (it) => (it ? String(it.title || "") + "（" + String(it.severity || "") + "）" : "—");
+      lines.push("| " + (r.endLine > r.line ? r.line + "-" + r.endLine : r.line) + " | " + cell(r.local) + " | " + cell(r.cross) + " | " + cell(r.cloud) + " | " + (EXPORT_JUDGMENT_LABEL[r.judgment] || String(r.judgment || "")) + " |");
+    }
+    lines.push("");
+  }
+  lines.push("## 五、质询记录");
+  lines.push("");
+  if (!challenge.length) {
+    lines.push("（本轮没有质询记录）");
+    lines.push("");
+  } else {
+    challenge.forEach((h, i) => {
+      lines.push("### 第 " + (i + 1) + " 轮");
+      lines.push("");
+      lines.push("**质疑**：" + h.question);
+      lines.push("");
+      lines.push("**回答**：" + h.answer);
+      lines.push("");
+    });
+  }
+  lines.push("## 说明");
+  lines.push("");
+  lines.push("- 本文件由「审查面板 → 导出复审结论 / 存进会话」生成，只含结论与问题描述，**不含代码正文**。");
+  lines.push("- 他人复审的「一致 / 仅一方 / 互相矛盾」是启发式判定（行距 ≤2 + 严重度 rank 相同才算一致）。");
+  lines.push("- 云端复审只接受 https，每次调用都要确认目标域名；本文件不含 API Key / 代码正文。");
+  return redactExportText(lines.join("\n"));
+}
+
+function num0(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? String(Math.round(n)) : "0";
+}
+
+/** POST /api/code/review/export —— 把质询 / 复审结论整理成可带走的 Markdown（令牌必需；纯计算不落盘） */
+async function handleCodeReviewExport(req, res) {
+  if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
+    return sendJson(res, 403, { error: { message: "缺少或错误的本地令牌（x-local-token）" } });
+  }
+  let body;
+  try {
+    body = await readBody(req);
+  } catch (e) {
+    return sendJson(res, e?.code === "BODY_TOO_LARGE" ? 413 : 400, { error: { message: e?.message ?? "JSON 解析失败" } });
+  }
+  const kind = String(body?.kind ?? "").trim();
+  if (kind !== "challenge" && kind !== "review") {
+    return sendJson(res, 400, { error: { message: "kind 必须是 challenge 或 review" } });
+  }
+  try {
+    const markdown = kind === "challenge" ? buildChallengeMarkdown(body) : buildReviewMarkdown(body);
+    const meta = body?.meta && typeof body.meta === "object" ? body.meta : {};
+    const at = Number(meta.at) > 0 ? Number(meta.at) : Date.now();
+    const filename = exportSlug(meta.file) + "-" + exportStamp(at) + "." + kind + ".md";
+    return sendJson(res, 200, { ok: true, kind, filename, bytes: Buffer.byteLength(markdown, "utf8"), markdown, at });
+  } catch (e) {
+    return sendJson(res, 500, { error: { message: "生成导出失败：" + String(e?.message ?? e).slice(0, 200) } });
+  }
+}
+
+/** POST /api/code/review/compare3 —— 三方对照（令牌必需；纯函数，不碰模型 / 不落盘） */
+async function handleCodeReviewCompare3(req, res) {
+  if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
+    return sendJson(res, 403, { error: { message: "缺少或错误的本地令牌（x-local-token）" } });
+  }
+  let body;
+  try {
+    body = await readBody(req);
+  } catch (e) {
+    return sendJson(res, e?.code === "BODY_TOO_LARGE" ? 413 : 400, { error: { message: e?.message ?? "JSON 解析失败" } });
+  }
+  const lineCount = Number(body?.lineCount) || 0;
+  try {
+    const out = compareThreeWayFindings(body?.local?.issues ?? body?.local, body?.cross?.issues ?? body?.cross, body?.cloud?.issues ?? body?.cloud, lineCount);
+    return sendJson(res, 200, { ok: true, ...out });
+  } catch (e) {
+    return sendJson(res, 500, { error: { message: "三方对照失败：" + String(e?.message ?? e).slice(0, 200) } });
+  }
+}
+
+/**
  * 挑第二审查员（契约 §1.2 选模型规则，确定性）：
  *  - 指定了 model → 用它；与当前相同则 sameModel=true；
  *  - 没指定 → 按 scanModels() 顺序挑第一个与当前**不同**的可用模型；
@@ -8432,6 +8806,8 @@ async function handle(req, res) {
   if (req.method === "POST" && url === "/api/code/review/challenge") return handleCodeChallengeStream(req, res);
   if (req.method === "POST" && url === "/api/code/review/cross") return handleCodeCrossStream(req, res);
   if (req.method === "POST" && url === "/api/code/review/cloud") return handleCloudReviewStream(req, res);
+  if (req.method === "POST" && url === "/api/code/review/export") return handleCodeReviewExport(req, res);
+  if (req.method === "POST" && url === "/api/code/review/compare3") return handleCodeReviewCompare3(req, res);
   if (req.method === "GET" && url === "/api/cloud/config") return handleCloudConfigGet(req, res);
   if (req.method === "POST" && url === "/api/cloud/config") return handleCloudConfigPost(req, res);
 

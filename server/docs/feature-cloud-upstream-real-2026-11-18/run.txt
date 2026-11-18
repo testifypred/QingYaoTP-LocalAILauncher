@@ -1,0 +1,48 @@
+
+== 真实上游兼容性冒烟：云端复审（POST /api/code/review/cloud）==
+  目标 http://127.0.0.1:8099
+  只读云端配置 + 1 次真实上游请求（9 行合成代码，不含任何用户数据）
+  说明：不进 run-full.ps1，是手动 / 发版前冒烟（见 server\docs\feature-cloud-upstream-real-2026-11-18\run.txt 旁的 RESULT.md）
+  服务：v1.8.1  localToken=已有（不打印）
+  云端：enabled=true ready=true host=api.deepseek.com model=deepseek-flash hasKey=true keyMasked=sk-***ffd7
+
+== P. 前置（只读） ==
+  ok   P1. GET /api/state -> 200 且 localToken 可用  [HTTP 200 tokenLen=36]
+  ok   P2. GET /api/cloud/config -> 200 且 enabled/ready/host 就绪  [{"enabled":true,"ready":true,"host":"api.deepseek.com","model":"deepseek-flash","hasKey":true}]
+  ok   P3. keyMasked 是「前3+***+后4」遮罩（不含明文）  [masked=sk-***ffd7]
+
+== S. 真跑（1 次 POST /api/code/review/cloud；合成代码 9 行，max_tokens=800） ==
+  事件序列: meta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> …(21 个)
+  ok   S1. HTTP 200 + text/event-stream  [HTTP 200 ct=text/event-stream; charset=utf-8 4.0s]
+  ok   S2. 不是 502 / 正文无 CLOUD_EMPTY / 无 error 事件（上游可正常返回）  [HTTP 200]
+  ok   S3. 事件序列：meta 是第一个事件  [meta_idx=0 types=meta,delta,delta,delta,delta,delta]
+  ok   S4. meta.provider === "cloud"  [provider=cloud]
+  ok   S5. meta.host 与配置 host 一致  [meta.host=api.deepseek.com config.host=api.deepseek.com]
+  ok   S6. meta.attempts 是 >=1 的整数  [attempts=1]
+  ok   S7. meta.thinkingDisabled 是 boolean（v1.8.1 字段）  [thinkingDisabled=true]
+  ok   S8. meta.usedReasoningFallback 是 boolean（v1.8.1 字段）  [usedReasoningFallback=false]
+  ok   S9. 有 findings 事件且 findings.issues 是数组  [findings_idx=19 issuesType=object n=4]
+  ok   S10. findings.parsed 是 boolean 且 lineCount = 代码行数  [parsed=true lineCount=9 want=9]
+  ok   S11. delta 至少 1 段，且都在 meta 与 findings 之间  [deltas=18 meta=0 findings=19]
+  ok   S12. 有 done 事件且 done.seconds > 0  [done_idx=20 seconds=4]
+  ok   S13. done 是最后一个事件（正常收尾）  [done_idx=20 total=21]
+  ok   S14. 整个响应文本不含 apiKey 可见尾段（keyMasked 后 4 位）  [tailLen=4 respLen=3373]
+  ok   S15. 响应文本无 sk- 长串明文 Key 形状、也不含完整 keyMasked  [keyLike=false respLen=3373]
+  ok   S16. 端到端耗时 < 60s（服务端 CLOUD_JOB_TIMEOUT_MS 默认 60s）  [4.0s]
+
+== Z. 收尾（只读） ==
+  ok   Z1. 云端配置未被探针改动（enabled/host/hasKey 不变）  [{"enabled":true,"host":"api.deepseek.com","hasKey":true}]
+
+== 关键观测 ==
+  服务 v1.8.1 · 上游 host=api.deepseek.com · 模型=deepseek-flash
+  attempts=1 thinkingDisabled=true usedReasoningFallback=false
+  => 真实上游在第 1 次就接受 thinking:{type:"disabled"} 并返回正文：没走重试阶梯、没触发 reasoning 兜底
+  脱敏：sentChars=377 redactions=0（只发脱敏后的合成代码）
+  解析：delta=18 段 · findings.parsed=true · issues=4 条
+  计时：done.seconds=4 · 端到端(含网络)=4.0s
+  成本：本探针只发 1 次 POST /api/code/review/cloud；服务端内部共请求上游 attempts=1 次
+  安全：本探针未打印 apiKey、未读写 data\cloud-review.json、未改云端配置。
+
+== 结果: 20/20 通过 ==
+RESULT 20/20
+

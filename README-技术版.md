@@ -191,7 +191,7 @@ workspace\                 会话、代码工作区、RAG 索引等用户数据
 
 - 版本号只有一处来源：`server\app.mjs` 的 `APP_VERSION`（`package.json` 必须一致，探针会对账）。
 - 现状与下一步：`交接文档.md`；时间流水与设计取舍：`DeveloperRealtimeLog.md`；技术专题：`technique\`。
-- 回归靠 **83 个探针**（`server\probe-*.mjs`），全量驱动 `server\docs\run-full.ps1`（**63 条** / 断言口径 **1224**）——**真回归仍靠这套本地探针**；GitHub 上的 CI 只做确定性检查（语法 / 版本 / 仓库卫生 / README），不跑模型。
+- 回归靠 **85 个探针**（`server\probe-*.mjs`），全量驱动 `server\docs\run-full.ps1`（**64 条** / 断言口径 **1290**）——**真回归仍靠这套本地探针**；GitHub 上的 CI 只做确定性检查（语法 / 版本 / 仓库卫生 / README），不跑模型。
 ## 发布到 GitHub（2026-11-17）
 
 - 仓库：https://github.com/testifypred/QingYaoTP-LocalAILauncher （public / main）。首页 README 是**客户端版**（`README.md`），本文是技术版。

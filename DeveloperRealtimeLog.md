@@ -3,7 +3,7 @@
 > 原名 `HANDOFF.md`，由上一任开发者写于 **2026-10-18 21:45**。
 > 从 **2026-10-18 21:44** 起，本文件改为**按时间流水记录**：每一笔写清「几点、改了什么、落在哪、怎么验的」。
 > 第一节是日志索引，其后的一~七节是原交接正文（保留原样，仅修正两处日期笔误），八~十节是本次三项需求的详细设计说明。
-> 最新一笔：**2026-11-18 深夜**（第六十八节，**v1.8.1 重打包：安装包首启说明变客户端版**：新主包 127,901,058B / 3947 条目 / SHA256 `E3A70DE5…F4C0`；仓库 public/main、71 提交、CI 四检绿；**Release 仍未创建**（本机无 `gh`/PAT）。上一笔第六十七节 = v1.8.1 发布到 GitHub / README 拆双版本 / 推送改 SSH over 443 / CI 的 `shell: powershell` 步骤必须纯 ASCII）。全部时间均为 China Standard Time，本机时钟。
+> 最新一笔：**2026-11-19 凌晨**（第六十九节，**v1.9.0 审查结论导出 + 三方对照**：.challenge.md/.review.md 导出 + 存进会话 + 三方对照表；主包 dist\QingYaoTP-AILauncher-v1.9.0.zip **127,912,206B / SHA256 98F35D3D…B26FF**；全量 63 → **64 条 / 1290 断言**（r2 = 62 绿 + 2 环境红，修探针后隔离全绿）；真实上游冒烟 **20/20**；**Release 仍未创建**（无 gh/PAT）。上一笔第六十八节 = v1.8.1 重打包）。全部时间均为 China Standard Time，本机时钟。
 >
 > **接手先读 [`交接文档.md`](交接文档.md)**（一页纸：定位、现状、代码地图、下一步）。
 > 技术专题已抽到 [`technique/`](technique/)：架构、接口、插件、模型、打包、探针、坑。本文件保留**按时间流水**的原始记录，作为「为什么这么做」的证据。
@@ -3370,3 +3370,41 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 1. **Release 仍未创建**：本机没有 `gh`、也没有 GitHub PAT（remote 走 SSH，调不了写接口）→ 需要用户给 PAT 或手动在网页发。素材已就绪：本地已打并推送 tag `v1.8.1`；正文 `.github/RELEASE-v1.8.1.md`；附件新 zip；topics 清单在交接文档。
 2. **真实上游兼容性冒烟**（可选）：仍需用户 key；建议「默认跳过、配了 key 才跑」。
 3. 本轮未跑全量 63 条（没改代码，只打了包）：跑的是发布包实例三项冒烟；下一轮改功能后按硬约束跑全量（63 条 / 1224 断言）。
+
+---
+
+## 第六十九节（2026-11-19 凌晨）v1.9.0：审查结论导出 + 三方对照（收尾第②③件 + 功能①②）
+
+> 承接第六十八节（v1.8.1 重打包）与收尾三件：② ✅ 重打包（68 节）、③ ✅ 真实上游冒烟（本节）、① Release 仍卡凭据。功能按用户排序做了前两项：质询记录/复审结论导出并存入会话、三方对照表。
+
+### 一、功能
+
+1. **审查结论导出（.challenge.md / .review.md）**：新增 POST /api/code/review/export（令牌；纯计算不落盘；只脱敏 sk-… 类密钥；**不含代码正文**）。.review.md 六节：本地审查 / 他人复审（两栏四类 + 判定 + 计数）/ 云端复审 / 三方对照表 / 质询记录 / 说明；.challenge.md = 原结论 + 质询问答。
+2. **存进会话**：前端把导出的 Markdown 作为一条 assistant 消息 PUT 进当前会话（content=Markdown、ctx=短摘要，刷新后还在、不额外发给模型）。
+3. **三方对照**：新增 POST /api/code/review/compare3（令牌；纯计算）。纯函数 compareThreeWayFindings：不同来源问题行距 ≤2 / 区间相交用并查集聚类（同来源不合并），每行判 all3 / pair2 / conflict3 / conflict2 / single，verdict 优先级 contradicts > differs > majority > consistent；stats 恒等式 rows=all3+two+one、all3=judgments.all3+judgments.conflict3 等。前端三份快照按**代码指纹**（文件名+编辑器长度+哈希）失效，改过代码的旧结论不混入；行数取 max(编辑器行数, 快照最大行号) 防 clamp。
+4. 前端 DOM：#cwCompare3/#cwCompare3Panel/#cwCompare3Verdict/#cwCompare3Table、#cwExportReview/#cwExportChallenge/#cwStoreExport/#cwExportState；契约 server\docs\feature-review-export-2026-11-18\CONTRACT.md。
+
+### 二、真实上游兼容性冒烟（收尾第③件）
+
+新增 **手动/发版前** 探针 server\probe-cloud-upstream-real.mjs（**20/20**，不进全量）：真 DeepSeek api.deepseek.com / deepseek-flash，1 次请求、**attempts=1**、端到端 **4.0s**、findings 解析 4 条、响应无 key 尾段/无 sk- 明文、前后配置一致。证明 v1.8.1 的 thinking:{type:"disabled"} + 重试阶梯在**真协议**上成立（stub 只能证代码路径）。同时记录：云端上游目前仍是 stream:false（收全后按 80 字切 delta），4s 内前端只有计时——这是下一轮「上游改流式」的收益证据。证据 server\docs\feature-cloud-upstream-real-2026-11-18\。
+
+### 三、探针与全量（关键教训）
+
+- 新探针 probe-code-review-export **66 条**（A 令牌参数 5 / B compare3 口径 23 / C .challenge 10 / D .review 13 / E UI 15；**不需要模型**，无 CDP 时 E 段 skip）。全量驱动 63 → **64 条**，断言口径 1224 → **1290**（run-full.ps1 已加，BOM + PS5.1 Parser 复验过）。
+- **r1（60 绿 + 4 红）**：新探针 E 段 loadSession(临时会话) 后删了会话，但 localStorage localai.lastSession 还指着已删 id → 后面 probe-start-flow 6/8、probe-small-features 复制按钮 0、probe-start-screen 11/12 连带假红；probe-menu-stacking 是 Edge 视口已知假红。**修法**：探针开跑前记旧指针、收尾写回并 reload（已写进探针与启动词硬约束）。
+- **r2（62 绿 + 2 环境红 / 1290 断言，1285 通过）**：隔离复跑 probe-start-flow 8/8、probe-small-features 6/6、probe-start-screen 12/12、probe-menu-stacking 2/2 全绿；probe-menu-stacking 已给探针自己钉 1408×800 视口（下次全量应绿）。probe-web-tools 15/19——百度反爬返回 0 条/引擎 undefined，同探针后段流式 web_search 正常 → **外网波动、非产品**（v1.6.0 有同类先例）。
+- 证据：server\docs\probe-full-2026-11-19-v190-r1\（留证）、...-r2\（含 rerun-isolated\）、server\docs\feature-review-export-2026-11-18\。
+
+### 四、交付
+
+- 版本 bump **1.9.0**（app.mjs / package.json / localai.mjs 三处一致；probe-version 14/14 已验）。
+- build-portable.ps1 **258.7MB / 3447 文件**（8 步全过、无 app\llama）→ make-zip.ps1 出主包 **dist\QingYaoTP-AILauncher-v1.9.0.zip 122.0MB / 127,912,206B / 3947 条目 / SHA256 98F35D3DC5AC4BFA63CF76FD31332A15452BFCAD1AEA4DEAB807E86C997B26FF**（旧 v1.8.1 E3A70DE5… 保留作其 Release 附件）。
+- 自检：无 app/llama、无 data/cloud-review*、config 消毒、包内 app/README.md = 仓库 README（14,594B 同哈希）、六份源码↔dist 哈希一致；8099 切回**发布包实例 v1.9.0**（src=pack / 53 文件视觉包装回、5 模型 / 9 会话）；发布包冒烟 probe-version **14/14** + probe-debug **54/54** + probe-readme **21/21** + probe-code-review-export **66/66**（证据 server\docs\packaging-2026-11-19-v190\）。
+- .github\RELEASE-v1.9.0.md 已写好（发版贴正文）。
+- **Release 仍未创建**：本机无 gh / 无 GitHub PAT（remote 走 SSH，调不了写接口）→ 需用户给 token 或网页手动发；v1.8.1 与 v1.9.0 两个附件都在 dist，tag v1.8.1 已推、v1.9.0 tag 见本节提交。
+
+### 五、下一轮
+
+1. （等凭据）发 Release + About topics；
+2. **云端复审上游改流式**（handleCloudReviewStream 里 stream:false → 解析上游 SSE、reasoning/正文分流、CLOUD_EMPTY 判定挪到流结束；前端按真 delta 渲染）；
+3. 只发选中片段；4. 多文件/整工作区审查；5. 老账：一键纠正写回文件、toolEnabled 同步 1 行。

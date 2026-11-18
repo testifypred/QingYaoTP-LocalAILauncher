@@ -842,6 +842,15 @@ math-field:focus-within{border-color:var(--cyan)}
 .cwCrossItem[data-severity="info"]{border-left:2px solid var(--cyan)}
 .cwCrossEmpty{font-size:11px;color:var(--dim);line-height:1.6}
 .cwCrossDiff{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+.cwCompare3Table{overflow:auto;margin:6px 0 8px}
+.cwCompare3Table table{border-collapse:collapse;width:100%;font-size:11px}
+.cwCompare3Table th,.cwCompare3Table td{border:1px solid var(--line);padding:3px 6px;text-align:left;vertical-align:top}
+.cwCompare3Table th{background:var(--panel-2);color:var(--cyan);font-weight:600;white-space:nowrap}
+.cwCompare3Table td.j-ok{color:var(--ok)}
+.cwCompare3Table td.j-conflict{color:var(--err)}
+.cwCompare3Table td.j-single{color:var(--warn)}
+.cwExportActions{gap:6px;flex-wrap:wrap}
+.cwExportActions .hintText{font-size:10.5px;color:var(--dim);word-break:break-all}
 .cwDiffItem{border:1px solid var(--line);border-left:3px solid var(--line-2);border-radius:5px;background:var(--panel);padding:4px 7px;font-size:11px;line-height:1.5;color:var(--text-2);cursor:pointer;word-break:break-word}
 .cwDiffItem:hover{border-color:var(--cyan)}
 .cwDiffItem.agree{border-left-color:var(--ok)}
@@ -1669,6 +1678,13 @@ header::before{
           <button id="cwCross" class="ghost" type="button" title="换一个模型独立再审一次，并列对照">他人复审</button>
           <button id="cwCloud" class="ghost" type="button" title="把脱敏后的代码发到云端服务复审（每次都要确认）">云端复审</button>
         </div>
+        <div class="cwReviewActions cwExportActions">
+          <button id="cwCompare3" class="ghost" type="button" title="把本地审查 / 他人复审 / 云端复审三份结论放一张表里比对（至少跑过两项）">三方对照</button>
+          <button id="cwExportReview" class="ghost" type="button" title="导出 .review.md：本地审查 + 两栏对照与判定 + 云端复审 + 三方对照 + 质询记录">导出复审结论</button>
+          <button id="cwExportChallenge" class="ghost" type="button" title="导出 .challenge.md：原审查结论 + 质询问答">导出质询记录</button>
+          <button id="cwStoreExport" class="ghost" type="button" title="把复审结论存进当前会话（和「发回对话」并列；只存档，不发给模型）">存进会话</button>
+          <span id="cwExportState" class="hintText"></span>
+        </div>
         <div class="cwCrossModelRow">
           <span class="hintText">复审模型</span>
           <select id="cwCrossModel" title="他人复审用哪个模型：默认自动挑一个与当前不同的（不会选 Phi-4-mini）">
@@ -1694,6 +1710,10 @@ header::before{
               <div class="cwCrossCol"><div class="cwCrossColTitle">他人复审</div><div id="cwCrossColSecond"></div></div>
             </div>
             <div id="cwCrossDiff" class="cwCrossDiff"></div>
+          </div>
+          <div id="cwCompare3Panel" hidden>
+            <div class="cwVerdictRow"><span id="cwCompare3Verdict" class="cwVerdict">三方对照</span></div>
+            <div id="cwCompare3Table" class="cwCompare3Table"></div>
           </div>
           <div id="cwReviewState" class="cwReviewState"></div>
         </div>
@@ -4673,6 +4693,11 @@ const cwChallengeSendEl = $('cwChallengeSend'), cwChallengeLogEl = $('cwChalleng
 const cwCrossEl = $('cwCross'), cwCrossModelEl = $('cwCrossModel'), cwCrossVerdictEl = $('cwCrossVerdict');
 const cwCrossPanelEl = $('cwCrossPanel'), cwCrossColPrimaryEl = $('cwCrossColPrimary'), cwCrossColSecondEl = $('cwCrossColSecond');
 const cwCrossDiffEl = $('cwCrossDiff');
+// v1.9.0：导出 / 存进会话 / 三方对照
+const cwCompare3El = $('cwCompare3'), cwCompare3PanelEl = $('cwCompare3Panel');
+const cwCompare3VerdictEl = $('cwCompare3Verdict'), cwCompare3TableEl = $('cwCompare3Table');
+const cwExportReviewEl = $('cwExportReview'), cwExportChallengeEl = $('cwExportChallenge');
+const cwStoreExportEl = $('cwStoreExport'), cwExportStateEl = $('cwExportState');
 const cwCloudEl = $('cwCloud'), cloudConfirmModalEl = $('cloudConfirmModal'), cloudConfirmHostEl = $('cloudConfirmHost');
 const cloudConfirmOkEl = $('cloudConfirmOk'), cloudConfirmCancelEl = $('cloudConfirmCancel'), cloudConfirmCloseEl = $('cloudConfirmClose');
 const cloudEnabledEl = $('cloudEnabled'), cloudBaseEl = $('cloudBase'), cloudModelEl = $('cloudModel'), cloudKeyEl = $('cloudKey');
@@ -4767,6 +4792,13 @@ let cwCrossVerdictLabel = '';    // compare 的判定中文（done 时拼进状�
 let cwCrossModelSig = '';        // 复审模型下拉的签名，避免 refresh 每 3 秒重建
 let cwCloudConfirmHost = '';     // 弹窗里确认过、随请求发回的 host
 let cwCloudCfgCache = null;      // GET /api/cloud/config 的最近结果
+// v1.9.0：三份结论的快照（只在同一份代码指纹下有效；导出 / 三方对照都用它）
+// sig = 文件名 + 代码长度 + 简易哈希，防止把「改过代码之后」的旧结论混进对照
+let cwSnapshotLocal = null;   // { sig, model, summary, issues, at }
+let cwSnapshotCross = null;   // { sig, model, summary, issues, verdict, stats, agree, onlyPrimary, onlySecond, conflicts, at }
+let cwSnapshotCloud = null;   // { sig, host, model, summary, issues, at }
+let cwCompare3Data = null;    // { sig, result }：最近一次三方对照（导出时带上）
+let cwCrossModelName = '';    // 他人复审 meta 里给的模型名（传给快照）
 
 function cwExt(p) { return (String(p || '').split('.').pop() || '').toLowerCase(); }
 function cwModeFor(p) { return CW_MODES[cwExt(p)] || 'text/plain'; }
@@ -5333,6 +5365,8 @@ function cwRefreshActionButtons() {
   }
   if (cwChallengeTextEl) cwChallengeTextEl.disabled = busy;
   if (cwCrossModelEl) cwCrossModelEl.disabled = busy;
+  // v1.9.0：导出 / 存进会话 / 三方对照 都只在空闲时可点
+  for (const el of [cwCompare3El, cwExportReviewEl, cwExportChallengeEl, cwStoreExportEl]) if (el) el.disabled = busy;
 }
 
 /** 审查模型下拉：首项「本对话模型（当前）」，其余来自 /api/state.models 的 file（契约 2.2） */
@@ -5654,6 +5688,7 @@ async function cwRunReviewStream(payload, signal) {
     } else if (ev.type === 'findings') {
       gotFindings = true;
       cwApplyFindings(ev);
+      cwSnapshotLocal = { sig: cwCodeSig(), model: (cwReviewMetaEl && cwReviewMetaEl.textContent) || '', summary: String(ev.summary || ''), issues: Array.isArray(ev.issues) ? ev.issues.map((it, i) => cwNormIssue(it, i)) : [], at: Date.now() };
     } else if (ev.type === 'done') {
       const secs = Number(ev.seconds);
       const n = cwIssues.length;
@@ -5969,6 +6004,241 @@ async function cwSendChallenge() {
   }
 }
 
+// ---- 导出 / 存进会话 / 三方对照（v1.9.0） ----
+// 设计：前端只负责「收集最近一次各模式的结论快照 + 调接口」，Markdown 与三方聚合都在后端纯函数里做，
+// 这样探针可以直接打接口做确定性断言（同 v1.8.0 compareReviewFindings 的口径）。
+const CW_EXPORT_VERDICT_LABEL = { consistent: '一致', differs: '仅一方提出', contradicts: '互相矛盾', majority: '两方一致' };
+const CW_EXPORT_JUDGMENT_LABEL = { all3: '三方一致', pair2: '两方一致', single: '仅一方提出', conflict3: '三方矛盾', conflict2: '两方矛盾' };
+
+/** 简易 32 位哈希（只用于判断「快照与当前编辑器是不是同一份代码」，不是安全用途） */
+function cwSimpleHash(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i += 1) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+/** 当前代码指纹：文件路径 + 长度 + 哈希；改过代码后旧快照不会被混进导出/对照 */
+function cwCodeSig() {
+  const v = cwValue();
+  return (cwCurrent || '') + '|' + v.length + '|' + cwSimpleHash(v);
+}
+
+function cwTakeSnap(snap) {
+  return snap && snap.sig === cwCodeSig() ? snap : null;
+}
+
+/** 三份快照里出现过的最大行号：编辑器内容可能比结论短（例如刚切到小文件），
+ *  行数取下限会让后端 normalizeReviewIssues 把所有行号 clamp 成 1，三方/两方对照就全糊成一行。 */
+function cwMaxIssueLine() {
+  let max = 0;
+  for (const s of [cwTakeSnap(cwSnapshotLocal), cwTakeSnap(cwSnapshotCross), cwTakeSnap(cwSnapshotCloud)]) {
+    if (!s || !Array.isArray(s.issues)) continue;
+    for (const it of s.issues) max = Math.max(max, Math.round(Number(it.line) || 0), Math.round(Number(it.endLine) || 0));
+  }
+  return max;
+}
+
+/** 导出 / 三方对照用的行数：取「编辑器行数」与「快照最大行号」的较大者 */
+function cwLineCountForExport() {
+  return Math.max(cwValue().split('\n').length, cwMaxIssueLine());
+}
+
+function cwSetExportState(text) {
+  if (cwExportStateEl) cwExportStateEl.textContent = String(text || '');
+}
+
+function cwExportMeta() {
+  return {
+    file: cwCurrent ? cwCurrent.split('/').pop() : '',
+    lang: cwLangFor(cwCurrent) || cwExt(cwCurrent) || '',
+    lineCount: cwLineCountForExport(),
+    intent: cwIntentValue(),
+    at: Date.now(),
+  };
+}
+
+/** 把「最近一次各模式结论」组装成导出 / 存会话用的请求体（契约 §1.4 的四种输入都在这里收口） */
+function cwBuildExportBody(kind) {
+  const local = cwTakeSnap(cwSnapshotLocal);
+  const cross = cwTakeSnap(cwSnapshotCross);
+  const cloud = cwTakeSnap(cwSnapshotCloud);
+  const meta = cwExportMeta();
+  meta.model = local ? local.model : '';
+  meta.crossModel = cross ? cross.model : '';
+  meta.cloudHost = cloud ? cloud.host : '';
+  meta.cloudModel = cloud ? cloud.model : '';
+  const cmp = cwCompare3Data && cwCompare3Data.sig === cwCodeSig() ? cwCompare3Data.result : null;
+  return {
+    kind,
+    meta,
+    primary: local ? { summary: local.summary || '', issues: local.issues || [] } : { summary: '', issues: [] },
+    challenge: { history: cwChalHistory },
+    cross: cross ? {
+      model: cross.model || '', sameModel: !!cross.sameModel, summary: cross.summary || '', issues: cross.issues || [],
+      verdict: cross.verdict || '', stats: cross.stats || null,
+      agree: cross.agree || [], onlyPrimary: cross.onlyPrimary || [], onlySecond: cross.onlySecond || [], conflicts: cross.conflicts || [],
+    } : null,
+    cloud: cloud ? { host: cloud.host || '', model: cloud.model || '', summary: cloud.summary || '', issues: cloud.issues || [] } : null,
+    compare3: cmp,
+  };
+}
+
+async function cwPostJson(url, payload) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-local-token': localToken },
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((j.error && j.error.message) || j.message || ('HTTP ' + r.status));
+  return j;
+}
+
+/** 生成导出文档（不下载、不落盘）：返回 { filename, markdown, bytes } */
+async function cwBuildExportDoc(kind) {
+  const local = cwTakeSnap(cwSnapshotLocal);
+  const cross = cwTakeSnap(cwSnapshotCross);
+  const cloud = cwTakeSnap(cwSnapshotCloud);
+  if (kind === 'challenge' && !cwChalHistory.length && !local) {
+    showToast('还没有质询记录：先在质询框里发一条', 'warn', 4200);
+    return null;
+  }
+  if (kind === 'review' && !local && !cross && !cloud && !cwChalHistory.length) {
+    showToast('还没有可导出的审查结论：先跑一次「模型审查」', 'warn', 4400);
+    return null;
+  }
+  if (!localToken) { try { await refresh(); } catch {} }
+  return cwPostJson('/api/code/review/export', cwBuildExportBody(kind));
+}
+
+/** 前端下载文本（导出文件）；探针通过 #cwExportState 观察是否成功 */
+function cwDownloadText(filename, text) {
+  try {
+    const blob = new Blob([String(text || '')], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { try { URL.revokeObjectURL(url); a.remove(); } catch {} }, 2000);
+  } catch (e) { console.warn('下载失败:', e && e.message); }
+}
+
+async function cwExportMarkdown(kind) {
+  try {
+    const j = await cwBuildExportDoc(kind);
+    if (!j) return;
+    cwDownloadText(j.filename, j.markdown);
+    cwSetExportState('已导出 ' + j.filename + '（' + j.bytes + ' 字节）');
+    showToast('已导出 ' + j.filename, 'ok', 3600);
+  } catch (e) {
+    cwSetExportState('导出失败：' + e.message);
+    showToast('导出失败：' + e.message, 'err', 6400);
+  }
+}
+
+/** 存进会话：把 .review.md 变成当前会话里一条助手消息（只存档，不发给模型；刷新后还在） */
+async function cwStoreExportToSession() {
+  try {
+    const j = await cwBuildExportDoc('review');
+    if (!j) return;
+    if (!sessionId) await createSession(true);
+    await flushTranscript();
+    const shortCtx = '（审查结论已存进会话：' + j.filename + '，' + j.bytes + ' 字节；完整内容见这一条消息，随时可再导出）';
+    const entry = { role: 'assistant', content: j.markdown, ctx: shortCtx, exportFile: j.filename, t: Date.now() };
+    transcript.push(entry);
+    transcriptDirty = true;
+    saveTranscript();
+    await flushTranscript(true);
+    const heroEl = document.getElementById('hero');
+    if (heroEl) heroEl.remove();
+    document.body.classList.remove('startScreen');
+    renderStoredAssistant(entry, transcript.length - 1);
+    history.push({ role: 'assistant', content: shortCtx });
+    try { recalcCtx(); } catch {}
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+    cwSetExportState('已存进会话：' + j.filename);
+    showToast('已存进当前会话：' + j.filename, 'ok', 4400);
+  } catch (e) {
+    cwSetExportState('存进会话失败：' + e.message);
+    showToast('存进会话失败：' + e.message, 'err', 6400);
+  }
+}
+
+/** 渲染三方对照表（行号 / 原审查 / 他人 / 云端 / 判定） */
+function cwRenderCompare3(j) {
+  if (!cwCompare3TableEl) return;
+  cwCompare3TableEl.textContent = '';
+  const verdict = String((j && j.verdict) || '');
+  const label = CW_EXPORT_VERDICT_LABEL[verdict] || '判定未知';
+  const st = (j && j.stats) || {};
+  const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  if (cwCompare3VerdictEl) {
+    cwCompare3VerdictEl.className = 'cwVerdict' + (verdict === 'consistent' ? ' ok' : verdict === 'contradicts' ? ' err' : ' warn');
+    cwCompare3VerdictEl.textContent = label + ' · 共 ' + n(st.rows) + ' 行 · 三方一致 ' + n(st.all3) + ' · 两方 ' + n(st.two) + ' · 仅一方 ' + n(st.one) + ' · 矛盾 ' + n(st.conflict)
+      + '（本地 ' + n(st.bySource && st.bySource.local) + ' / 他人 ' + n(st.bySource && st.bySource.cross) + ' / 云端 ' + n(st.bySource && st.bySource.cloud) + '）';
+  }
+  const rows = Array.isArray(j && j.rows) ? j.rows : [];
+  if (!rows.length) {
+    const d = document.createElement('div');
+    d.className = 'cwCrossEmpty';
+    d.textContent = '三份结论都没有报告问题（或都还没有结果）';
+    cwCompare3TableEl.appendChild(d);
+  } else {
+    const table = document.createElement('table');
+    const head = document.createElement('tr');
+    for (const h of ['行', '原审查', '他人复审', '云端复审', '判定']) {
+      const th = document.createElement('th');
+      th.textContent = h;
+      head.appendChild(th);
+    }
+    table.appendChild(head);
+    const cellText = (it) => (it ? String(it.title || '') + '（' + String(it.severity || '') + '）' : '—');
+    for (const r of rows.slice(0, 80)) {
+      const tr = document.createElement('tr');
+      const line = r.endLine > r.line ? r.line + '-' + r.endLine : String(r.line);
+      const vals = [line, cellText(r.local), cellText(r.cross), cellText(r.cloud), CW_EXPORT_JUDGMENT_LABEL[r.judgment] || String(r.judgment || '')];
+      vals.forEach((v, i) => {
+        const td = document.createElement('td');
+        td.textContent = v;
+        if (i === 4) td.className = 'cwC3j ' + (String(r.judgment || '').startsWith('conflict') ? 'j-conflict' : r.judgment === 'single' ? 'j-single' : 'j-ok');
+        tr.appendChild(td);
+      });
+      table.appendChild(tr);
+    }
+    cwCompare3TableEl.appendChild(table);
+  }
+  if (cwCompare3PanelEl) cwCompare3PanelEl.hidden = false;
+}
+
+/** 三方对照：至少跑过两项才有意义；行距 ≤2 视为同一处（与 compareReviewFindings 同口径） */
+async function cwRunCompare3() {
+  try {
+    const local = cwTakeSnap(cwSnapshotLocal);
+    const cross = cwTakeSnap(cwSnapshotCross);
+    const cloud = cwTakeSnap(cwSnapshotCloud);
+    const have = [local, cross, cloud].filter(Boolean).length;
+    if (have < 2) {
+      showToast('三方对照至少要跑过两项（现在有 ' + have + ' 项）：先跑模型审查 / 他人复审 / 云端复审', 'warn', 5400);
+      return;
+    }
+    if (!localToken) { try { await refresh(); } catch {} }
+    const j = await cwPostJson('/api/code/review/compare3', {
+      lineCount: cwLineCountForExport(),
+      local: { issues: local ? local.issues : [] },
+      cross: { issues: cross ? cross.issues : [] },
+      cloud: { issues: cloud ? cloud.issues : [] },
+    });
+    cwCompare3Data = { sig: cwCodeSig(), result: j };
+    cwRenderCompare3(j);
+    cwSetExportState('三方对照已生成（' + (j.stats && j.stats.rows) + ' 行）');
+  } catch (e) {
+    cwSetExportState('三方对照失败：' + e.message);
+    showToast('三方对照失败：' + e.message, 'err', 6400);
+  }
+}
+
 // ---- 他人复审（POST /api/code/review/cross，契约 §1.2） ----
 /** 第二审查员下拉：首项「自动（换一个模型）」，永远过滤 Phi-4-mini（Vulkan 上会卡死） */
 function cwPopulateCrossModels() {
@@ -5999,6 +6269,7 @@ function cwPopulateCrossModels() {
 function cwResetCrossView() {
   cwCrossSecondIssues = [];
   cwCrossVerdictLabel = '';
+  cwCrossModelName = '';
   if (cwCrossPanelEl) cwCrossPanelEl.hidden = true;
   if (cwCrossVerdictEl) { cwCrossVerdictEl.className = 'cwVerdict'; cwCrossVerdictEl.textContent = '尚未复审'; }
   if (cwCrossColPrimaryEl) cwCrossColPrimaryEl.textContent = '';
@@ -6121,6 +6392,14 @@ function cwApplyCompare(ev) {
     cwAddDiffItem('conflict', '矛盾', parts.join(' ／ '), p || s || null);
   }
   if (cwCrossPanelEl) cwCrossPanelEl.hidden = false;
+  if (cwSnapshotCross && cwSnapshotCross.sig === cwCodeSig()) {
+    cwSnapshotCross.verdict = verdict;
+    cwSnapshotCross.stats = st;
+    cwSnapshotCross.agree = Array.isArray(ev && ev.agree) ? ev.agree : [];
+    cwSnapshotCross.onlyPrimary = Array.isArray(ev && ev.onlyPrimary) ? ev.onlyPrimary : [];
+    cwSnapshotCross.onlySecond = Array.isArray(ev && ev.onlySecond) ? ev.onlySecond : [];
+    cwSnapshotCross.conflicts = Array.isArray(ev && ev.conflicts) ? ev.conflicts : [];
+  }
   cwSetReviewState('他人复审：' + label + '（' + cnt + '）· 点条目跳到对应行', kind === 'ok' ? 'ok' : '');
 }
 
@@ -6155,6 +6434,7 @@ async function cwCrossReview() {
     await cwStreamSSE('/api/code/review/cross', payload, (e) => {
       if (e.type === 'meta') {
         const name = prettyName(e.modelFile || e.model || '');
+        cwCrossModelName = String(e.modelFile || e.model || '');
         cwReviewMetaEl.textContent = name + (e.sameModel ? ' · 与当前相同（对抗式）' : '') + (e.switchedModel ? ' · 已切换' : '');
         if (e.sameModel) showToast('只有一个可用模型：用当前模型做对抗式复审', 'warn', 5200);
         else if (e.switchedModel) showToast('他人复审已切换到 ' + name, 'ok', 4600);
@@ -6166,6 +6446,7 @@ async function cwCrossReview() {
       } else if (e.type === 'findings') {
         gotFindings = true;
         cwCrossSecondIssues = (Array.isArray(e.issues) ? e.issues : []).map((it, i) => cwNormIssue(it, i));
+        cwSnapshotCross = { sig: cwCodeSig(), model: cwCrossModelName || '', sameModel: false, summary: String(e.summary || ''), issues: cwCrossSecondIssues.slice(), verdict: '', stats: null, agree: [], onlyPrimary: [], onlySecond: [], conflicts: [], at: Date.now() };
         cwRenderCrossCols(cwIssues, cwCrossSecondIssues);
         cwThinkEnd('他人复审思路（已完成 · ' + cwThinkTextEl.textContent.length + ' 字）');
       } else if (e.type === 'compare') {
@@ -6174,6 +6455,8 @@ async function cwCrossReview() {
         const secs = Number(e.seconds);
         const secTxt = Number.isFinite(secs) ? ' · ' + secs.toFixed(1) + 's' : '';
         if (e.model) cwReviewMetaEl.textContent = prettyName(e.model) + secTxt;
+        cwCrossModelName = String(e.model || cwCrossModelName || '');
+        if (cwSnapshotCross && cwSnapshotCross.sig === cwCodeSig() && !cwSnapshotCross.model) cwSnapshotCross.model = cwCrossModelName;
         cwResetReviewTimer();
         cwSetReviewState('他人复审完成' + (cwCrossVerdictLabel ? '：' + cwCrossVerdictLabel : '') + secTxt + ' · 点条目可跳行', cwCrossVerdictLabel === '一致' ? 'ok' : '');
       } else if (e.type === 'error') {
@@ -6259,6 +6542,7 @@ async function cwCloudSend(host) {
       } else if (e.type === 'findings') {
         gotFindings = true;
         cwApplyFindings(e);
+        cwSnapshotCloud = { sig: cwCodeSig(), host: h, model: String(e.model || (cwCloudCfgCache && cwCloudCfgCache.model) || ''), summary: String(e.summary || ''), issues: Array.isArray(e.issues) ? e.issues.map((it, i) => cwNormIssue(it, i)) : [], at: Date.now() };
         cwThinkEnd('云端复审输出（已完成）');
         cwReviewMetaEl.textContent = '云端 · ' + h;
         cwSetReviewState('云端复审完成 · ' + cwIssues.length + ' 个问题（可一键纠正）', cwIssues.length ? '' : 'ok');
@@ -6587,6 +6871,11 @@ if (cloudConfirmCancelEl) cloudConfirmCancelEl.onclick = () => {
 };
 if (cloudConfirmCloseEl) cloudConfirmCloseEl.onclick = () => { if (cloudConfirmModalEl) cloudConfirmModalEl.hidden = true; };
 if (cloudConfirmModalEl) cloudConfirmModalEl.addEventListener('click', (e) => { if (e.target === cloudConfirmModalEl) cloudConfirmModalEl.hidden = true; });
+// v1.9.0：三方对照 / 导出复审结论 / 导出质询记录 / 存进会话
+if (cwCompare3El) cwCompare3El.onclick = () => cwRunCompare3();
+if (cwExportReviewEl) cwExportReviewEl.onclick = () => cwExportMarkdown('review');
+if (cwExportChallengeEl) cwExportChallengeEl.onclick = () => cwExportMarkdown('challenge');
+if (cwStoreExportEl) cwStoreExportEl.onclick = () => cwStoreExportToSession();
 if (cwNewLangEl) cwNewLangEl.addEventListener('change', cwSyncNewLangUI);
 if (cwReviewModelEl) cwReviewModelEl.addEventListener('change', () => {
   const v = cwReviewModelEl.value;

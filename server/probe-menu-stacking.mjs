@@ -16,6 +16,9 @@ let pass = 0, fail = 0;
 const check = (n, c, d = "") => { if (c) { pass++; console.log("ok   " + n + (d ? "  [" + d + "]" : "")); } else { fail++; console.log("FAIL " + n + "  " + d); } };
 
 await send("Page.enable"); await send("Runtime.enable");
+// 2026-11-19：全量里会被前序界面探针把视口/窗口状态带歪（历史已知假红：850x700 / 500x320）。
+// 本探针自己钉一个 1408x800 的视口再测「每一行都能点到」，收尾清掉覆盖。
+await send("Emulation.setDeviceMetricsOverride", { width: 1408, height: 800, deviceScaleFactor: 1, mobile: false });
 await send("Page.reload", { ignoreCache: true });
 await sleep(3000);
 await ev("(() => { const m = document.getElementById('msgs'); const d = document.createElement('div'); d.className = 'row assistant'; d.id = 'coverRow'; const b = document.createElement('div'); b.className = 'bubble'; b.textContent = '覆盖测试：这条消息以前会盖住菜单'; d.appendChild(b); m.appendChild(d); return 1; })()");
@@ -35,4 +38,5 @@ const shot = await send("Page.captureScreenshot", { format: "png" });
 fs.writeFileSync("D:/LocalModels/server/docs/ui-new/model-menu.png", Buffer.from(shot.result.data, "base64"));
 await ev("document.getElementById('coverRow').remove(); document.getElementById('modelBtn').click(); 1");
 console.log("\nRESULT " + pass + "/" + (pass + fail));
+await send("Emulation.clearDeviceMetricsOverride").catch(() => {});
 ws.close(); process.exit(fail ? 1 : 0);

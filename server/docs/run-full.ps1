@@ -125,6 +125,8 @@ $probes=@(
   @{n='probe-tui-tools'; a=@($base); t=240},
   # v1.8.0：质询 / 他人复审 / 云端复审（云端自带本地 stub，绝不真出网；带 cdp 时含 UI 段）
   @{n='probe-code-review-verify'; a=@($base,$cdp); t=900},
+  # v1.9.0：审查结论导出 .challenge.md / .review.md + 三方对照（纯函数，不需要模型；带 cdp 时含 UI 段）
+  @{n='probe-code-review-export'; a=@($base,$cdp); t=300},
   @{n='probe-gpu'; a=@($base); t=120},
   @{n='probe-ui-gpu'; a=@($cdp); t=180},
   @{n='probe-ui-metric'; a=@('8099'); t=60},
