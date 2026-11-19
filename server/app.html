@@ -1655,6 +1655,7 @@ header::before{
           <button id="cwSave" class="ghost">保存</button>
           <button id="cwDelete" class="ghost danger">删除</button>
           <button id="cwRun">运行</button>
+          <button id="cwSaveRun" class="ghost" title="先保存到文件再运行（一键）">保存并运行</button>
           <button id="cwReview">模型审查</button>
         </div>
         <textarea id="cwEditor"></textarea>
@@ -4680,6 +4681,7 @@ const cwListEl = $('cwList'), cwEmptyEl = $('cwEmpty'), cwTabsEl = $('cwTabs');
 const cwFileEl = $('cwFile'), cwEditorEl = $('cwEditor'), cwOutputEl = $('cwOutput');
 const cwNewNameEl = $('cwNewName'), cwSaveEl = $('cwSave'), cwDeleteEl = $('cwDelete');
 const cwRunEl = $('cwRun'), cwReviewEl = $('cwReview');
+const cwSaveRunEl = $('cwSaveRun');
 const cwReviewPanelEl = $('cwReviewPanel'), cwReviewToggleEl = $('cwReviewToggle');
 const cwReviewBodyEl = $('cwReviewBody'), cwReviewMetaEl = $('cwReviewMeta'), cwIntentEl = $('cwIntent');
 const cwReviewSummaryEl = $('cwReviewSummary'), cwReviewStateEl = $('cwReviewState');
@@ -4880,6 +4882,7 @@ function cwLoadIntoEditor(p, content) {
   cwSaveEl.disabled = !p;
   cwDeleteEl.disabled = !p;
   cwRunEl.disabled = !p;
+  if (cwSaveRunEl) cwSaveRunEl.disabled = !p;
   cwRenderTabs();
   cwMarkSel();
   try { localStorage.setItem(CW_OPEN_KEY, p || ''); } catch {}
@@ -5830,9 +5833,21 @@ function cwApplyFixResult(ev) {
   cwFixInfo = { added: Number(ev.added) || 0, removed: Number(ev.removed) || 0, lineCount: Number(ev.lineCount) || 0 };
   cwThinkEnd('修正思路（已完成）');
   const segs = changes.map((r) => (r.start === r.end ? '第 ' + r.start + ' 行' : '第 ' + r.start + '–' + r.end + ' 行')).join('、');
-  cwSetReviewState('已修改 ' + (changes.length || 1) + ' 处（新增 ' + cwFixInfo.added + ' / 删除 ' + cwFixInfo.removed + '）· 可保存或发回对话', 'ok');
+  cwSetReviewState('已修改 ' + (changes.length || 1) + ' 处（新增 ' + cwFixInfo.added + ' / 删除 ' + cwFixInfo.removed + '）· 正在写回文件…', 'ok');
   cwSetStatus('修正完成：' + (segs || '已写入编辑器') + '（未保存）', 'ok');
-  showToast('修正完成：' + (changes.length || 1) + ' 处改动已写进编辑器（未保存）', 'ok', 5200);
+  // v1.9.2 老账：一键纠正的结果直接写回文件（以前要用户再点「保存」）
+  if (cwCurrent) {
+    cwSaveFile(true).then((saved) => {
+      if (!saved) return;
+      cwRenderTabs();
+      cwSetReviewState('已修改 ' + (changes.length || 1) + ' 处（新增 ' + cwFixInfo.added + ' / 删除 ' + cwFixInfo.removed + '）· 已写回文件', 'ok');
+      cwSetStatus('修正完成：' + (segs || '已写入编辑器') + '（已写回文件）', 'ok');
+      showToast('修正完成：' + (changes.length || 1) + ' 处改动已写回 ' + String(cwCurrent).split('/').pop(), 'ok', 5200);
+    }).catch(() => {});
+  } else {
+    cwSetReviewState('已修改 ' + (changes.length || 1) + ' 处（新增 ' + cwFixInfo.added + ' / 删除 ' + cwFixInfo.removed + '）· 可保存或发回对话', 'ok');
+    showToast('修正完成：' + (changes.length || 1) + ' 处改动已写进编辑器（未保存）', 'ok', 5200);
+  }
 }
 
 /** 重新审查：清空 issues/高亮后重新走审查流 */
@@ -6860,6 +6875,8 @@ $('cwNew').onclick = () => cwNewFile();
 $('cwSave').onclick = () => cwSaveFile();
 $('cwDelete').onclick = () => cwDeleteFile();
 $('cwRun').onclick = () => cwRunFile();
+// v1.9.2：保存并运行（老账：修正后一键「保存并运行」）
+if (cwSaveRunEl) cwSaveRunEl.onclick = async () => { const okSave = await cwSaveFile(true); if (okSave) await cwRunFile(); };
 $('cwReview').onclick = () => { if (cwReviewBusy) cwStopReview(); else cwReviewCode(); };
 $('cwReviewToggle').onclick = () => cwToggleReviewPanel();
 // v1.7.0：一键纠正 / 重新审查 / 发回对话 / 新建语言 / 审查模型
@@ -9822,6 +9839,9 @@ setWebOff.onclick = () => disableWeb();
 
 // 关掉「调用工具」时联网必须一起关，否则界面上会显示"联网开着但根本不会用"
 toolChk.addEventListener('change', () => {
+  // v1.9.2 老账：toolEnabled 以前只在页面加载时赋值，勾/取消「调用工具」不同步它
+  // （「勾上工具 → 点新对话」会被 showHero() 复位成加载时的旧值）。这里 1 行同步。
+  toolEnabled = toolChk.checked;
   if (!toolChk.checked && webEnabled) {
     webEnabled = false;
     showToast('已关闭「调用工具」，联网一并关闭', 'cancel');

@@ -9,7 +9,7 @@
  *  C) 审查流式：点 #cwReview -> #cwThink 思考块出现且 #cwThinkText 在增长（轮询，不 sleep 死等）
  *     -> #cwReviewState「审查完成」-> #cwIssues 出问题卡片（data-line/data-severity + head/detail/fix + 一键更改）
  *     -> CodeMirror 行出现 .cwLineErr/.cwLineWarn/.cwLineInfo -> 点卡片跳行；
- *  D) 一键纠正：#cwFixAll -> 代码变化 + .cwLineChanged + 状态行「已修改 N 处」；
+ *  D) 一键纠正：#cwFixAll -> 代码变化 + .cwLineChanged + 状态行「已修改 N 处」+ v1.9.2 自动写回文件 + 保存并运行按钮 + toolEnabled 同步 + 单条 scope=single 真模型；
  *  E) 发回对话：#cwSendChat -> 代码围栏 + 文件名 + 「修正后的版本」进聊天输入框 #q
  *     （契约 §2.6 写的 #input 是笔误：这个项目聊天输入框的 id 是 q，cwSendChat 里 input 变量就指向它）；
  *  F) 颜色设置：设置 -> 代码页 -> 改 #cwColorErr 落 localStorage + CSS 变量 -> #cwColorReset 恢复默认；
@@ -256,6 +256,17 @@ check("一键纠正 -> 状态行「已修改」", Boolean(fixState), fixStateTex
 check("编辑器代码被改写（不再等于原稿）", String(afterFix) !== String(beforeFix), "len " + String(beforeFix || "").length + " -> " + String(afterFix || "").length);
 check("改动行出现 .cwLineChanged", changedCount >= 1, "n=" + changedCount);
 check("状态行带新增 / 删除数字", /新增\s*\d+|删除\s*\d+/.test(fixStateText), fixStateText.slice(0, 120));
+// v1.9.2 老账清算：一键纠正自动写回文件、保存并运行、toolEnabled 同步、scope=single 真模型
+const fixStateNow = await ev("String((document.getElementById('cwReviewState') || {}).textContent || '')");
+const fixRead = await getJson("/api/workspace/read?path=" + encodeURIComponent(JS_PATH));
+check("一键纠正的改动自动写回文件（状态行「已写回文件」）", /已写回文件/.test(fixStateNow) && String((fixRead.data && fixRead.data.content) || "") === String(afterFix || ""), "state=" + fixStateNow.slice(0, 60) + " fileLen=" + String((fixRead.data && fixRead.data.content) || "").length + " editorLen=" + String(afterFix || "").length);
+check("「保存并运行」按钮存在且可用（v1.9.2）", (await ev("(() => { const b = document.getElementById('cwSaveRun'); return !!b && !b.disabled; })()")) === true, "");
+const toolSync = String(await ev("(() => { const c = document.getElementById('toolChk'); const v0 = c.checked; c.checked = true; c.dispatchEvent(new Event('change', { bubbles: true })); const on = toolEnabled; c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); const off = toolEnabled; c.checked = v0; c.dispatchEvent(new Event('change', { bubbles: true })); return JSON.stringify({ on, off: off, restored: toolEnabled }); })()"));
+let toolSyncJ = {}; try { toolSyncJ = JSON.parse(toolSync); } catch {}
+check("勾/取消「调用工具」同步 toolEnabled（v1.9.2 老账）", toolSyncJ.on === true && toolSyncJ.off === false, toolSync);
+const applyOne = await ev("(() => { const b = [...document.querySelectorAll('#cwIssues .cwIssueApply')][0]; if (!b) return 'no'; b.click(); return 'ok'; })()");
+const singleFixState = await waitFor("(() => { const s = String((document.getElementById('cwReviewState') || {}).textContent || ''); return /已写回文件|已修改/.test(s) && /(新增|删除)/.test(s) ? s : ''; })()", 240000);
+check("单条「一键更改」（scope=single）真模型跑通（v1.9.2 补跑）", applyOne === "ok" && Boolean(String(singleFixState || "").trim()), "state=" + String(singleFixState || "").slice(0, 90));
 
 console.log("\n== F. 发回对话 ==");
 const FENCE = String.fromCharCode(96, 96, 96);

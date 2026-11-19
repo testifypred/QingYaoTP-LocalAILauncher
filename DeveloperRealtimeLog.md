@@ -3,7 +3,7 @@
 > 原名 `HANDOFF.md`，由上一任开发者写于 **2026-10-18 21:45**。
 > 从 **2026-10-18 21:44** 起，本文件改为**按时间流水记录**：每一笔写清「几点、改了什么、落在哪、怎么验的」。
 > 第一节是日志索引，其后的一~七节是原交接正文（保留原样，仅修正两处日期笔误），八~十节是本次三项需求的详细设计说明。
-> 最新一笔：**2026-11-19 深夜**（第七十节，**v1.9.1 云端复审上游真流式**：stream:true + SSE 增量转发 + retry 事件 + 非 SSE 兜底；新探针 `probe-cloud-upstream-stream` **24/24**，全量 64 → **65 条 / 1314 断言**；主包 `dist\QingYaoTP-AILauncher-v1.9.1.zip` **127,913,114B / SHA256 `4586C0D3…609D36`**；**全量 65 条本轮未跑成**（机器休眠/模型切换卡死，整跑作废，下轮补）；**Release 仍未创建**（无 gh/PAT）。上一笔第六十九节 = v1.9.0 导出+三方对照）。全部时间均为 China Standard Time，本机时钟。
+> 最新一笔：**2026-11-19 深夜**（第七十一节，**v1.9.2 老账清算**：一键纠正自动写回文件 + 保存并运行 + toolEnabled 同步 + scope=single 真模型；`probe-code-panel-v2` 40→**44/44**（dev+发布包）、全量口径 **65 条 / 1318 断言**（整跑待补）；主包 `dist\QingYaoTP-AILauncher-v1.9.2.zip` **127,913,497B / SHA256 `217ABDC8…5BA16`**；**Release 仍未创建**（无 gh/PAT）。上一笔第七十节 = v1.9.1 云端流式）。全部时间均为 China Standard Time，本机时钟。
 >
 > **接手先读 [`交接文档.md`](交接文档.md)**（一页纸：定位、现状、代码地图、下一步）。
 > 技术专题已抽到 [`technique/`](technique/)：架构、接口、插件、模型、打包、探针、坑。本文件保留**按时间流水**的原始记录，作为「为什么这么做」的证据。
@@ -3448,3 +3448,37 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 3. 多文件 / 整工作区一起审查；
 4. 老账：一键纠正写回文件、`toolEnabled` 同步 1 行；
 5. （等凭据）发 v1.8.1 / v1.9.0 / v1.9.1 Release + About topics。
+
+---
+
+## 第七十一节（2026-11-19）v1.9.2：老账清算
+
+> 用户要求「把旧账清算」。老账来自 v1.7 遗留与代码工作区下一步：一键纠正写回文件、保存并运行、toolEnabled 同步、scope=single 真模型覆盖；另确认使用说明.txt 已无写死本机路径。
+
+### 一、四笔老账
+
+1. **一键纠正自动写回文件**：cwApplyFixResult 在把修正代码写进编辑器后调用 cwSaveFile(true)，状态行「已写回文件」，toast 带文件名；失败才保留「未保存」路径。
+2. **新增「保存并运行」按钮**（#cwSaveRun）：先 cwSaveFile 再 cwRunFile；无文件时禁用。
+3. **toolEnabled 同步**：`#toolChk` change 里 `toolEnabled = toolChk.checked`（修「勾上工具 → 点新对话被 showHero 复位成加载时旧值」）。
+4. **scope=single 真模型跑**：探针在真 4B 上点第一条 .cwIssueApply，验证单条更改也返回改动并写回文件（以前只有 stub 覆盖）。
+
+### 二、验证
+
+- `probe-code-panel-v2` **40 → 44 条**（新增：纠正自动写回文件 / 保存并运行按钮 / toolEnabled 同步 / scope=single 真模型）；dev 与发布包都 **44/44**。
+- 发布包冒烟：`probe-version` 14/14、`probe-debug` 54/54、`probe-readme` 21/21、`probe-code-review-export` 66/66、`probe-code-panel-v2` 44/44。
+- 全量口径：65 条 / 1314 → **1318** 断言（65 条整跑仍待补，环境睡眠/模型切换卡死，同前节）。
+
+### 三、交付
+
+- 版本 **1.9.2**（app.mjs / package.json / localai.mjs 三处一致；probe-version 14/14）。
+- `build-portable.ps1` 258.7MB / 3447 文件（无 app/llama）→ 主包 `dist\QingYaoTP-AILauncher-v1.9.2.zip` **127,913,497B / 3947 条目 / SHA256 217ABDC81A5A1996C9DE7023CD2E3E6100D5BE97637E86A84778276CEAC5BA16**；包内 README = 仓库 README 同哈希（14,632B）、六份源码↔dist 一致、无 data/cloud-review*。
+- 8099 切回发布包实例 v1.9.2（视觉包装回 pack/53 文件、5 模型 / 9 会话）；证据 `server\docs\packaging-2026-11-19-v192\`、`server\docs\debt-probe-panel-v2.txt`、`.github\RELEASE-v1.9.2.md`。
+- Release 仍未创建（无 gh/PAT）。
+
+### 四、下一轮
+
+1. **补跑全量 65 条**（机器清醒时；可先避免休眠）；
+2. 云端复审「只发选中片段」+ `CLOUD_JOB_TIMEOUT_MS` 暴露设置页；
+3. **多文件 / 整工作区一起审查**（剩的最大功能件）；
+4. 可选：视觉增强包瘦身（剔 ggml-vulkan.dll）；
+5. （等凭据）发 v1.8.1 / v1.9.0 / v1.9.1 / v1.9.2 Release + About topics。
