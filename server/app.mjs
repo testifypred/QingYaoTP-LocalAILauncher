@@ -42,7 +42,7 @@ const DEBUG_UI = path.join(HERE, "debug.html");
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 /** 版本号：发版只改这一处；server\package.json 的 version 必须与它一致（probe-version 会查） */
-const APP_VERSION = "1.9.0";
+const APP_VERSION = "1.9.1";
 /** 产品正式名（2026-11-01 起）：QingYaoTP AILauncher；QingYaoTP = QingYaoTestifypred */
 const APP_NAME = "QingYaoTP AILauncher";
 const APP_SUB = "本地 AI";
@@ -5140,7 +5140,10 @@ async function handleCloudReviewStream(req, res) {
       // 表现为 HTTP 200 但 content 为空、finish_reason=length。默认先带顶层
       // thinking:{type:"disabled"} 把推理关掉；下面的重试阶梯共享同一个 AbortController
       // 和同一个 timeout signal，总时长仍受 CLOUD_JOB_TIMEOUT_MS 管（契约 §1.3.4）。
-      const callCloudUpstream = async ({ maxTokens: mt, thinking }) => {
+      // v1.9.1：上游真流式。stream:true 请求 OpenAI 兼容 SSE，收到 delta 就转发给前端（不再等整段）；
+      // 不支持流式、返回整段 JSON 的网关走「非 SSE 兜底」，外层再按 80 字补 delta（行为与 v1.8.1 一致）。
+      let deltaCount = 0;
+      const callCloudUpstream = async ({ maxTokens: mt, thinking, onDelta }) => {
         const bodyObj = {
           model: cfg.model,
           messages: [
@@ -5149,9 +5152,8 @@ async function handleCloudReviewStream(req, res) {
           ],
           temperature: 0.2,
           max_tokens: mt,
-          stream: false,
+          stream: true,
         };
-        // thinking 只在上游认这个参数时才发；不认的网关会在 attempt2 里去掉
         if (thinking) bodyObj.thinking = { type: "disabled" };
         let up;
         try {
@@ -5173,10 +5175,48 @@ async function handleCloudReviewStream(req, res) {
           const rawText = await up.text().catch(() => "");
           return { ok: false, status: up.status, rawText: String(rawText).slice(0, 400) };
         }
+        const ctype = String(up.headers.get("content-type") || "").toLowerCase();
+        if (ctype.includes("text/event-stream") && up.body && typeof up.body.getReader === "function") {
+          let content = "";
+          let reasoning = "";
+          let finishReason = "";
+          const reader = up.body.getReader();
+          const dec = new TextDecoder();
+          let buf = "";
+          try {
+            for (;;) {
+              const step = await reader.read();
+              if (step.done) break;
+              buf += dec.decode(step.value, { stream: true });
+              let cut;
+              while ((cut = buf.indexOf("\n\n")) >= 0) {
+                const chunk = buf.slice(0, cut);
+                buf = buf.slice(cut + 2);
+                for (const line of chunk.split("\n")) {
+                  if (!line.startsWith("data:")) continue;
+                  const raw = line.slice(5).trim();
+                  if (!raw || raw === "[DONE]") continue;
+                  let j = null;
+                  try { j = JSON.parse(raw); } catch { continue; }
+                  const ch = j && Array.isArray(j.choices) ? j.choices[0] : null;
+                  const d = ch && ch.delta ? ch.delta : null;
+                  const c = String(d?.content ?? "");
+                  const rs = String(d?.reasoning_content ?? d?.reasoning ?? "");
+                  if (c) { content += c; if (onDelta) onDelta(c); }
+                  if (rs) { reasoning += rs; if (onDelta) onDelta(rs); }
+                  if (ch?.finish_reason) finishReason = String(ch.finish_reason);
+                }
+              }
+            }
+          } catch (e) {
+            if (timeoutSignal.aborted) throw codeJobError(504, "云端复审超时（" + Math.round(CLOUD_JOB_TIMEOUT_MS / 1000) + "s 没有读完）：" + host);
+            throw e;
+          }
+          return { ok: true, status: up.status, content: content.trim(), reasoning: reasoning.trim(), finishReason, streamed: true };
+        }
+        // 非 SSE：200 但返回整段 JSON（老网关 / 测试 stub）→ 沿用 v1.8.1 的解析，外层再补 delta
         let data = null;
-        try {
-          data = await up.json();
-        } catch {}
+        try { data = await up.json(); } catch {}
         const choice = data && Array.isArray(data.choices) ? data.choices[0] : null;
         const msg = choice && choice.message ? choice.message : null;
         return {
@@ -5185,35 +5225,52 @@ async function handleCloudReviewStream(req, res) {
           content: String(msg?.content ?? "").trim(),
           reasoning: String(msg?.reasoning_content ?? msg?.reasoning ?? "").trim(),
           finishReason: String(choice?.finish_reason ?? ""),
+          streamed: false,
         };
       };
 
-      // 重试阶梯（契约 v1.8.1）：
-      //  attempt1 = thinking 关 + max_tokens=M；
-      //  attempt2 = 仅当 attempt1 是 4xx（400/422/404）且报「不认识 thinking 参数」→ 去掉 thinking 原样重发；
-      //  attempt3 = 200 但正文空、推理非空（说明上游忽略了 thinking）→ 去掉 thinking + 放大 max_tokens 重发。
+      const sendMeta = () => {
+        if (!send) return;
+        // 日志红线：只记 host / 模型 / 字符数 / 脱敏处数 / 秒数 / attempts，绝不记 apiKey、不记代码正文、不记上游原文
+        send({ type: "meta", provider: "cloud", host, model: cfg.model, sentChars: prompt.length, redactions: clean.total, startedAt: t0, attempts, thinkingDisabled, usedReasoningFallback, streaming: true });
+      };
+      const ensureSse = () => { if (!send) { send = sseOpen(res); sendMeta(); } };
+      const onDelta = (t) => {
+        if (clientGone) return;
+        const s2 = String(t);
+        if (!s2) return;
+        ensureSse();
+        deltaCount += 1;
+        send({ type: "delta", text: s2 });
+      };
+      const retryUpstream = (reason) => {
+        deltaCount = 0;
+        if (send) send({ type: "retry", attempt: attempts + 1, reason: String(reason || "").slice(0, 120) });
+      };
+
+      // 重试阶梯（契约 v1.8.1；v1.9.1 起每一步都可能已经推过 delta，重试会发 retry 事件让前端清空输出区）
       attempts += 1;
-      let r = await callCloudUpstream({ maxTokens, thinking: true });
+      let r = await callCloudUpstream({ maxTokens, thinking: true, onDelta });
       if (r.stopped) return;
       if (!r.ok && [400, 422, 404].includes(r.status) && /thinking/i.test(r.rawText)) {
         log("云端复审 " + host + " 上游不认 thinking 参数，去掉后重发（attempts " + (attempts + 1) + "）");
         attempts += 1;
         thinkingDisabled = false;
-        r = await callCloudUpstream({ maxTokens, thinking: false });
+        retryUpstream("上游不认 thinking 参数");
+        r = await callCloudUpstream({ maxTokens, thinking: false, onDelta });
         if (r.stopped) return;
       }
       if (!r.ok) throw codeJobError(502, "上游 " + r.status + "：" + String(r.rawText || "").slice(0, 200));
       if (!r.content && r.reasoning) {
-        // 上游把 thinking 当未知参数忽略了：去掉 thinking，并把 max_tokens 放大到够「推理 + 正文」
         const bigMax = Math.min(6000, Math.max(2400, maxTokens * 3));
         log("云端复审 " + host + " 正文空但推理非空，放大 max_tokens=" + bigMax + " 重发（attempts " + (attempts + 1) + "）");
         attempts += 1;
         thinkingDisabled = false;
-        r = await callCloudUpstream({ maxTokens: bigMax, thinking: false });
+        retryUpstream("正文空、改用推理内容重试");
+        r = await callCloudUpstream({ maxTokens: bigMax, thinking: false, onDelta });
         if (r.stopped) return;
         if (!r.ok) throw codeJobError(502, "上游 " + r.status + "：" + String(r.rawText || "").slice(0, 200));
       }
-      // 兜底：放大后正文仍空、推理非空 → 拿 reasoning 当答案（streaming 照旧推），meta 里标记
       let text = r.content;
       if (!text && r.reasoning) {
         text = r.reasoning;
@@ -5221,24 +5278,23 @@ async function handleCloudReviewStream(req, res) {
         log("云端复审 " + host + " 正文仍空，改用推理内容当答案（attempts " + attempts + "）");
       }
       if (!text) {
-        // 别再误报「不是 OpenAI 兼容响应」：把 finish_reason 和解决方向直接写给用户
         const emptyErr = codeJobError(502, "上游 200 但正文为空（finish_reason=" + (r.finishReason || "unknown") + "）：如果是推理模型，请换成非推理模型或加大 max_tokens");
         emptyErr.code = "CLOUD_EMPTY";
         throw emptyErr;
       }
       if (clientGone) throw codeJobError(499, "客户端已断开（已停止）");
-      send = sseOpen(res);
-      // 日志红线：只记 host / 模型 / 字符数 / 脱敏处数 / 秒数 / attempts，绝不记 apiKey、不记代码正文、不记上游原文
-      send({ type: "meta", provider: "cloud", host, model: cfg.model, sentChars: prompt.length, redactions: clean.total, startedAt: t0, attempts, thinkingDisabled, usedReasoningFallback });
-      const flat = String(text);
-      const CHUNK = 80;
-      for (let i = 0; i < flat.length; i += CHUNK) {
-        if (clientGone) throw codeJobError(499, "客户端已断开（已停止）");
-        send({ type: "delta", text: flat.slice(i, i + CHUNK) });
+      ensureSse();
+      sendMeta(); // 用最终的 attempts / thinkingDisabled / usedReasoningFallback 刷新 meta
+      if (!r.streamed || deltaCount === 0) {
+        const flat = String(text);
+        const CHUNK = 80;
+        for (let i = 0; i < flat.length; i += CHUNK) {
+          if (clientGone) throw codeJobError(499, "客户端已断开（已停止）");
+          send({ type: "delta", text: flat.slice(i, i + CHUNK) });
+        }
       }
-      const findings = parseFindingsFromText(flat, lineCount);
+      const findings = parseFindingsFromText(text, lineCount);
       snapIssuesToCodeLines(findings.issues, code);
-      // 上游瞬间返回时 (x/1000).toFixed(1) 会是 0.0，别让 done.seconds 出现 0（前端/探针都按秒数展示）
       const seconds = Math.max(0.1, +((Date.now() - t0) / 1000).toFixed(1));
       send({ type: "findings", summary: findings.summary, issues: findings.issues, parsed: findings.parsed, lineCount });
       send({ type: "done", seconds, model: cfg.model });

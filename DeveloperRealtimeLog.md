@@ -3,7 +3,7 @@
 > 原名 `HANDOFF.md`，由上一任开发者写于 **2026-10-18 21:45**。
 > 从 **2026-10-18 21:44** 起，本文件改为**按时间流水记录**：每一笔写清「几点、改了什么、落在哪、怎么验的」。
 > 第一节是日志索引，其后的一~七节是原交接正文（保留原样，仅修正两处日期笔误），八~十节是本次三项需求的详细设计说明。
-> 最新一笔：**2026-11-19 凌晨**（第六十九节，**v1.9.0 审查结论导出 + 三方对照**：.challenge.md/.review.md 导出 + 存进会话 + 三方对照表；主包 dist\QingYaoTP-AILauncher-v1.9.0.zip **127,912,206B / SHA256 98F35D3D…B26FF**；全量 63 → **64 条 / 1290 断言**（r2 = 62 绿 + 2 环境红，修探针后隔离全绿）；真实上游冒烟 **20/20**；**Release 仍未创建**（无 gh/PAT）。上一笔第六十八节 = v1.8.1 重打包）。全部时间均为 China Standard Time，本机时钟。
+> 最新一笔：**2026-11-19 深夜**（第七十节，**v1.9.1 云端复审上游真流式**：stream:true + SSE 增量转发 + retry 事件 + 非 SSE 兜底；新探针 `probe-cloud-upstream-stream` **24/24**，全量 64 → **65 条 / 1314 断言**；主包 `dist\QingYaoTP-AILauncher-v1.9.1.zip` **127,913,114B / SHA256 `4586C0D3…609D36`**；**全量 65 条本轮未跑成**（机器休眠/模型切换卡死，整跑作废，下轮补）；**Release 仍未创建**（无 gh/PAT）。上一笔第六十九节 = v1.9.0 导出+三方对照）。全部时间均为 China Standard Time，本机时钟。
 >
 > **接手先读 [`交接文档.md`](交接文档.md)**（一页纸：定位、现状、代码地图、下一步）。
 > 技术专题已抽到 [`technique/`](technique/)：架构、接口、插件、模型、打包、探针、坑。本文件保留**按时间流水**的原始记录，作为「为什么这么做」的证据。
@@ -3408,3 +3408,43 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 1. （等凭据）发 Release + About topics；
 2. **云端复审上游改流式**（handleCloudReviewStream 里 stream:false → 解析上游 SSE、reasoning/正文分流、CLOUD_EMPTY 判定挪到流结束；前端按真 delta 渲染）；
 3. 只发选中片段；4. 多文件/整工作区审查；5. 老账：一键纠正写回文件、toolEnabled 同步 1 行。
+
+---
+
+## 第七十节（2026-11-19）v1.9.1：云端复审上游真流式
+
+> 用户要求的第三项功能（顺序：导出 → 三方对照 → 云端流式 → 多文件）。本节接第六十九节（v1.9.0）。
+
+### 一、改了什么
+
+- **后端** `handleCloudReviewStream`：上游请求从 `stream:false` 改为 **`stream:true`**，解析 OpenAI 兼容 SSE（`choices[0].delta.content` / `reasoning_content`），收到一个 delta 就立刻转发成产品 SSE 的 `delta`；`meta.streaming:true`。**不支持 SSE、返回整段 JSON 的老网关自动兜底**（沿用 v1.8.1 的整段解析 + 80 字切块补发）。
+- **重试阶梯保留**（v1.8.1 的 thinking / 空正文放大 token），并新增 **`retry` 事件**：重试前让前端清空上一次已收到的增量（推理型上游 attempt1 会先吐 reasoning，不清空就会两次输出叠在一起）；`deltaCount` 在重试时清零，避免把「非流式补发」逻辑误跳过（否则流式最后一段内容会缺失）。
+- **前端** `cwCloudSend`：处理 `retry`（重开输出区 + 状态行「第 N 次重试」）、首字计时（「云端复审输出中（首字 X s，流式）」）、done 显示流式段数。
+- **不变量**：确认域名、脱敏、只发当前文件、Key 只存本机都没动；超时仍由 `CLOUD_JOB_TIMEOUT_MS` 管（读流中途超时抛 504 而不是 502）。
+
+### 二、探针
+
+- 新增 `server\probe-cloud-upstream-stream.mjs`（**24 条**，自带 node:http SSE stub，绝不真出网，不需要模型）：S 真流式（12 块×40ms → 首个 delta 早于 stub 最后一块、段数/拼接/耗时、findings/done）；R 推理重试（reasoning 流 → retry → content 流，attempts>=2、retry 后增量只含新内容、stub 命中 2 次）；N 非 SSE 兜底；E 空正文 502 CLOUD_EMPTY；Z 收尾恢复云端配置（开跑前有真 Key 原样写回）。
+- 全量驱动 64 → **65 条**，断言口径 1290 → **1314**（run-full.ps1 已加，BOM + PS5.1 Parser 验过）。
+- 已验证：dev 8101/8099 上 `probe-version` **14/14**、`probe-cloud-upstream-stream` **24/24**、`probe-code-review-export` **51/51**；`probe-code-review-verify` 的 A–F 段在分段运行中均通过（有一次 B 段因模型切换挂起 4.5h，判定为本机环境问题，非本次改动）。
+
+### 三、全量 65 条：本轮没跑成（如实记录）
+
+- 第一次整跑（v191-r1）在机器长时间睡眠/模型切换卡死下被污染：`probe-code-review-stream` 4040s（正常 45s）、`probe-code-panel-v2` exit 13（21325s），后续探针不可信 → 中止并作废该目录。
+- 证据：System 事件日志有「系统进入睡眠/恢复」记录，步骤间墙钟跳 3–8 小时；判定为**环境（机器休眠 + 模型切换偶发挂起）**，不是 v1.9.1 改动。
+- 已恢复 `workspace\sessions`（9 条）与真实云端配置；**下轮找机器清醒时段补跑 65 条**（可先保持唤醒/关休眠）。
+
+### 四、交付
+
+- 版本 **1.9.1**（app.mjs / package.json / localai.mjs 三处一致；`probe-version` 14/14）。
+- `build-portable.ps1` **258.7MB / 3447 文件**（无 app\llama）→ 主包 **`dist\QingYaoTP-AILauncher-v1.9.1.zip` 122.0MB / 127,913,114B / 3947 条目 / SHA256 `4586C0D37716E6E1A19787BE7870E700141604A1A8328CE5C322364EC4609D36`**（v1.9.0 `98F35D3D…`、v1.8.1 `E3A70DE5…` 保留）。
+- 自检：无 app/llama、无 data/cloud-review*、config 消毒、包内 README = 仓库 README（14,609B 同哈希）、六份源码↔dist 一致；8099 切回**发布包实例 v1.9.1**（视觉包装回 pack/53 文件、5 模型 / 9 会话）；发布包冒烟 `probe-version` 14/14 + `probe-debug` 54/54 + `probe-readme` 21/21 + `probe-code-review-export` 66/66（证据 `server\docs\packaging-2026-11-19-v191\`）。
+- `.github\RELEASE-v1.9.1.md` 已写好；**Release 仍未创建**（无 gh/PAT）。
+
+### 五、下一轮
+
+1. **补跑全量 65 条**（找机器清醒时段，避免休眠）；
+2. 云端复审「只发选中片段」+ `CLOUD_JOB_TIMEOUT_MS` 暴露到设置页；
+3. 多文件 / 整工作区一起审查；
+4. 老账：一键纠正写回文件、`toolEnabled` 同步 1 行；
+5. （等凭据）发 v1.8.1 / v1.9.0 / v1.9.1 Release + About topics。

@@ -6527,8 +6527,11 @@ async function cwCloudSend(host) {
   cwReviewMetaEl.textContent = '云端 · ' + h;
   cwSetReviewState('正在发往云端 ' + h + '（代码已脱敏）…', '');
   cwThinkBegin('云端复审输出（等待上游回复…）');
-  cwReviewStartTimer('cloud', Date.now());
+  const cloudT0 = Date.now();
+  cwReviewStartTimer('cloud', cloudT0);
   let gotFindings = false;
+  let gotFirstDelta = false;
+  let deltaCount = 0;
   try {
     await cwStreamSSE('/api/code/review/cloud', payload, (e) => {
       if (e.type === 'meta') {
@@ -6536,8 +6539,17 @@ async function cwCloudSend(host) {
         cwReviewMetaEl.textContent = '云端 · ' + eh + (e.model ? ' · ' + e.model : '');
         const chars = Number(e.sentChars) || 0;
         const red = Number(e.redactions) || 0;
-        if (chars > 0) cwSetReviewState('已发送 ' + chars + ' 字符（脱敏 ' + red + ' 处），等待 ' + eh + ' 回复…', '');
+        if (chars > 0) cwSetReviewState('已发送 ' + chars + ' 字符（脱敏 ' + red + ' 处）' + (e.streaming ? '，上游开始流式输出…' : '，等待 ' + eh + ' 回复…'), '');
+      } else if (e.type === 'retry') {
+        // v1.9.1：上游重试（不认 thinking / 空正文放大 token）——清掉上一次的输出增量，避免两次内容叠在一起
+        cwThinkBegin('云端复审输出（' + (e.reason || '上游重试') + '，第 ' + (Number(e.attempt) || 2) + ' 次）');
+        cwSetReviewState('上游返回空正文/不认 thinking，正在重试（第 ' + (Number(e.attempt) || 2) + ' 次）…', '');
       } else if (e.type === 'delta') {
+        if (!gotFirstDelta) {
+          gotFirstDelta = true;
+          cwSetReviewState('云端复审输出中（首字 ' + ((Date.now() - cloudT0) / 1000).toFixed(1) + 's，流式）…', '');
+        }
+        deltaCount += 1;
         cwThinkAppend(e.text);
       } else if (e.type === 'findings') {
         gotFindings = true;
@@ -6552,7 +6564,7 @@ async function cwCloudSend(host) {
         const model = e.model || (cwCloudCfgCache && cwCloudCfgCache.model) || '云端模型';
         cwReviewMetaEl.textContent = '云端 · ' + h + ' · ' + model + secTxt;
         cwResetReviewTimer();
-        cwSetReviewState('云端复审完成 · ' + cwIssues.length + ' 个问题' + secTxt + '（代码已脱敏，可一键纠正）', cwIssues.length ? '' : 'ok');
+        cwSetReviewState('云端复审完成 · ' + cwIssues.length + ' 个问题' + secTxt + (deltaCount ? '（流式 ' + deltaCount + ' 段）' : '') + '（代码已脱敏，可一键纠正）', cwIssues.length ? '' : 'ok');
       } else if (e.type === 'error') {
         throw new Error(e.message || '云端复审失败');
       }
