@@ -22,6 +22,8 @@ import { recommendConfig, CATALOG_MODELS } from "./config-recommend.mjs";
 import { zipStore, sha256 as zipSha256 } from "./diag-zip.mjs";
 // 视觉增强包（v1.6.0）：把 101MB 的 llama.cpp sidecar 从主包拆出去，做成可选安装的 zip
 import { installVisionPack, removeVisionPack, visionPackInfo, listAvailablePacks, MAX_PACK_BYTES } from "./vision-pack.mjs";
+// 多文件 / 整工作区一起审查（v1.10.0）：纯函数模块，探针可直接 import 复算（契约 §1）
+import { buildMultiPlan, normalizeMultiPaths, isUnderCodeDir, multiReviewPrompt, issueLineTexts, normalizeCrossFindings, multiCrossPrompt, aggregateMultiReview, buildMultiReviewMarkdown, MULTI_MAX_INPUT_FILES, MULTI_CROSS_SYSTEM } from "./code-review-multi.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 /**
@@ -42,7 +44,7 @@ const DEBUG_UI = path.join(HERE, "debug.html");
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 /** 版本号：发版只改这一处；server\package.json 的 version 必须与它一致（probe-version 会查） */
-const APP_VERSION = "1.9.2";
+const APP_VERSION = "1.10.0";
 /** 产品正式名（2026-11-01 起）：QingYaoTP AILauncher；QingYaoTP = QingYaoTestifypred */
 const APP_NAME = "QingYaoTP AILauncher";
 const APP_SUB = "本地 AI";
@@ -3911,6 +3913,298 @@ async function handleCodeReviewStream(req, res) {
   });
 }
 
+// ---------------------------------------------------------------- 多文件 / 整工作区一起审查（v1.10.0）
+/**
+ * 契约：server/docs/feature-review-multi-2026-11-19/contract.md §2.2 / §2.3
+ *  - plan：读文件 + 算计划（不需要模型），前端先预览「审哪些 / 跳过哪些 / 为什么」
+ *  - multi：SSE，逐文件两阶段（思路流式 → 同一个 session 要 JSON）→ 可选跨文件总览 → done
+ *  - 与其余五项共用 codeJobLocked 同一把锁：/api/load 的 409 依赖 codeJob.busy，禁止另开锁变量
+ */
+/** 单文件审查超时（契约 §2.3）：Math.max(60000, Math.min(CODE_JOB_TIMEOUT_MS, 240000)) */
+const MULTI_FILE_TIMEOUT_MS = Math.max(60000, Math.min(CODE_JOB_TIMEOUT_MS, 240000));
+/** 每个文件的「审查思路」生成上限（与单文件默认 1200 一致；第二阶段 JSON 固定 700） */
+const MULTI_THINK_MAX_TOKENS = 1200;
+
+/** 读一批 code/ 下的文件：失败不抛，转成 { content:"", error } 交给 buildMultiPlan 判 unreadable（契约 §2.2） */
+async function readMultiEntries(paths) {
+  const out = [];
+  for (const p of paths) {
+    try {
+      const r = await wsRead(p);
+      out.push({ path: p, content: String(r?.content ?? "") });
+    } catch (e) {
+      out.push({ path: p, content: "", error: String(e?.message ?? e) });
+    }
+  }
+  return out;
+}
+
+/** 两条接口共用的 files 校验：归一 → 空 400 → 超过 40 个 400 → 不在 code/ 400（全部在开 SSE 之前） */
+function checkMultiFiles(body) {
+  const norm = normalizeMultiPaths(body?.files);
+  if (!norm.paths.length) return { error: { status: 400, message: "缺少 files（只能审查 code/ 下的文件）" } };
+  if (norm.paths.length > MULTI_MAX_INPUT_FILES) {
+    return { error: { status: 400, message: "一次最多提交 " + MULTI_MAX_INPUT_FILES + " 个文件" } };
+  }
+  for (const p of norm.paths) {
+    if (!isUnderCodeDir(p)) return { error: { status: 400, message: "只能审查 code/ 下的文件：" + p } };
+  }
+  return { error: null, norm };
+}
+
+/** 计划 + 归一阶段丢弃的非法/重复路径（plan.dropped 供前端提示） */
+function multiPlanOut(entries, dropped) {
+  const plan = buildMultiPlan(entries);
+  plan.dropped = Array.isArray(dropped) ? dropped : [];
+  return plan;
+}
+
+/** POST /api/code/review/multi/plan —— 只算计划，不需要模型（令牌必需） */
+async function handleCodeReviewMultiPlan(req, res) {
+  if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
+    return sendJson(res, 403, { error: { message: "缺少或错误的本地令牌（x-local-token）" } });
+  }
+  let body;
+  try {
+    body = await readBody(req);
+  } catch (e) {
+    return sendJson(res, e?.code === "BODY_TOO_LARGE" ? 413 : 400, { error: { message: e?.message ?? "JSON 解析失败" } });
+  }
+  const checked = checkMultiFiles(body);
+  if (checked.error) return sendJson(res, checked.error.status, { error: { message: checked.error.message } });
+  try {
+    const entries = await readMultiEntries(checked.norm.paths);
+    const plan = multiPlanOut(entries, checked.norm.dropped);
+    log("代码审查(多文件) 计划 " + plan.totals.input + " 个 → 可审 " + plan.totals.reviewable + " 跳过 " + plan.totals.skipped);
+    return sendJson(res, 200, { ok: true, plan });
+  } catch (err) {
+    return sendJson(res, 500, { error: { message: String(err?.message ?? err) } });
+  }
+}
+
+/** POST /api/code/review/multi —— 多文件 SSE（令牌必需）：逐文件两阶段 + 可选跨文件总览 */
+async function handleCodeReviewMultiStream(req, res) {
+  if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
+    return sendJson(res, 403, { error: { message: "缺少或错误的本地令牌（x-local-token）" } });
+  }
+  let body;
+  try {
+    body = await readBody(req);
+  } catch (e) {
+    return sendJson(res, e?.code === "BODY_TOO_LARGE" ? 413 : 400, { error: { message: e?.message ?? "JSON 解析失败" } });
+  }
+  // 契约 §2.3：令牌 → body → files（空 / >40 / 不在 code/）→ 读文件 + 计划，全部在开 SSE 之前返回 JSON
+  const checked = checkMultiFiles(body);
+  if (checked.error) return sendJson(res, checked.error.status, { error: { message: checked.error.message } });
+  let entries = [];
+  let plan = null;
+  try {
+    entries = await readMultiEntries(checked.norm.paths);
+    plan = multiPlanOut(entries, checked.norm.dropped);
+  } catch (e) {
+    return sendJson(res, 500, { error: { message: String(e?.message ?? e) } });
+  }
+  if (!plan.reviewable.length) {
+    return sendJson(res, 400, { error: { message: "没有可审查的文件（空 / 过大 / 超限）：见 plan" }, plan });
+  }
+  const byPath = new Map(plan.files.filter((f) => f.ok).map((f) => [f.path, f]));
+  const contentByPath = new Map(entries.map((x) => [x.path, String(x.content ?? "")]));
+  const intent = String(body?.intent ?? "").trim().slice(0, 500);
+  const includeCross = body?.includeCross !== false;
+  const total = plan.reviewable.length;
+
+  // 客户端断开（点「停止」/关面板）→ 掐掉当前生成，后续不再跑（同 v1.7.1 单文件审查）
+  let clientGone = false;
+  let ac = null;
+  const onClientClose = () => {
+    if (clientGone) return;
+    clientGone = true;
+    try { if (ac) ac.abort(codeJobError(499, "客户端已断开（已停止）")); } catch {}
+  };
+  res.on("close", onClientClose);
+
+  return codeJobLocked(async () => {
+    const t0 = Date.now();
+    let send = null;
+    try {
+      const pick = await pickCodeJobModel(body?.model);
+      const { ctx, size } = await openReviewContext();
+      try {
+        if (clientGone) {
+          log("代码审查(多文件) 客户端已断开，跳过生成");
+          return;
+        }
+        send = sseOpen(res);
+        send({ type: "meta", model: path.basename(pick.file), modelFile: pick.file, contextSize: size, switchedModel: pick.switched, startedAt: t0, total });
+        send({ type: "plan", ...plan });
+
+        // done.stats 按「每个可审文件一条」记：失败的文件以 issues: [] 占位，保证 stats.files === done.files
+        const statsFiles = plan.reviewable.map((p) => ({ path: p, issues: [] }));
+        const goodFiles = [];
+        for (let i = 0; i < plan.reviewable.length; i += 1) {
+          if (clientGone) throw codeJobError(499, "客户端已断开（已停止）");
+          const index = i + 1;
+          const filePath = plan.reviewable[i];
+          const info = byPath.get(filePath) || { path: filePath, name: path.basename(filePath), lang: "text", chars: 0, lines: 1 };
+          const content = contentByPath.get(filePath) ?? "";
+          const lineCount = Math.max(1, Number(info.lines) || 1);
+          const fileT0 = Date.now();
+          send({ type: "file-start", index, total, path: filePath, name: info.name, lang: info.lang, chars: info.chars, lines: lineCount });
+          let seq = null;
+          try {
+            // 每个文件一个独立 sequence，用完必须 dispose（8 个文件的 KV 不能叠着占 8K 小上下文）
+            seq = ctx.getSequence();
+            const session = new LlamaChatSession({
+              contextSequence: seq,
+              chatWrapper: state.wrapperNoThink ?? "auto",
+              systemPrompt: CODE_REVIEW_THINK_SYSTEM,
+            });
+            // 第一阶段：只流式输出「审查思路」（小模型一次要两样经常给不出合法 JSON）
+            let thinkText = "";
+            ac = new AbortController();
+            const watchdog = setTimeout(
+              () => ac.abort(codeJobError(504, "第 " + index + " 个文件审查超时（" + Math.round(MULTI_FILE_TIMEOUT_MS / 1000) + "s 没有跑完）：换个模型或先单独审查它")),
+              MULTI_FILE_TIMEOUT_MS,
+            );
+            let meta;
+            try {
+              meta = await session.promptWithMeta(
+                multiReviewPrompt({ index, total, file: filePath, lang: info.lang, intent, lineCount, code: content }),
+                {
+                  maxTokens: MULTI_THINK_MAX_TOKENS,
+                  temperature: 0.2,
+                  signal: ac.signal,
+                  onResponseChunk: (c) => {
+                    if (c && c.text) {
+                      thinkText += c.text;
+                      send({ type: "delta", index, path: filePath, text: c.text });
+                    }
+                  },
+                },
+              );
+            } finally {
+              clearTimeout(watchdog);
+            }
+            const thinking = String(meta?.responseText ?? "") || thinkText;
+            if (clientGone) throw codeJobError(499, "客户端已断开（已停止）");
+            // 第二阶段：同一个 session 里只要 JSON（沿用单文件审查那段写法）
+            const jsonPrompt = [
+              "【代码行数】" + lineCount,
+              "把上面这次审查整理成一个 JSON 对象，只输出 JSON，不要解释：",
+              CODE_REVIEW_JSON_SYSTEM.split("\n").slice(2).join("\n"),
+              "",
+              "审查思路原文（供你归纳，不要复述）：",
+              String(thinking).slice(-2000),
+            ].join("\n");
+            ac = new AbortController();
+            const watchdog2 = setTimeout(
+              () => ac.abort(codeJobError(504, "第 " + index + " 个文件审查结论整理超时")),
+              Math.min(120000, CODE_JOB_TIMEOUT_MS),
+            );
+            let jm;
+            try {
+              jm = await session.promptWithMeta(jsonPrompt, { maxTokens: 700, temperature: 0.1, signal: ac.signal });
+            } finally {
+              clearTimeout(watchdog2);
+            }
+            const findings = parseFindingsFromText(String(jm?.responseText ?? ""), lineCount);
+            // 行号吸到真代码行 + 带上该行原文（多文件时前端没有代码，靠服务端带回来）
+            const issues = issueLineTexts(snapIssuesToCodeLines(findings.issues, content), content);
+            const seconds = +((Date.now() - fileT0) / 1000).toFixed(1);
+            send({ type: "file-findings", index, total, path: filePath, name: info.name, summary: findings.summary, issues, parsed: findings.parsed, lineCount, seconds });
+            const result = { path: filePath, name: info.name, lang: info.lang, lines: lineCount, summary: findings.summary, issues, parsed: findings.parsed, seconds };
+            goodFiles.push(result);
+            statsFiles[i].issues = issues;
+          } catch (e) {
+            if (clientGone) throw e;
+            // 单个文件失败不杀全局：发 file-error 后继续下一个文件（跨文件阶段跳过它）
+            send({ type: "file-error", index, path: filePath, message: String(e?.message ?? e) });
+            log("代码审查(多文件) 第 " + index + " 个文件失败 " + filePath + "：" + String(e?.message ?? e).slice(0, 160));
+          } finally {
+            // 必须释放：多文件共用一个 context，不 dispose 会把 KV 吃光
+            if (seq) await seq.dispose().catch(() => {});
+          }
+        }
+        if (clientGone) throw codeJobError(499, "客户端已断开（已停止）");
+
+        // 跨文件总览：>=2 个文件且没关掉时跑；否则明确 skipped
+        if (plan.reviewable.length < 2 || !includeCross || goodFiles.length < 2) {
+          send({ type: "cross", summary: "", findings: [], parsed: false, skipped: true });
+        } else {
+          send({ type: "cross-start" });
+          let crossSeq = null;
+          try {
+            // 跨文件阶段只发摘要与问题标题、不发代码正文（multiCrossPrompt 负责）
+            crossSeq = ctx.getSequence();
+            const session = new LlamaChatSession({
+              contextSequence: crossSeq,
+              chatWrapper: state.wrapperNoThink ?? "auto",
+              systemPrompt: MULTI_CROSS_SYSTEM,
+            });
+            const crossPrompt = multiCrossPrompt({
+              intent,
+              files: goodFiles.map((f) => ({
+                path: f.path,
+                name: f.name,
+                lines: f.lines,
+                issues: (f.issues || []).map((it) => ({ line: it.line, severity: it.severity, title: it.title })),
+              })),
+            });
+            ac = new AbortController();
+            const watchdog = setTimeout(() => ac.abort(codeJobError(504, "跨文件总览超时")), Math.min(120000, CODE_JOB_TIMEOUT_MS));
+            let meta;
+            try {
+              meta = await session.promptWithMeta(crossPrompt, { maxTokens: 700, temperature: 0.1, signal: ac.signal });
+            } finally {
+              clearTimeout(watchdog);
+            }
+            const obj = extractJsonObject(String(meta?.responseText ?? ""));
+            // 路径只认本次送审的；再按各文件真实行数 clamp 一遍（契约 §2.3）
+            const norm = normalizeCrossFindings(obj?.findings, plan.reviewable);
+            const lineOf = new Map(goodFiles.map((f) => [f.path, f.lines]));
+            const findings = norm.findings.map((f) => {
+              const maxLine = Math.max(1, Number(lineOf.get(f.file)) || 1);
+              const line = Math.min(Math.max(1, f.line), maxLine);
+              return { ...f, line, endLine: Math.min(Math.max(line, f.endLine), maxLine) };
+            });
+            const summary = obj && typeof obj.summary === "string" ? obj.summary.slice(0, 500) : "";
+            send({ type: "cross", summary, findings, parsed: Boolean(obj) });
+            log("代码审查(多文件) 跨文件总览 问题 " + findings.length + " 个（丢弃 " + norm.dropped + "）");
+          } catch (e) {
+            if (clientGone) throw e;
+            // 跨文件总览失败不影响前面的逐文件结果（契约 §2.3）
+            send({ type: "cross", summary: "", findings: [], parsed: false, error: String(e?.message ?? e) });
+            log("代码审查(多文件) 跨文件总览失败：" + String(e?.message ?? e).slice(0, 160));
+          } finally {
+            if (crossSeq) await crossSeq.dispose().catch(() => {});
+          }
+        }
+
+        const stats = aggregateMultiReview(statsFiles);
+        const seconds = +((Date.now() - t0) / 1000).toFixed(1);
+        send({ type: "done", seconds, model: path.basename(pick.file), files: plan.reviewable.length, issues: stats.issues, skipped: plan.skipped.length, stats });
+        // done 之后立刻结束 SSE（同 v1.7.1：别让 ctx.dispose() 把界面卡在「审查中」）
+        try { if (!res.writableEnded) res.end(); } catch {}
+        log("代码审查(多文件) " + plan.reviewable.length + " 个文件 问题 " + stats.issues + " 跳过 " + plan.skipped.length + " 上下文 " + size + " " + seconds + "s" + (pick.switched ? "（切换模型）" : ""));
+      } finally {
+        await ctx.dispose().catch(() => {});
+      }
+    } catch (e) {
+      if (clientGone) {
+        log("代码审查(多文件) 已停止（客户端断开）");
+        return;
+      }
+      const status = e?.status || 500;
+      if (!send) return sendJson(res, status, { error: { message: String(e?.message ?? e) } });
+      send({ type: "error", message: String(e?.message ?? e) });
+      log("代码审查(多文件) 失败：" + String(e?.message ?? e));
+    } finally {
+      res.off("close", onClientClose);
+      try { if (!res.writableEnded) res.end(); } catch {}
+    }
+  });
+}
+
 /** POST /api/code/fix —— 流式修正（SSE），返回修正后的完整代码 + 改动行区间 */
 async function handleCodeFix(req, res) {
   if (req.headers["x-local-token"] !== LOCAL_TOKEN) {
@@ -4663,14 +4957,20 @@ async function handleCodeReviewExport(req, res) {
     return sendJson(res, e?.code === "BODY_TOO_LARGE" ? 413 : 400, { error: { message: e?.message ?? "JSON 解析失败" } });
   }
   const kind = String(body?.kind ?? "").trim();
-  if (kind !== "challenge" && kind !== "review") {
-    return sendJson(res, 400, { error: { message: "kind 必须是 challenge 或 review" } });
+  if (kind !== "challenge" && kind !== "review" && kind !== "multi") {
+    return sendJson(res, 400, { error: { message: "kind 必须是 challenge、review 或 multi" } });
   }
   try {
-    const markdown = kind === "challenge" ? buildChallengeMarkdown(body) : buildReviewMarkdown(body);
+    // v1.10.0：multi = 多文件 / 整工作区复审（.multi.review.md），导出前同样做密钥级脱敏
+    const markdown =
+      kind === "challenge" ? buildChallengeMarkdown(body)
+        : kind === "review" ? buildReviewMarkdown(body)
+          : redactExportText(buildMultiReviewMarkdown(body));
     const meta = body?.meta && typeof body.meta === "object" ? body.meta : {};
     const at = Number(meta.at) > 0 ? Number(meta.at) : Date.now();
-    const filename = exportSlug(meta.file) + "-" + exportStamp(at) + "." + kind + ".md";
+    const filename = kind === "multi"
+      ? exportSlug(meta.file || "workspace") + "-" + exportStamp(at) + ".multi.review.md"
+      : exportSlug(meta.file) + "-" + exportStamp(at) + "." + kind + ".md";
     return sendJson(res, 200, { ok: true, kind, filename, bytes: Buffer.byteLength(markdown, "utf8"), markdown, at });
   } catch (e) {
     return sendJson(res, 500, { error: { message: "生成导出失败：" + String(e?.message ?? e).slice(0, 200) } });
@@ -8857,6 +9157,9 @@ async function handle(req, res) {
   if (req.method === "POST" && url === "/api/code/review") return handleCodeReview(req, res);
   // v1.7.0：流式审查（思路逐段 + findings）与流式修正（改好的代码 + 改动行区间）
   if (req.method === "POST" && url === "/api/code/review/stream") return handleCodeReviewStream(req, res);
+  // v1.10.0：多文件 / 整工作区一起审查（plan 纯计算；multi 是 SSE；两条都必须令牌）
+  if (req.method === "POST" && url === "/api/code/review/multi/plan") return handleCodeReviewMultiPlan(req, res);
+  if (req.method === "POST" && url === "/api/code/review/multi") return handleCodeReviewMultiStream(req, res);
   if (req.method === "POST" && url === "/api/code/fix") return handleCodeFix(req, res);
   // v1.8.0：二次验证三件套（质询 / 他人复审 / 云端复审）+ 云端配置（契约 §1.1 / §1.2 / §1.3）
   if (req.method === "POST" && url === "/api/code/review/challenge") return handleCodeChallengeStream(req, res);

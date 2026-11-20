@@ -3482,3 +3482,41 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 3. **多文件 / 整工作区一起审查**（剩的最大功能件）；
 4. 可选：视觉增强包瘦身（剔 ggml-vulkan.dll）；
 5. （等凭据）发 v1.8.1 / v1.9.0 / v1.9.1 / v1.9.2 Release + About topics。
+
+## 第七十二节（2026-11-20）v1.10.0：多文件 / 整工作区一起审查
+
+> 用户点名「下一件做多文件 / 整工作区一起审查」。做法：先写契约（`server\docs\feature-review-multi-2026-11-19\contract.md`），再并行三路——backend 纯函数模块 + 两条接口、frontend 文件列表勾选与结果区、probe 一次性 86 条；lead 负责版本 / 全量 / 打包 / 冒烟 / 文档。
+
+### 一、做了什么
+
+1. **新建 `server\code-review-multi.mjs`**（零依赖纯函数，约 460 行）：`normalizeMultiPaths`（归一 / 去重 / 拒 `..`·盘符·NUL）、`isUnderCodeDir`、`buildMultiPlan`（一次 8 个 · 单文件 6000 字符 · 累计 36000；reason：unreadable / empty / too_large / budget / limit）、`multiReviewPrompt`、`issueLineTexts`（服务端带回问题行原文）、`normalizeCrossFindings`、`multiCrossPrompt`、`aggregateMultiReview`、`buildMultiReviewMarkdown`、`MULTI_CROSS_SYSTEM`。
+2. **app.mjs 两条接口**：`POST /api/code/review/multi/plan`（读 code/ 下文件算计划，**不需要模型**）与 `POST /api/code/review/multi`（SSE：`meta → plan → (file-start → delta* → file-findings)×N → cross-start → cross → done`）。要点：逐文件独立 sequence + `dispose`、单文件失败发 `file-error` 后继续、跨文件总览只拿摘要与问题标题（不重传代码）、**复用 `codeJobLocked` 一把锁**（审查中 `POST /api/load` 仍 409）、`done` 后立即 `res.end()`。导出 `kind:"multi"` → `.multi.review.md`。`APP_VERSION` → 1.10.0。
+3. **app.html**：文件列表每行勾选框 + 全选 / 已选 N（刷新保留）、「审查选中」「审查工作区」、`#cwMultiWrap` 逐文件卡片 + 跨文件问题（点一条 = 打开对应文件并跳行高亮）、`#cwExportMulti`；新增 CSS 走既有变量，既有 id 一个未改名。
+4. **打包清单**：`build-portable.ps1` 两处补 `code-review-multi.mjs`（v1.6.0 漏 `vision-pack.mjs` 的老账，这次先补）。
+
+### 二、验证
+
+- 新探针 `probe-code-review-multi` **86/86**：A 纯函数 39、B API 校验 15、C 真 4B SSE 14（事件顺序 / 行号 / `lineText` / 跨文件 / `done.stats` 自洽 / **并发 `/api/load` 409** / 跑完服务健康）、D 导出 8、E UI 9（勾选 / 结果区 / 点卡跳行 / 导出）。C 段 2 个 8 行文件实测 132–182s，E 段 UI 172s。
+- 目标回归：`probe-version` 14/14、`probe-code-review-export` 66/66、`probe-code-panel-v2` 44/44、`probe-code-review-stream` 45/45（3 skip，`PROBE_SKIP_SWITCH=1`）、`probe-code-review-verify` 87/87。
+- **全量 66 条整跑**（23:23–23:51，`server\docs\probe-full-2026-11-20-v1100\`）：**64 绿 + 2 环境红**——`probe-small-features` 5/6（「点击后回到底部 gap=557」，恢复会话后隔离复跑 **6/6** 全绿，属机器忙时滚动的时序假红）；`probe-web-tools` 15/19（`web_search` 百度反爬返回 0 条 / engine undefined，同探针后段流式搜索正常 → 外网波动，与 v1.9.0 r2 同因）。断言口径 **1318 → 1404**（1399/1404）。
+- **发布包冒烟**（dist 实例 v1.10.0、真 4B + headless Edge）：probe-version 14/14、probe-debug 54/54、probe-readme 21/21、probe-code-review-export 66/66、probe-code-panel-v2 44/44、probe-code-review-multi 86/86。
+
+### 三、踩坑（已写进 `technique\07-坑与约定.md`）
+
+1. **headless Edge 158 不接受命令行 URL**：`msedge --headless=new --no-sandbox --remote-debugging-port=9333 <url>` 立刻退出（stderr：`Multiple targets are not supported in headless mode`），9333 不监听、界面探针整批 skip / 0 断言。改成**不带 URL 启动 + CDP `Page.navigate`** 才恢复。
+2. **这台笔记本会睡眠**：本轮被连睡 1.5h / 5.5h / 10h 多次打断（全量差点又作废）。用 `powercfg /change standby-timeout-ac 0` 与 `-dc 0`、休眠同理（确认插电）后才跑通，跑完记得恢复。
+3. **杀进程别用会匹配到自身的 CommandLine 模式**：`$_.CommandLine -like '*localai-tui*'` 会把正在执行这条命令的 pwsh 自己也杀掉（job runner `exit -1`），要排除 `$PID` 或用 PID 精确停。
+
+### 四、交付
+
+- 版本 **1.10.0**（app.mjs / package.json / localai.mjs 三处一致；probe-version 14/14）。
+- `build-portable.ps1` **258.8MB / 3448 文件**（无 `app\llama`）→ `make-zip.ps1` 出 `dist\QingYaoTP-AILauncher-v1.10.0.zip` **127,941,208B / 3948 条目 / SHA256 49E6D6839F1B8A97ED82AC2AA3DB56220245CDB3F3FE8323AE4DA2E6C1773FF9**；包内 `app\README.md` 与仓库 `README.md` 同哈希（15,360B）、六份源码↔dist 一致、无 `data/cloud-review*`、config.ini 已消毒。
+- 8099 切回**发布包实例 v1.10.0** + 视觉增强包装回（source=pack / 53 文件 / 101.1MB）+ 4B 已加载；证据 `server\docs\packaging-2026-11-20-v1100\`、`server\docs\feature-review-multi-2026-11-19\`（契约 + UI 截图）、`.github\RELEASE-v1.10.0.md`。
+- **Release 仍未创建**（本机无 `gh` / PAT）。
+
+### 五、下一轮
+
+1. **云端复审「只发选中片段」+ `CLOUD_JOB_TIMEOUT_MS` 暴露到 设置 → 代码**（首选，1–2h）；
+2. 代码面板：改过的文件自动备份 `xxx.bak`；
+3. 视觉增强包瘦身（剔 `ggml-vulkan.dll`，可选）；
+4. 等凭据：发 v1.8.1 / v1.9.0 / v1.9.1 / v1.9.2 / v1.10.0 的 Release。

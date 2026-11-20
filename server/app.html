@@ -851,6 +851,51 @@ math-field:focus-within{border-color:var(--cyan)}
 .cwCompare3Table td.j-single{color:var(--warn)}
 .cwExportActions{gap:6px;flex-wrap:wrap}
 .cwExportActions .hintText{font-size:10.5px;color:var(--dim);word-break:break-all}
+/* ---- v1.10.0 多文件 / 整工作区一起审查（契约 §3） ---- */
+.cwMultiBar{display:flex;align-items:center;gap:6px;padding:0 8px 8px;flex-wrap:wrap;background:var(--panel-2)}
+.cwMultiBar .hintText{font-size:10.5px;color:var(--dim);font-family:var(--mono)}
+.cwMultiBar button{padding:3px 8px;font-size:11px}
+.cwSelAll{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text-2);cursor:pointer;user-select:none;white-space:nowrap}
+.cwSelAll input{margin:0;cursor:pointer}
+.cwItem .cwSel{margin:0;flex:none;cursor:pointer}
+#cwMultiWrap{margin:2px 0 10px;padding:0 0 6px;border-bottom:1px dashed var(--line-2)}
+#cwMultiWrap[hidden]{display:none}
+.cwMultiState{font-size:11.5px;line-height:1.6;color:var(--dim);padding:2px 0 6px;word-break:break-word}
+.cwMultiState.ok{color:var(--ok)}
+.cwMultiState.err{color:var(--err)}
+.cwMultiPlan{font-size:11px;line-height:1.6;color:var(--text-2);margin:0 0 8px}
+.cwMultiPlanHead{font-weight:600;color:var(--cyan)}
+.cwMultiSkipList{margin:2px 0 0}
+.cwMultiSkipLine{font-size:10.5px;color:var(--dim);font-family:var(--mono);padding-left:8px;line-height:1.55;word-break:break-all}
+.cwMultiFiles{display:flex;flex-direction:column;gap:8px;margin:4px 0}
+.cwMultiFile{border:1px solid var(--line);border-radius:7px;background:var(--panel);padding:7px 9px}
+.cwMultiFile.on{border-color:var(--cyan);background:var(--accent-soft)}
+.cwMultiFile.err{border-color:var(--err)}
+.cwMultiFileHead{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text);user-select:none}
+.cwMultiFileHead:hover .n{color:var(--cyan)}
+.cwMultiFileHead .n{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cwMultiFileHead .meta{margin-left:auto;flex:none;font-size:10.5px;color:var(--dim);font-family:var(--mono)}
+.cwMultiFile.err .meta{color:var(--err)}
+.cwMultiFile .cwThink{margin:6px 0 0}
+.cwMultiThinkText{margin:0;padding:0 9px 7px;max-height:30vh;overflow:auto;white-space:pre-wrap;word-break:break-word;font:11px/1.6 var(--mono);color:var(--text-2)}
+.cwMultiIssues{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.cwMultiEmpty{font-size:11px;color:var(--dim);line-height:1.6;padding:2px 0;word-break:break-word}
+.cwMultiErr{font-size:11.5px;color:var(--err);line-height:1.6;padding:3px 0;word-break:break-word}
+.cwMultiCross{margin-top:6px}
+.cwMultiCrossSummary{font-size:11.5px;line-height:1.65;color:var(--text-2)}
+.cwMultiCrossTitle{font-size:11.5px;font-weight:600;color:var(--violet);margin:8px 0 2px}
+.cwCrossFinding{border:1px solid var(--line);border-left:3px solid var(--line-2);border-radius:5px;background:var(--panel);padding:5px 7px;margin-top:5px;font-size:11px;line-height:1.6;color:var(--text-2);cursor:pointer;word-break:break-word}
+.cwCrossFinding:hover{border-color:var(--cyan)}
+.cwCrossFinding[data-severity="error"]{border-left-color:var(--err)}
+.cwCrossFinding[data-severity="warn"]{border-left-color:var(--warn)}
+.cwCrossFinding[data-severity="info"]{border-left-color:var(--cyan)}
+.cwCrossFindingHead{font-size:11.5px;font-weight:600;color:var(--text);line-height:1.5}
+.cwCrossFindingHead .sev{font-weight:700;padding:0 3px;border-radius:3px}
+.cwCrossFinding[data-severity="error"] .sev{color:var(--err);background:var(--cw-err-bg)}
+.cwCrossFinding[data-severity="warn"] .sev{color:var(--warn);background:var(--cw-warn-bg)}
+.cwCrossFinding[data-severity="info"] .sev{color:var(--cyan);background:var(--cw-info-bg)}
+.cwCrossFindingDetail{margin-top:3px;white-space:pre-wrap}
+.cwCrossFindingFix{margin-top:3px;color:var(--ok);white-space:pre-wrap}
 .cwDiffItem{border:1px solid var(--line);border-left:3px solid var(--line-2);border-radius:5px;background:var(--panel);padding:4px 7px;font-size:11px;line-height:1.5;color:var(--text-2);cursor:pointer;word-break:break-word}
 .cwDiffItem:hover{border-color:var(--cyan)}
 .cwDiffItem.agree{border-left-color:var(--ok)}
@@ -1644,6 +1689,12 @@ header::before{
             <option value="txt">纯文本（txt）</option>
           </select>
         </div>
+        <div class="cwMultiBar">
+          <label class="cwSelAll" title="全选/取消全选"><input type="checkbox" id="cwSelAll">全选</label>
+          <span id="cwSelCount" class="hintText">已选 0</span>
+          <button id="cwReviewSel" class="ghost" title="把勾选的文件一起审查（最多 8 个）">审查选中</button>
+          <button id="cwReviewWs" class="ghost" title="把 code/ 下所有文件一起审查">审查工作区</button>
+        </div>
         <div id="cwList" class="cwList"></div>
         <div id="cwEmpty" class="cwEmpty" hidden>还没有代码。Agent 模式下的代码会自动收进这里。</div>
       </div>
@@ -1682,6 +1733,7 @@ header::before{
         <div class="cwReviewActions cwExportActions">
           <button id="cwCompare3" class="ghost" type="button" title="把本地审查 / 他人复审 / 云端复审三份结论放一张表里比对（至少跑过两项）">三方对照</button>
           <button id="cwExportReview" class="ghost" type="button" title="导出 .review.md：本地审查 + 两栏对照与判定 + 云端复审 + 三方对照 + 质询记录">导出复审结论</button>
+          <button id="cwExportMulti" class="ghost" type="button" disabled title="导出 .multi.review.md：总览 + 逐文件结论 + 跨文件问题 + 跳过清单">导出多文件复审</button>
           <button id="cwExportChallenge" class="ghost" type="button" title="导出 .challenge.md：原审查结论 + 质询问答">导出质询记录</button>
           <button id="cwStoreExport" class="ghost" type="button" title="把复审结论存进当前会话（和「发回对话」并列；只存档，不发给模型）">存进会话</button>
           <span id="cwExportState" class="hintText"></span>
@@ -1693,6 +1745,12 @@ header::before{
           </select>
         </div>
         <div id="cwReviewBody" class="cwReviewBody">
+          <div id="cwMultiWrap" hidden>
+            <div id="cwMultiState" class="cwMultiState"></div>
+            <div id="cwMultiPlan" class="cwMultiPlan"></div>
+            <div id="cwMultiFiles" class="cwMultiFiles"></div>
+            <div id="cwMultiCross" class="cwMultiCross"></div>
+          </div>
           <div id="cwReviewSummary" class="cwReviewSummary"></div>
           <details id="cwThink" class="cwThink" hidden><summary id="cwThinkSum">审查思路（思考中…）</summary><pre id="cwThinkText"></pre></details>
           <div id="cwIssues" class="cwIssues"></div>
@@ -4704,6 +4762,11 @@ const cwCloudEl = $('cwCloud'), cloudConfirmModalEl = $('cloudConfirmModal'), cl
 const cloudConfirmOkEl = $('cloudConfirmOk'), cloudConfirmCancelEl = $('cloudConfirmCancel'), cloudConfirmCloseEl = $('cloudConfirmClose');
 const cloudEnabledEl = $('cloudEnabled'), cloudBaseEl = $('cloudBase'), cloudModelEl = $('cloudModel'), cloudKeyEl = $('cloudKey');
 const cloudSaveEl = $('cloudSave'), cloudClearKeyEl = $('cloudClearKey'), cloudStateEl = $('cloudState'), cloudHintEl = $('cloudHint');
+// v1.10.0 多文件 / 整工作区一起审查（契约 §3.1 / §3.2 / §3.4）
+const cwSelAllEl = $('cwSelAll'), cwSelCountEl = $('cwSelCount');
+const cwReviewSelEl = $('cwReviewSel'), cwReviewWsEl = $('cwReviewWs'), cwExportMultiEl = $('cwExportMulti');
+const cwMultiWrapEl = $('cwMultiWrap'), cwMultiStateEl = $('cwMultiState'), cwMultiPlanEl = $('cwMultiPlan');
+const cwMultiFilesEl = $('cwMultiFiles'), cwMultiCrossEl = $('cwMultiCross');
 
 const CW_DIR = 'code';                             // 代码文件统一放工作区 code/ 下（契约第二节）
 const CW_OPEN_KEY = 'localai.cwOpen';              // 上次打开的文件
@@ -4801,6 +4864,13 @@ let cwSnapshotCross = null;   // { sig, model, summary, issues, verdict, stats, 
 let cwSnapshotCloud = null;   // { sig, host, model, summary, issues, at }
 let cwCompare3Data = null;    // { sig, result }：最近一次三方对照（导出时带上）
 let cwCrossModelName = '';    // 他人复审 meta 里给的模型名（传给快照）
+// v1.10.0：多文件 / 整工作区一起审查的状态
+let cwFilesCache = [];          // 最近一次 cwLoadList 的文件（「审查工作区」= 这里的全部 path）
+let cwSelPaths = new Set();     // 勾选的文件路径（列表刷新后保留仍然存在的）
+let cwMultiResult = null;       // { at, scope, plan, files: [], cross, meta, done, seconds, total }
+let cwMultiCardEls = new Map(); // path → { card, metaEl, thinkEl, sumEl, preEl, issuesEl, info, entry }
+let cwMultiProgress = null;     // { index, total, path, name }：当前正在审查的文件（计时文案用）
+let cwMultiScope = '';          // 'selection' | 'workspace'：本次多文件审查的入口
 
 function cwExt(p) { return (String(p || '').split('.').pop() || '').toLowerCase(); }
 function cwModeFor(p) { return CW_MODES[cwExt(p)] || 'text/plain'; }
@@ -4892,28 +4962,66 @@ function cwAddTab(p) {
   if (p && !cwTabs.includes(p)) cwTabs.push(p);
 }
 
+/** v1.10.0：勾选集合只保留当前列表里还存在的文件（刷新 / 删除后同步，契约 §3.1） */
+function cwSelPrune() {
+  const known = new Set(cwFilesCache.map((f) => f.path));
+  for (const p of [...cwSelPaths]) if (!known.has(p)) cwSelPaths.delete(p);
+}
+
+/** 勾选态回写：#cwSelCount 文案 + #cwSelAll 的 checked/indeterminate + 每个条目的勾选框 */
+function cwRenderSelState() {
+  const paths = cwFilesCache.map((f) => f.path);
+  const sel = paths.filter((p) => cwSelPaths.has(p));
+  if (cwSelCountEl) cwSelCountEl.textContent = '已选 ' + sel.length;
+  if (cwSelAllEl) {
+    cwSelAllEl.checked = paths.length > 0 && sel.length === paths.length;
+    cwSelAllEl.indeterminate = sel.length > 0 && sel.length < paths.length;
+    cwSelAllEl.disabled = paths.length === 0;
+  }
+  for (const cb of cwListEl.querySelectorAll('.cwSel')) {
+    const on = cwSelPaths.has(cb.dataset.path);
+    if (cb.checked !== on) cb.checked = on;
+  }
+}
+
 async function cwLoadList() {
   const r = await apiJson('/api/workspace/list?dir=' + encodeURIComponent(CW_DIR));
   const files = (r.entries || []).filter((e) => !e.dir);
   cwDirEl.textContent = (r.dir || CW_DIR) + '/';
   cwListEl.innerHTML = '';
   cwEmptyEl.hidden = files.length > 0;
+  cwFilesCache = files.slice();
+  cwSelPrune();
   for (const e of files) {
     const el = document.createElement('div');
     el.className = 'cwItem';
     el.dataset.path = e.path;
     el.title = e.path;
+    // v1.10.0：多选勾选框（点勾选只改勾选态，不打开文件；点条目其它位置仍是打开）
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'cwSel';
+    cb.dataset.path = e.path;
+    cb.title = '勾选后一起审查';
+    cb.checked = cwSelPaths.has(e.path);
+    cb.onclick = (ev2) => { ev2.stopPropagation(); };
+    cb.onchange = () => {
+      if (cb.checked) cwSelPaths.add(e.path);
+      else cwSelPaths.delete(e.path);
+      cwRenderSelState();
+    };
     const n = document.createElement('span');
     n.className = 'n';
     n.textContent = e.name;
     const sz = document.createElement('span');
     sz.className = 'sz';
     sz.textContent = e.size > 1024 ? (e.size / 1024).toFixed(1) + 'K' : (e.size || 0) + 'B';
-    el.append(n, sz);
+    el.append(cb, n, sz);
     el.onclick = () => cwOpenFile(e.path);
     cwListEl.appendChild(el);
   }
   cwMarkSel();
+  cwRenderSelState();
   return files;
 }
 
@@ -5320,6 +5428,7 @@ function cwResetReviewView() {
   cwChangedRanges = [];
   cwFixInfo = null;
   cwLastReviewSummary = ''; // v1.8.0：质询 / 复审的 primary 跟着失效
+  cwMultiReset(); // v1.10.0：清掉多文件审查结果（单文件审查 / 重新审查 / 多文件审查开始时都走这里）
   cwRenderIssues([]);
   cwClearLineClass(null);
   cwSetReviewBody('');
@@ -5370,6 +5479,23 @@ function cwRefreshActionButtons() {
   if (cwCrossModelEl) cwCrossModelEl.disabled = busy;
   // v1.9.0：导出 / 存进会话 / 三方对照 都只在空闲时可点
   for (const el of [cwCompare3El, cwExportReviewEl, cwExportChallengeEl, cwStoreExportEl]) if (el) el.disabled = busy;
+  // v1.10.0：多文件审查入口 / 导出——进行中的那一项变「停止」，其余 disabled（契约 §3.5）
+  const selMine = busy && mode === 'multi' && cwMultiScope === 'selection';
+  if (cwReviewSelEl) {
+    cwReviewSelEl.disabled = busy && !selMine;
+    cwReviewSelEl.textContent = selMine ? '停止' : '审查选中';
+    cwReviewSelEl.title = selMine ? '停止当前的多文件审查' : '把勾选的文件一起审查（最多 8 个）';
+  }
+  const wsMine = busy && mode === 'multi' && cwMultiScope === 'workspace';
+  if (cwReviewWsEl) {
+    cwReviewWsEl.disabled = busy && !wsMine;
+    cwReviewWsEl.textContent = wsMine ? '停止' : '审查工作区';
+    cwReviewWsEl.title = wsMine ? '停止当前的多文件审查' : '把 code/ 下所有文件一起审查';
+  }
+  if (cwExportMultiEl) {
+    cwExportMultiEl.disabled = busy || !cwMultiHasFiles();
+    cwExportMultiEl.title = '导出 .multi.review.md：总览 + 逐文件结论 + 跨文件问题 + 跳过清单';
+  }
 }
 
 /** 审查模型下拉：首项「本对话模型（当前）」，其余来自 /api/state.models 的 file（契约 2.2） */
@@ -5526,6 +5652,17 @@ function cwResetReviewTimer() {
 function cwReviewPaint() {
   if (!cwReviewT0) return;
   const secs = ((Date.now() - cwReviewT0) / 1000).toFixed(1);
+  // v1.10.0：多文件审查——进度写在 #cwMultiState（结果区顶部），并只把发起的那一项变「停止」
+  if (cwReviewMode === 'multi') {
+    const mineEl = cwMultiScope === 'workspace' ? cwReviewWsEl : cwReviewSelEl;
+    if (mineEl) mineEl.textContent = '停止（已用 ' + secs + 's）';
+    const p = cwMultiProgress;
+    const prog = p && p.index
+      ? '正在审查 ' + p.index + '/' + p.total + '：' + (p.path || p.name || '')
+      : '多文件审查中';
+    cwSetMultiState(prog + '（已用 ' + secs + 's）');
+    return;
+  }
   // v1.8.0：质询 / 他人复审 / 云端复审各自把自己的按钮变成「停止（已用 Xs）」
   if (cwReviewMode === 'challenge') {
     if (cwChallengeSendEl) cwChallengeSendEl.textContent = '停止（已用 ' + secs + 's）';
@@ -5577,6 +5714,14 @@ function cwStopReview() {
   cwStopRequested = true;
   try { if (cwAbortCtl) cwAbortCtl.abort(); } catch {}
   cwResetReviewTimer();
+  if (mode === 'multi') {
+    // 多文件：保留已完成的逐文件结果，只把还在跑的那张卡取消高亮
+    if (cwMultiCardEls) for (const c of cwMultiCardEls.values()) if (c && c.card) c.card.classList.remove('on');
+    cwSetMultiState('已停止（多文件审查已中断）');
+    cwSetReviewState('已停止（多文件审查已中断）', '');
+    showToast('已停止多文件审查', 'warn', 3600);
+    return;
+  }
   if (mode === 'challenge') {
     cwSetReviewState('已停止（质询已中断）', '');
     showToast('已停止质询', 'warn', 3600);
@@ -5720,6 +5865,571 @@ function cwApplyFindings(ev) {
   const chars = cwThinkTextEl.textContent.length;
   cwThinkEnd('审查思路（已完成' + (chars ? ' · ' + chars + ' 字' : '') + '）');
   cwSetReviewState(issues.length ? '发现 ' + issues.length + ' 个问题 · 点卡片跳转到对应行' : '审查完成 · 0 个问题（没有发现问题）', issues.length ? '' : 'ok');
+}
+
+// ---------------------------------------------------------------- v1.10.0 多文件 / 整工作区一起审查
+// 契约：server/docs/feature-review-multi-2026-11-19/contract.md §3
+// 与单文件审查共用 cwReviewBusy / cwAbortCtl / cwReviewStartTimer / cwStopReview / cwRefreshActionButtons；
+// 结果区 #cwMultiWrap 在 #cwReviewSummary 之前：逐文件卡片 + 跨文件总览，点一条 = 打开对应文件并跳行。
+const CW_MULTI_MAX_INPUT = 40;      // 一次最多提交 40 个路径（与后端 MULTI_MAX_INPUT_FILES 一致）
+const CW_MULTI_THINK_KEEP = 4000;   // 每张卡的「审查思路」只保留最近 4000 字
+const CW_MULTI_SKIP_LABEL = {
+  too_large: '太大（>6000 字符，请单独审查）',
+  empty: '空文件',
+  unreadable: '读取失败',
+  budget: '超出本次总字数预算',
+  limit: '超过单次 8 个文件上限',
+  duplicate: '重复路径',
+  invalid: '路径非法',
+};
+
+function cwSetMultiState(text, kind) {
+  if (!cwMultiStateEl) return;
+  cwMultiStateEl.textContent = String(text || '');
+  cwMultiStateEl.className = 'cwMultiState' + (kind ? ' ' + kind : '');
+}
+
+/** 有没有可导出的逐文件结果（有才开「导出多文件复审」） */
+function cwMultiHasFiles() {
+  return !!(cwMultiResult && Array.isArray(cwMultiResult.files) && cwMultiResult.files.some((f) => f && f.path));
+}
+
+/** 清空多文件结果区（单文件审查 / 重置 / 多文件审查开始时都走这里） */
+function cwMultiReset() {
+  cwMultiResult = null;
+  cwMultiCardEls = new Map();
+  cwMultiProgress = null;
+  cwMultiScope = '';
+  if (cwMultiWrapEl) cwMultiWrapEl.hidden = true;
+  cwSetMultiState('');
+  if (cwMultiPlanEl) cwMultiPlanEl.textContent = '';
+  if (cwMultiFilesEl) cwMultiFilesEl.textContent = '';
+  if (cwMultiCrossEl) cwMultiCrossEl.textContent = '';
+}
+
+/** 计划区：「将审查 N 个文件 · 跳过 M 个」+ 跳过原因前 3 条（契约 §3.3） */
+function cwRenderMultiPlan(plan) {
+  if (!cwMultiPlanEl) return;
+  cwMultiPlanEl.textContent = '';
+  if (!plan) return;
+  const reviewable = Array.isArray(plan.reviewable) ? plan.reviewable : [];
+  const skipped = Array.isArray(plan.skipped) ? plan.skipped : [];
+  const dropped = Array.isArray(plan.dropped) ? plan.dropped : [];
+  const head = document.createElement('div');
+  head.className = 'cwMultiPlanHead';
+  head.textContent = '将审查 ' + reviewable.length + ' 个文件 · 跳过 ' + skipped.length + ' 个';
+  cwMultiPlanEl.appendChild(head);
+  if (skipped.length) {
+    const list = document.createElement('div');
+    list.className = 'cwMultiSkipList';
+    for (const s of skipped.slice(0, 3)) {
+      const line = document.createElement('div');
+      line.className = 'cwMultiSkipLine';
+      const name = String((s && s.path) || '');
+      const why = CW_MULTI_SKIP_LABEL[String((s && s.reason) || '')] || String((s && s.reason) || '跳过');
+      line.textContent = name + ' —— ' + why + (s && s.chars ? '（' + s.chars + ' 字符）' : '');
+      list.appendChild(line);
+    }
+    if (skipped.length > 3) {
+      const more = document.createElement('div');
+      more.className = 'cwMultiSkipLine';
+      more.textContent = '…还有 ' + (skipped.length - 3) + ' 个跳过的文件';
+      list.appendChild(more);
+    }
+    cwMultiPlanEl.appendChild(list);
+  }
+  if (dropped.length) {
+    const d = document.createElement('div');
+    d.className = 'cwMultiSkipLine';
+    d.textContent = '已忽略 ' + dropped.length + ' 个非法 / 重复路径';
+    cwMultiPlanEl.appendChild(d);
+  }
+}
+
+/** 按 plan.reviewable 建逐文件卡片骨架；事件按 path 找到卡片再填内容 */
+function cwBuildMultiCards(plan) {
+  if (!cwMultiFilesEl) return;
+  cwMultiFilesEl.textContent = '';
+  cwMultiCardEls = new Map();
+  const byPath = new Map();
+  for (const f of (Array.isArray(plan && plan.files) ? plan.files : [])) if (f && f.path) byPath.set(f.path, f);
+  let reviewable = Array.isArray(plan && plan.reviewable) ? plan.reviewable.slice() : [];
+  if (!reviewable.length && byPath.size) {
+    reviewable = [...byPath.values()].filter((f) => f && f.ok).map((f) => f.path);
+  }
+  for (const p of reviewable) {
+    const info = byPath.get(p) || { path: p, name: String(p).split('/').pop(), lines: 0 };
+    const card = document.createElement('div');
+    card.className = 'cwMultiFile';
+    card.dataset.path = p;
+    const head = document.createElement('div');
+    head.className = 'cwMultiFileHead';
+    head.title = '打开 ' + p + ' 并按问题高亮';
+    const n = document.createElement('span');
+    n.className = 'n';
+    n.textContent = info.name || String(p).split('/').pop();
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    meta.textContent = '行 ' + (Number(info.lines) || 0) + ' · 待审查';
+    head.append(n, meta);
+    head.onclick = () => { cwMultiOpenFile(p).catch(() => {}); };
+    const think = document.createElement('details');
+    think.className = 'cwThink';
+    think.hidden = true;
+    const sum = document.createElement('summary');
+    sum.textContent = '审查思路（排队中…）';
+    const pre = document.createElement('pre');
+    pre.className = 'cwMultiThinkText';
+    think.append(sum, pre);
+    const issues = document.createElement('div');
+    issues.className = 'cwMultiIssues';
+    card.append(head, think, issues);
+    cwMultiFilesEl.appendChild(card);
+    cwMultiCardEls.set(p, { card, metaEl: meta, thinkEl: think, sumEl: sum, preEl: pre, issuesEl: issues, info, entry: null });
+  }
+  if (!reviewable.length) {
+    const empty = document.createElement('div');
+    empty.className = 'cwMultiEmpty';
+    empty.textContent = '这次没有可审查的文件（空 / 太大 / 超限），见上面的跳过原因。';
+    cwMultiFilesEl.appendChild(empty);
+  }
+}
+
+/** meta：模型名 + 已切换提示（契约 §3.3） */
+function cwMultiApplyMeta(ev) {
+  if (cwMultiResult) cwMultiResult.meta = ev;
+  const name = prettyName(ev.modelFile || ev.model || '');
+  if (cwReviewMetaEl) cwReviewMetaEl.textContent = name + (ev.switchedModel ? ' · 已切换' : '');
+  if (ev.switchedModel) showToast('已切换到 ' + name + ' 进行多文件审查', 'ok', 5200);
+}
+
+/** plan：计划区（将审查 N / 跳过 M + 跳过原因前 3 条）+ 建逐文件卡片骨架 */
+function cwMultiApplyPlan(ev) {
+  if (cwMultiResult) cwMultiResult.plan = ev;
+  cwRenderMultiPlan(ev);
+  cwBuildMultiCards(ev);
+  const n = Array.isArray(ev.reviewable) ? ev.reviewable.length : 0;
+  cwSetMultiState(n ? '已列入 ' + n + ' 个文件，开始逐个审查…' : '没有可审查的文件（空 / 太大 / 超限）', n ? '' : 'err');
+}
+
+/** file-start：当前卡加 .on + 状态行「正在审查 i/N：path」 */
+function cwMultiApplyFileStart(ev) {
+  const path = String(ev.path || '');
+  const total = Number(ev.total) || (cwMultiResult && cwMultiResult.total) || 0;
+  cwMultiProgress = { index: Number(ev.index) || 0, total, path, name: String(ev.name || '') };
+  const c = cwMultiCardEls.get(path);
+  if (c) {
+    c.card.classList.add('on');
+    c.card.classList.remove('err');
+    if (c.metaEl) c.metaEl.textContent = '行 ' + (Number(ev.lines) || 0) + ' · 审查中…';
+    if (c.thinkEl) { c.thinkEl.hidden = false; c.thinkEl.open = false; }
+    if (c.sumEl) c.sumEl.textContent = '审查思路（思考中…）';
+    if (c.preEl) c.preEl.textContent = '';
+  }
+  cwSetMultiState('正在审查 ' + cwMultiProgress.index + '/' + total + '：' + path);
+}
+
+/** cross：跨文件总览（summary + findings；失败也不影响前面的结果） */
+function cwMultiApplyCross(ev) {
+  if (cwMultiResult) cwMultiResult.cross = ev;
+  cwRenderMultiCross(ev);
+  if (!ev.skipped) cwSetMultiState('跨文件总览完成，正在收尾…');
+}
+
+/** delta 追加到该文件卡：只保留最近 CW_MULTI_THINK_KEEP 字，避免 8 个文件把内存撑爆 */
+function cwMultiAppendThink(c, text) {
+  if (!c || !c.preEl || !text) return;
+  let t = c.preEl.textContent + String(text);
+  if (t.length > CW_MULTI_THINK_KEEP) t = t.slice(t.length - CW_MULTI_THINK_KEEP);
+  c.preEl.textContent = t;
+  if (c.thinkEl) c.thinkEl.hidden = false;
+  if (c.sumEl) c.sumEl.textContent = '审查思路（思考中 · ' + t.length + ' 字）';
+}
+
+/** 多文件的问题字段：在单文件规整基础上保留服务端带回来的该行原文 lineText */
+function cwNormMultiIssue(it) {
+  const o = cwNormIssue(it, 0);
+  o.lineText = it && typeof it.lineText === 'string' ? it.lineText : undefined;
+  return o;
+}
+
+/** 一张卡里的问题卡片：视觉同 .cwIssue，但点击 = 打开该文件并跳行；多文件不改代码（不做「一键更改」） */
+function cwRenderMultiIssues(container, entry) {
+  if (!container) return;
+  container.textContent = '';
+  const issues = Array.isArray(entry && entry.issues) ? entry.issues : [];
+  if (!issues.length) {
+    const empty = document.createElement('div');
+    empty.className = 'cwMultiEmpty';
+    empty.textContent = entry && entry.parsed === false
+      ? '模型没有返回结构化问题清单（可重试或换个模型）'
+      : '✓ 这个文件没有发现问题';
+    container.appendChild(empty);
+    return;
+  }
+  for (const it of issues) {
+    const card = document.createElement('div');
+    card.className = 'cwIssue';
+    card.dataset.line = String(it.line);
+    card.dataset.endLine = String(it.endLine);
+    card.dataset.severity = it.severity;
+    const head = document.createElement('div');
+    head.className = 'cwIssueHead';
+    head.appendChild(document.createTextNode(cwLineRangeText(it) + ' · '));
+    const sev = document.createElement('span');
+    sev.className = 'sev';
+    sev.textContent = CW_SEV_LABEL[it.severity] || it.severity;
+    head.appendChild(sev);
+    head.appendChild(document.createTextNode(' · ' + it.title));
+    card.appendChild(head);
+    // 多文件时前端没有代码：用服务端 issueLineTexts 带回的该行原文
+    const codeRow = document.createElement('div');
+    codeRow.className = 'cwIssueCode';
+    const codeEl = document.createElement('code');
+    codeEl.textContent = it.lineText ? it.lineText : (it.lineText === '' ? '（空行）' : '（打开文件查看该行）');
+    codeRow.appendChild(codeEl);
+    card.appendChild(codeRow);
+    if (it.detail) {
+      const d = document.createElement('div');
+      d.className = 'cwIssueDetail';
+      d.textContent = it.detail;
+      card.appendChild(d);
+    }
+    if (it.fix) {
+      const fx = document.createElement('div');
+      fx.className = 'cwIssueFix';
+      fx.textContent = '建议：' + it.fix;
+      card.appendChild(fx);
+    }
+    card.title = '打开 ' + entry.path + ' 并跳到第 ' + it.line + ' 行';
+    card.onclick = () => { cwMultiGotoIssue(entry.path, it).catch(() => {}); };
+    container.appendChild(card);
+  }
+}
+
+/** file-findings：填该卡的摘要 + 问题卡，并把结果存进 cwMultiResult.files（导出用） */
+function cwMultiApplyFileFindings(ev) {
+  if (!cwMultiResult) return;
+  const path = String(ev.path || '');
+  const issues = Array.isArray(ev.issues) ? ev.issues.map((it) => cwNormMultiIssue(it)) : [];
+  const planned = cwMultiResult.plan && Array.isArray(cwMultiResult.plan.files)
+    ? cwMultiResult.plan.files.find((f) => f && f.path === path)
+    : null;
+  const entry = {
+    path,
+    name: String(ev.name || (path.split('/').pop() || '')),
+    lang: String(ev.lang || (planned && planned.lang) || ''),
+    lines: Number(ev.lines) || Number(ev.lineCount) || 0,
+    summary: String(ev.summary || ''),
+    issues,
+    seconds: Number(ev.seconds) || 0,
+    parsed: ev.parsed !== false,
+  };
+  let idx = Number(ev.index) >= 1 ? Math.floor(Number(ev.index)) - 1 : cwMultiResult.files.findIndex((f) => f && f.path === path);
+  if (idx < 0) idx = cwMultiResult.files.length;
+  cwMultiResult.files[idx] = entry;
+  const c = cwMultiCardEls.get(path);
+  if (!c) return;
+  c.entry = entry;
+  c.card.classList.remove('on');
+  c.card.classList.remove('err');
+  if (c.metaEl) c.metaEl.textContent = '行 ' + entry.lines + ' · ' + issues.length + ' 个问题';
+  if (c.thinkEl) { c.thinkEl.hidden = false; c.thinkEl.open = false; }
+  if (c.sumEl) c.sumEl.textContent = '审查思路（已完成' + (c.preEl && c.preEl.textContent.length ? ' · ' + c.preEl.textContent.length + ' 字' : '') + '）';
+  cwRenderMultiIssues(c.issuesEl, entry);
+}
+
+/** file-error：该卡红字报错，不杀全局；跨文件阶段会跳过这个文件 */
+function cwMultiApplyFileError(ev) {
+  if (!cwMultiResult) return;
+  const path = String(ev.path || '');
+  const entry = {
+    path,
+    name: String(path.split('/').pop() || ''),
+    lang: '',
+    lines: 0,
+    summary: '',
+    issues: [],
+    seconds: Number(ev.seconds) || 0,
+    parsed: false,
+    error: String(ev.message || '审查失败'),
+  };
+  let idx = Number(ev.index) >= 1 ? Math.floor(Number(ev.index)) - 1 : cwMultiResult.files.findIndex((f) => f && f.path === path);
+  if (idx < 0) idx = cwMultiResult.files.length;
+  cwMultiResult.files[idx] = entry;
+  const c = cwMultiCardEls.get(path);
+  if (!c) return;
+  c.entry = entry;
+  c.card.classList.remove('on');
+  c.card.classList.add('err');
+  if (c.metaEl) c.metaEl.textContent = '审查失败';
+  if (c.thinkEl) { c.thinkEl.open = false; }
+  if (c.sumEl) c.sumEl.textContent = '审查思路（失败）';
+  if (c.issuesEl) {
+    c.issuesEl.textContent = '';
+    const err = document.createElement('div');
+    err.className = 'cwMultiErr';
+    err.textContent = '审查失败：' + entry.error;
+    c.issuesEl.appendChild(err);
+  }
+}
+
+/** cross：跨文件总览摘要（renderMarkdown）+ 每条跨文件问题（点 = 打开该文件并跳行） */
+function cwRenderMultiCross(cross) {
+  if (!cwMultiCrossEl) return;
+  cwMultiCrossEl.textContent = '';
+  if (!cross) return;
+  if (cross.skipped) {
+    const note = document.createElement('div');
+    note.className = 'cwMultiEmpty';
+    note.textContent = '只有一个文件，没有跨文件总览。';
+    cwMultiCrossEl.appendChild(note);
+    return;
+  }
+  const summary = document.createElement('div');
+  summary.className = 'cwMultiCrossSummary';
+  const sumText = String(cross.summary || '').trim();
+  summary.innerHTML = renderMarkdown(sumText || (cross.error ? '（跨文件总览生成失败）' : '（没有生成跨文件总览）'));
+  cwMultiCrossEl.appendChild(summary);
+  if (cross.error) {
+    const err = document.createElement('div');
+    err.className = 'cwMultiErr';
+    err.textContent = '跨文件总览失败：' + String(cross.error);
+    cwMultiCrossEl.appendChild(err);
+  }
+  const findings = Array.isArray(cross.findings) ? cross.findings : [];
+  if (!findings.length) {
+    const none = document.createElement('div');
+    none.className = 'cwMultiEmpty';
+    none.textContent = cross.parsed === false ? '（模型没有返回跨文件问题）' : '（没有发现跨文件问题）';
+    cwMultiCrossEl.appendChild(none);
+    return;
+  }
+  const title = document.createElement('div');
+  title.className = 'cwMultiCrossTitle';
+  title.textContent = '跨文件问题（' + findings.length + '）';
+  cwMultiCrossEl.appendChild(title);
+  for (const f of findings) {
+    const item = document.createElement('div');
+    item.className = 'cwCrossFinding';
+    item.dataset.path = String(f.file || '');
+    item.dataset.line = String(f.line || 1);
+    const sev = String(f.severity || 'info');
+    item.dataset.severity = sev === 'error' || sev === 'warn' || sev === 'info' ? sev : 'info';
+    const head = document.createElement('div');
+    head.className = 'cwCrossFindingHead';
+    const range = Number(f.endLine) > Number(f.line) ? '行 ' + f.line + '–' + f.endLine : '行 ' + f.line;
+    head.appendChild(document.createTextNode(String(f.file || '') + ' ' + range + ' · '));
+    const sevEl = document.createElement('span');
+    sevEl.className = 'sev';
+    sevEl.textContent = CW_SEV_LABEL[item.dataset.severity] || item.dataset.severity;
+    head.appendChild(sevEl);
+    head.appendChild(document.createTextNode(' · ' + String(f.title || '')));
+    item.appendChild(head);
+    if (f.detail) {
+      const d = document.createElement('div');
+      d.className = 'cwCrossFindingDetail';
+      d.textContent = String(f.detail);
+      item.appendChild(d);
+    }
+    if (f.fix) {
+      const fx = document.createElement('div');
+      fx.className = 'cwCrossFindingFix';
+      fx.textContent = '建议：' + String(f.fix);
+      item.appendChild(fx);
+    }
+    item.title = '打开 ' + item.dataset.path + ' 并跳到第 ' + item.dataset.line + ' 行';
+    item.onclick = () => { cwMultiGotoLine(item.dataset.path, Number(f.line) || 1).catch(() => {}); };
+    cwMultiCrossEl.appendChild(item);
+  }
+}
+
+/** done：停表 + 写最终状态（契约 §3.3）*/
+function cwMultiApplyDone(ev) {
+  const n = Number(ev.files);
+  const issues = Number(ev.issues);
+  const skipped = Number(ev.skipped);
+  const secs = Number(ev.seconds);
+  const secTxt = Number.isFinite(secs) ? ' · ' + secs.toFixed(1) + 's' : '';
+  if (cwMultiResult) {
+    cwMultiResult.done = ev;
+    if (Number.isFinite(secs)) cwMultiResult.seconds = secs;
+  }
+  cwResetReviewTimer(); // 先停表，别让计时文案盖掉「完成」
+  const fileCount = Number.isFinite(n) ? n : (cwMultiResult && cwMultiResult.files.filter(Boolean).length) || 0;
+  const text = '完成：' + fileCount + ' 个文件 · ' + (Number.isFinite(issues) ? issues : 0) + ' 个问题 · 跳过 ' + (Number.isFinite(skipped) ? skipped : 0) + secTxt;
+  cwSetMultiState(text, 'ok');
+  cwSetReviewState(text, 'ok');
+  if (ev.model && cwReviewMetaEl) cwReviewMetaEl.textContent = prettyName(ev.model) + secTxt;
+  for (const c of cwMultiCardEls.values()) if (c && c.card) c.card.classList.remove('on');
+  cwRefreshActionButtons();
+}
+
+function cwMultiEntryByPath(path) {
+  if (!cwMultiResult || !Array.isArray(cwMultiResult.files)) return null;
+  for (const f of cwMultiResult.files) if (f && f.path === path) return f;
+  return null;
+}
+
+/** 点文件卡头部：打开该文件，并对该文件的问题上高亮（契约 §3.2） */
+async function cwMultiOpenFile(path) {
+  if (!path) return;
+  await cwOpenFile(path);
+  if (cwCurrent !== path) return;
+  const entry = cwMultiEntryByPath(path);
+  if (entry && Array.isArray(entry.issues) && entry.issues.length) cwApplyIssueHighlights(entry.issues);
+}
+
+/** 点多文件问题卡：先打开文件，再跳到该问题行（高亮同文件全部问题） */
+async function cwMultiGotoIssue(path, issue) {
+  if (!path) return;
+  await cwOpenFile(path);
+  if (cwCurrent !== path) return;
+  const entry = cwMultiEntryByPath(path);
+  const issues = entry && Array.isArray(entry.issues) ? entry.issues : [];
+  if (issues.length) cwApplyIssueHighlights(issues);
+  if (issue) cwGotoIssue(issue);
+}
+
+/** 点跨文件问题：先打开文件，再跳到该行 */
+async function cwMultiGotoLine(path, line) {
+  if (!path) return;
+  await cwOpenFile(path);
+  if (cwCurrent !== path) return;
+  const entry = cwMultiEntryByPath(path);
+  if (entry && Array.isArray(entry.issues) && entry.issues.length) cwApplyIssueHighlights(entry.issues);
+  const n = Math.max(1, Math.round(Number(line) || 1));
+  cwGotoIssue({ line: n, endLine: n });
+}
+
+/**
+ * 多文件 / 整工作区一起审查（契约 §3.3）：POST /api/code/review/multi（SSE）。
+ * scope='selection' 用勾选集合，'workspace' 用 #cwList 当前的全部文件（cwFilesCache）。
+ */
+async function cwReviewMulti(scope) {
+  if (cwReviewBusy) return;
+  scope = scope === 'workspace' ? 'workspace' : 'selection';
+  // 服务端读的是磁盘内容：当前文件有未保存改动先落盘，否则会审到旧代码（契约 §3.3）
+  if (cwCurrent && cwDirty) {
+    const okSaved = await cwSaveFile(true);
+    if (!okSaved) { showToast('当前文件保存失败，已取消多文件审查', 'err', 4600); return; }
+  }
+  const paths = scope === 'workspace'
+    ? cwFilesCache.map((f) => f.path)
+    : [...cwSelPaths];
+  if (!paths.length) {
+    showToast(scope === 'workspace'
+      ? 'code/ 下还没有文件'
+      : '先勾选要一起审查的文件（文件列表左边的复选框）', 'warn', 4200);
+    return;
+  }
+  if (paths.length > CW_MULTI_MAX_INPUT) {
+    showToast('一次最多提交 ' + CW_MULTI_MAX_INPUT + ' 个文件（当前 ' + paths.length + ' 个）：请用「审查选中」挑要审的', 'warn', 5600);
+    return;
+  }
+  if (!localToken) { try { await refresh(); } catch {} }
+  const modelSel = cwReviewModelEl ? (cwReviewModelEl.value || '') : '';
+  // 审查结果总要看得到：开始前自动展开面板
+  cwApplyReviewOpen(true);
+  try { localStorage.setItem(CW_REVIEW_OPEN_KEY, '1'); } catch {}
+  cwReviewBusy = true;
+  cwStopRequested = false;
+  cwAbortCtl = new AbortController();
+  const t0 = Date.now();
+  if (cwReviewMetaEl) cwReviewMetaEl.textContent = '';
+  cwResetReviewView();
+  cwMultiResult = { at: t0, scope, plan: null, files: [], cross: null, meta: null, done: null, seconds: null, total: paths.length };
+  cwMultiScope = scope;
+  cwMultiProgress = { index: 0, total: paths.length, path: '', name: '' };
+  if (cwMultiWrapEl) cwMultiWrapEl.hidden = false;
+  cwSetMultiState('正在读取 ' + paths.length + ' 个文件…');
+  cwRefreshActionButtons();
+  cwReviewStartTimer('multi', t0);
+  const payload = { files: paths, intent: cwIntentValue() };
+  if (modelSel) payload.model = modelSel;
+  try {
+    await cwStreamSSE('/api/code/review/multi', payload, (ev) => {
+      if (!ev || typeof ev !== 'object') return;
+      if (ev.type === 'meta') cwMultiApplyMeta(ev);
+      else if (ev.type === 'plan') cwMultiApplyPlan(ev);
+      else if (ev.type === 'file-start') cwMultiApplyFileStart(ev);
+      else if (ev.type === 'delta') cwMultiAppendThink(cwMultiCardEls.get(String(ev.path || '')), ev.text);
+      else if (ev.type === 'file-findings') cwMultiApplyFileFindings(ev);
+      else if (ev.type === 'file-error') cwMultiApplyFileError(ev);
+      else if (ev.type === 'cross-start') cwSetMultiState('正在做跨文件总览…');
+      else if (ev.type === 'cross') cwMultiApplyCross(ev);
+      else if (ev.type === 'done') cwMultiApplyDone(ev);
+      else if (ev.type === 'error') throw new Error(ev.message || '多文件审查失败');
+    }, cwAbortCtl.signal);
+  } catch (e) {
+    if (cwStopRequested || (e && e.name === 'AbortError')) {
+      // 用户点了「停止」：保留已完成的逐文件结果
+      cwSetMultiState('已停止（多文件审查已中断）');
+      cwSetReviewState('已停止（多文件审查已中断）', '');
+    } else {
+      const msg = e && e.status === 404
+        ? '后端接口还没就绪（/api/code/review/multi 未实现）'
+        : (e && e.message ? e.message : String(e));
+      cwSetMultiState('审查失败：' + msg, 'err');
+      cwSetReviewState('审查失败：' + msg, 'err');
+      showToast('多文件审查失败：' + msg, 'err', 6200);
+    }
+  } finally {
+    cwResetReviewTimer();
+    cwAbortCtl = null;
+    cwReviewBusy = false;
+    cwStopRequested = false;
+    if (cwMultiProgress) cwMultiProgress = { index: 0, total: cwMultiProgress.total, path: '', name: '' };
+    for (const c of cwMultiCardEls.values()) if (c && c.card) c.card.classList.remove('on');
+    cwRefreshActionButtons();
+  }
+}
+
+/** 导出多文件复审（契约 §3.4）：POST /api/code/review/export kind=multi → 下载 .multi.review.md */
+async function cwExportMultiReview() {
+  if (cwReviewBusy) return;
+  if (!cwMultiHasFiles()) {
+    showToast('还没有多文件审查结论：先点「审查选中」或「审查工作区」', 'warn', 4400);
+    return;
+  }
+  try {
+    if (!localToken) { try { await refresh(); } catch {} }
+    const plan = (cwMultiResult && cwMultiResult.plan) || {};
+    const model = (cwMultiResult && cwMultiResult.meta && (cwMultiResult.meta.modelFile || cwMultiResult.meta.model)) || '';
+    const files = cwMultiResult.files.filter(Boolean).map((f) => ({
+      path: f.path,
+      name: f.name,
+      lang: f.lang,
+      lines: f.lines,
+      summary: f.summary || (f.error ? '（审查失败：' + f.error + '）' : ''),
+      issues: Array.isArray(f.issues) ? f.issues : [],
+      seconds: Number(f.seconds) || 0,
+      parsed: f.parsed !== false,
+    }));
+    const body = {
+      kind: 'multi',
+      meta: {
+        file: 'workspace',
+        intent: cwIntentValue(),
+        at: cwMultiResult.at || Date.now(),
+        model,
+        skipped: Array.isArray(plan.skipped) ? plan.skipped : [],
+      },
+      files,
+      cross: cwMultiResult.cross ? {
+        summary: cwMultiResult.cross.summary || '',
+        findings: Array.isArray(cwMultiResult.cross.findings) ? cwMultiResult.cross.findings : [],
+        parsed: !!cwMultiResult.cross.parsed,
+      } : null,
+    };
+    const j = await cwPostJson('/api/code/review/export', body);
+    cwDownloadText(j.filename, j.markdown);
+    cwSetExportState('已导出 ' + j.filename + '（' + j.bytes + ' 字节）');
+    showToast('已导出 ' + j.filename, 'ok', 3600);
+  } catch (e) {
+    cwSetExportState('导出失败：' + e.message);
+    showToast('导出失败：' + e.message, 'err', 6400);
+  }
 }
 
 /** 旧的非流式审查（后端还没升级时的兜底，渲染进入 #cwReviewBody） */
@@ -6888,6 +7598,21 @@ if (cwChallengeEl) cwChallengeEl.onclick = () => cwToggleChallenge();
 if (cwChallengeSendEl) cwChallengeSendEl.onclick = () => { if (cwReviewBusy) cwStopReview(); else cwSendChallenge(); };
 if (cwCrossEl) cwCrossEl.onclick = () => { if (cwReviewBusy) cwStopReview(); else cwCrossReview(); };
 if (cwCloudEl) cwCloudEl.onclick = () => { if (cwReviewBusy) cwStopReview(); else cwCloudReview(); };
+// v1.10.0 多文件 / 整工作区一起审查：全选 / 审查选中 / 审查工作区 / 导出多文件复审
+if (cwSelAllEl) cwSelAllEl.addEventListener('change', () => {
+  if (cwSelAllEl.checked) for (const f of cwFilesCache) cwSelPaths.add(f.path);
+  else cwSelPaths.clear();
+  cwRenderSelState();
+});
+if (cwReviewSelEl) cwReviewSelEl.onclick = () => {
+  if (cwReviewBusy) { if (cwReviewMode === 'multi') cwStopReview(); return; }
+  cwReviewMulti('selection');
+};
+if (cwReviewWsEl) cwReviewWsEl.onclick = () => {
+  if (cwReviewBusy) { if (cwReviewMode === 'multi') cwStopReview(); return; }
+  cwReviewMulti('workspace');
+};
+if (cwExportMultiEl) cwExportMultiEl.onclick = () => cwExportMultiReview();
 if (cwCrossModelEl) cwCrossModelEl.addEventListener('change', () => {
   const v = cwCrossModelEl.value;
   showToast(v ? '他人复审会用 ' + prettyName(v) : '他人复审会自动挑一个与当前不同的模型', 'info', 3600);

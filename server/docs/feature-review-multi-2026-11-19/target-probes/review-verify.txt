@@ -1,0 +1,124 @@
+﻿
+== 目标 http://127.0.0.1:8099 · CDP http://127.0.0.1:9333 ==
+  ok   GET /api/state -> 200  [HTTP 200 {"models":[{"file":"DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf","path":"D:\\LocalModels\\DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf","sizeGB":4.68,"label":"DeepSeek-R1-052]
+  开跑前模型状态: loaded=qwen3-5-4B-Q4_K_M.gguf context=16384（收尾会原样恢复）
+  ok   前置：模型已就绪（他人复审要用同一个模型做指定分支）  [loaded=qwen3-5-4B-Q4_K_M.gguf]
+  开跑前已有云端 Key（配置文件将备份，收尾原样写回，不打印 Key）
+
+== A. 质询 API（POST /api/code/review/challenge） ==
+  ok   A. 无令牌 -> 403  [HTTP 403 缺少或错误的本地令牌（x-local-token）]
+  ok   A. 缺 code -> 400  [HTTP 400 缺少 code]
+  ok   A. question 为空 -> 400  [HTTP 400 缺少 question（要质询什么）]
+  ok   A. code 超 20000 字符 -> 413  [HTTP 413 代码太长（上限 20000 字符）]
+  质询事件序列: meta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> 
+  ok   A. 质询 -> 200 + text/event-stream  [HTTP 200 ct=text/event-stream; charset=utf-8 21.4s]
+  ok   A. 顺序 meta 第一 -> delta* -> done（done 最后）  [{"meta":0,"deltas":210,"done":211,"total":212}]
+  ok   A. delta 拼接非空  [len=387]
+  ok   A. delta 不含裸 JSON（无 issues 字段）  [成立。 依据：第 3 行循环条件 `i <= items.length` 确实会导致当 `i` 等于数组长度时执行循环体，此时 `items[i]` 为 `undefined`，进而导致第 4 行 `]
+  ok   A. delta 不含代码围栏  [成立。 依据：第 3 行循环条件 `i <= items.length` 确实会导致当 `i` 等于数组长度时执行循环体，此时 `items[i]` 为 `undefined`，进而导致第 4 行 `]
+  ok   A. meta.modelFile 非空  [modelFile=qwen3-5-4B-Q4_K_M.gguf]
+  ok   A. done.seconds 是正数  [seconds=21.4]
+  ok   A. 带 2 轮 history 再问 -> 仍 200  [HTTP 200 14.1s]
+
+== B. 他人复审 API（POST /api/code/review/cross） ==
+  ok   B. 无令牌 -> 403  [HTTP 403 缺少或错误的本地令牌（x-local-token）]
+  ok   B. 缺 code -> 400  [HTTP 400 缺少 code]
+  复审事件序列: meta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta 
+  ok   B. 指定模型复审 -> 200 + text/event-stream  [HTTP 200 ct=text/event-stream; charset=utf-8 48.8s]
+  ok   B. delta >= 1 且都在 findings 之前  [{"deltas":308,"findings":310}]
+  ok   B. 有 findings 和 compare 事件（compare 在 findings 之后）  [findings=310 compare=311]
+  ok   B. 顺序：meta 第一、done 在 compare 之后且最后、全程无 error  [{"meta":0,"compare":311,"done":312,"total":313,"phase":1}]
+  ok   B. findings.issues 是数组  [type=object n=2]
+  ok   B. findings.issues 字段齐全（line/endLine/severity/title/detail/fix）  [n=2]
+  ok   B. issue 行号在 1..lineCount 内（已吸到真代码行）  [lineCount=9]
+  ok   B. verdict 属于 consistent/differs/contradicts  [verdict=differs]
+  ok   B. stats 自洽：matched = agree + conflicts  [{"primary":1,"second":2,"matched":1,"agree":1,"onlyPrimary":0,"onlySecond":1,"conflicts":0}]
+  ok   B. stats 自洽：matched + onlySecond === second  [{"primary":1,"second":2,"matched":1,"agree":1,"onlyPrimary":0,"onlySecond":1,"conflicts":0}]
+  ok   B. stats 自洽：matched + onlyPrimary === primary  [{"primary":1,"second":2,"matched":1,"agree":1,"onlyPrimary":0,"onlySecond":1,"conflicts":0}]
+  ok   B. meta.sameModel 是 boolean  [sameModel=true]
+  ok   B. agree/onlyPrimary/onlySecond/conflicts 都是数组  [["agree:1","onlyPrimary:0","onlySecond:1","conflicts:0"]]
+  ok   B. 数组项结构：only* 带 line、conflicts 是 {primary,second,reason}  [onlyP=0 onlyS=1 conflicts=0]
+  ok   B. 指定 model 时 modelFile 匹配且 sameModel=true  [modelFile=qwen3-5-4B-Q4_K_M.gguf want=qwen3-5-4B-Q4_K_M.gguf]
+  ok   B. 不指定模型：200 SSE、meta 第一、不会挑 Phi-4-mini  [HTTP 200 modelFile=DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf (候选 DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf, gpt-oss-20b-MXFP4.gguf, qwen3-5-4B-Q4_K_M.gguf, Qwen3.5-9B-Q4_K_M.gguf]
+
+== C. 云端配置（GET/POST /api/cloud/config） ==
+  本地 stub 云端: http://127.0.0.1:1103/v1（随机端口 1103，不出网）
+  ok   C. GET 形状：200/ok:true + 8 核心字段 + file，类型正确  [HTTP 200 missing= badType= file=data\cloud-review.json]
+  ok   C. POST 无令牌 -> 403  [HTTP 403 缺少或错误的本地令牌（x-local-token）]
+  ok   C. 非法 URL -> 400  [HTTP 400 baseURL 不是合法 URL（例：https://api.openai.com/v1）]
+  ok   C. http 非回环 -> 400 INSECURE_URL  [HTTP 400 code=INSECURE_URL 云端复审只允许 https（本机回环可用 http）]
+  ok   C. dryRun -> 200 且 dryRun:true  [HTTP 200 dryRun=true]
+  ok   C. dryRun 不落盘（GET 完全不变）  [before=[false,"https://api.deepseek.com","deepseek-flash",false,false] after=[false,"https://api.deepseek.com","deepseek-flash",false,false]]
+  ok   C. 保存 -> 200 且 hasKey:true  [HTTP 200 hasKey=true enabled=true]
+  ok   C. keyMasked 是 3+***+4 形状且不带明文  [keyMasked=sk-***1234]
+  ok   C. host = new URL(baseURL).host  [host=127.0.0.1:1103 want=127.0.0.1:1103]
+  ok   C. ready = enabled && baseURL && model && apiKey  [ready=true]
+  ok   C. 响应全文不含明文 key  [len=788]
+  ok   C. apiKey:"" 清除 -> hasKey:false  [{"hasKey":false,"keyMasked":""}]
+
+== D. 云端复审（POST /api/code/review/cloud，本地 stub） ==
+  ok   D. 未配置 -> 400 CLOUD_NOT_READY  [HTTP 400 code=CLOUD_NOT_READY 云端复审还没配置好：到「设置 → 代码 → 云端复审」填 baseURL / 模型 / API Key 并勾选启用]
+  ok   D. confirm 不匹配 -> 409 CONFIRM_REQUIRED  [HTTP 409 code=CONFIRM_REQUIRED 未确认目标域名：请求体 confirm 必须等于当前配置的 host（127.0.0.1:1103）]
+  ok   D. confirm 缺失 -> 409 CONFIRM_REQUIRED  [HTTP 409 code=CONFIRM_REQUIRED]
+  云端事件序列: meta -> meta -> delta -> delta -> delta -> delta -> delta -> delta -> findings -> done
+  ok   D. 云端复审 -> 200 + text/event-stream  [HTTP 200 ct=text/event-stream; charset=utf-8 3.2s]
+  ok   D. meta 第一且 provider=cloud、host 正确  [provider=cloud host=127.0.0.1:1103 want=127.0.0.1:1103]
+  ok   D. meta.sentChars>0 且 redactions>0（塞了 key/邮箱/路径/IP）  [sentChars=329 redactions=5]
+  ok   D. delta 分 >=3 段推（~80 字一段）  [deltas=6]
+  ok   D. delta 拼接 = stub 返回的文本  [deltaLen=473 stubLen=473]
+  ok   D. findings 解析：parsed=true 且 issues>=1（stub 文本里的 JSON 能解析）  [parsed=true n=2]
+  ok   D. done 有 seconds  [seconds=0.1]
+  ok   D. stub 收到的 body 不含原 apiKey/邮箱/Windows 路径/内网 IP 明文  [bodyLen=1005]
+  ok   D. stub 收到的 body 里出现 4 个脱敏标记  [[]]
+  ok   D. 上游 500 -> 502 CLOUD_UPSTREAM  [HTTP 502 code=CLOUD_UPSTREAM 上游 500：{"error":{"message":"stub 上游故意 500"}}]
+  ok   D. 上游慢（3s）不崩：200 收尾或 error 带 message  [HTTP 200 events=meta,meta,delta,delta,delta,delta,delta,delta,findings,done err=data: {"type":"meta","provider":"cloud","host":"127.0.0.1:1103","model":"probe-stub","sent]
+  ok   D. 慢上游确实等到 stub 延时（>=2s）  [ms=3019 HTTP 200]
+
+== F. 推理型模型（本地 stub 造四种上游，绝不真出网） ==
+  F1 事件序列: meta -> meta -> delta -> delta -> delta -> delta -> delta -> delta -> findings -> done
+  ok   F1. 上游只回 reasoning -> 服务真的重试（stub 收到 >=2 次）  [hits=2]
+  ok   F1. 首个请求体顶层带 thinking:{type:"disabled"}（契约①）  [{"type":"disabled"}]
+  ok   F1. 重试后 200 SSE + findings 有 issues + 无 error/无 502  [HTTP 200 issues=2 ]
+  ok   F1. meta.attempts>=2 且 thinkingDisabled=false（重试已去掉 thinking）  [attempts=2 thinkingDisabled=false usedReasoningFallback=false]
+  F2 事件序列: meta -> meta -> delta -> delta -> delta -> delta -> delta -> delta -> findings -> done
+  ok   F2. 上游不认 thinking（400）-> 服务去 thinking 重试（stub 收到 >=2 次）  [hits=2]
+  ok   F2. 首请求带 thinking、重试请求已去掉 thinking  [{"first":{"type":"disabled"},"lastHas":false}]
+  ok   F2. 重试后 200 SSE + findings 有 issues + 无 error/无 502  [HTTP 200 issues=2 ]
+  ok   F2. meta.attempts>=2 且 thinkingDisabled=false  [attempts=2 thinkingDisabled=false]
+  F3 事件序列: meta -> meta -> delta -> delta -> delta -> delta -> delta -> delta -> findings -> done
+  ok   F3. 永远只回 reasoning -> 200 且无 error/无 CLOUD_EMPTY  [HTTP 200 data: {"type":"meta","provider":"cloud","host":"127.0.0.1:1103","model":"probe-stub","sent]
+  ok   F3. 把 reasoning 当正文推流：delta 拼接非空且等于上游 reasoning 原文  [len=426 wantLen=426]
+  ok   F3. meta.usedReasoningFallback === true  [usedReasoningFallback=true attempts=2]
+  ok   F3. findings 字段仍齐全（parsed 是 bool、issues 是数组、行号/severity/title/detail/fix 合法）  [parsed=true n=2 lineCount=9]
+  F4 结果: HTTP 502 code=CLOUD_EMPTY 上游 200 但正文为空（finish_reason=stop）：如果是推理模型，请换成非推理模型或加大 max_tokens {"ok":false,"code":"CLOUD_EMPTY","message":"上游 200 但正文为空（finish_reason=stop）
+  ok   F4. content 与 reasoning 都空 -> JSON 502（不是 SSE 200 空正文）  [HTTP 502 ct=application/json; charset=utf-8 上游 200 但正文为空（finish_reason=stop）：如果是推理模型，请换成非推理模型或加大 max_tokens {"ok":false,"code":"CLOUD_EMPTY","me]
+  ok   F4. 错误码/正文含 CLOUD_EMPTY（或 message 含「正文为空」）  [code=CLOUD_EMPTY 上游 200 但正文为空（finish_reason=stop）：如果是推理模型，请换成非推理模型或加大 max_tokens {"ok":false,"code":"CLOUD_EMPTY","message":"上游 200 但正文为空（finish_reason=stop）]
+
+== E. UI（CDP，Edge 9333） ==
+  Edge 视口 innerWidth=500（应约 1408；被缩成 500 就是窗口被缩了，重启 Edge）
+  ok   E. 代码面板有 #cwChallenge/#cwCross/#cwCloud  [modal=true]
+  ok   E. 有 #cwCrossModel 下拉
+  ok   E. #cwCrossModel 里没有 Phi-4-mini 选项  [[]]
+  ok   E. 点 #cwChallenge 展开 #cwChallengeBox
+  ok   E. 质询区有输入框/发送键/记录区  [ids=cwChallengeText,cwChallengeSend,cwChallengeLog]
+  ok   E. 设置→代码 有 #cloudBase/#cloudModel/#cloudKey/#cloudSave  [tab=ok ids=cloudBase,cloudModel,cloudKey,cloudSave]
+  ok   E. #cloudKey 是 password 输入框
+  ok   E. 云端 ready 时点 #cwCloud 弹 #cloudConfirmModal  [hits=10]
+  ok   E. #cloudConfirmHost 里含目标 host（127.0.0.1:1103）  [会把当前文件的代码（已脱敏）发到 127.0.0.1:1103]
+    截图: D:\LocalModels\server\docs\feature-code-review-verify-2026-11-15\probe-verify-ui-confirm.png
+  ok   E. 点取消不发请求（stub 计数不变 + 弹窗关闭）  [hits 10 -> 10 hidden=true]
+  ok   E. 点确认后 meta/状态行出现「云端」  [云端 · 127.0.0.1:1103 等待云端回复…（已用 0.0s）]
+  ok   E. #cwIssues 渲染出云端结论卡片（>=1 张）  [n=2 hits=11]
+    截图: D:\LocalModels\server\docs\feature-code-review-verify-2026-11-15\probe-verify-ui-cloud.png
+
+== Z. 收尾 ==
+  ok   Z. 收尾：云端配置已停用 + Key 已清  [{"enabled":false,"hasKey":false,"baseURL":"https://api.deepseek.com"}]
+  已把开跑前的 data\cloud-review.json 原样写回（含明文 Key，不打印）：enabled=true hasKey=true host=api.deepseek.com
+  stub 已关闭（共收到 11 次 /chat/completions 请求）
+  UI 已导航回 http://127.0.0.1:8099/
+  临时文件删除: code/probe-verify-mwp4n0ac.js HTTP 200
+  模型切回 qwen3-5-4B-Q4_K_M.gguf（contextSize=16384，与开跑时一致）…
+  ok   Z. 收尾：模型与上下文已原样恢复（qwen3-5-4B-Q4_K_M.gguf / 16384）  [loaded=qwen3-5-4B-Q4_K_M.gguf context=16384（开跑时 16384）loadHTTP=200]
+
+== 结果: 87/87 通过 ==
+

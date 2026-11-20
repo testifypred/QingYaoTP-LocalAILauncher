@@ -99,6 +99,8 @@ foreach ($need in @(
     (Join-Path $Server 'diag-zip.mjs'),
     # 视觉增强包（app.mjs import 了它：解 ZIP / 装 / 卸）；漏了整包起不来（2026-11-15 v1.6.0 差点漏）
     (Join-Path $Server 'vision-pack.mjs'),
+    # v1.10.0 多文件 / 整工作区审查（app.mjs import 了它）；漏了整包起不来（同 vision-pack 的老账）
+    (Join-Path $Server 'code-review-multi.mjs'),
     (Join-Path $Server 'debug.html'),
     (Join-Path $Server 'localai-debug.mjs'),
     (Join-Path $Server 'localai-debug.cmd'),
@@ -174,6 +176,8 @@ Copy-Item (Join-Path $Server 'localai-tui.cmd') $AppDir -Force
 Copy-Item (Join-Path $Server 'diag-zip.mjs') $AppDir -Force
 # 视觉增强包：app.mjs import 的 vision-pack.mjs（自己解 ZIP、装/卸 sidecar）；和 doc-extract 一样必须进包
 Copy-Item (Join-Path $Server 'vision-pack.mjs') $AppDir -Force
+# v1.10.0 多文件审查：app.mjs import 的纯函数模块（拼计划 / 跨文件结论 / 导出 Markdown）
+Copy-Item (Join-Path $Server 'code-review-multi.mjs') $AppDir -Force
 Copy-Item (Join-Path $Server 'debug.html') $AppDir -Force
 Copy-Item (Join-Path $Server 'localai-debug.mjs') $AppDir -Force
 Copy-Item (Join-Path $Server 'localai-debug.cmd') $AppDir -Force

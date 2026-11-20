@@ -1,0 +1,103 @@
+﻿
+== 目标 http://127.0.0.1:8099，CDP http://127.0.0.1:9333，令牌 已取到，模型 qwen3-5-4B-Q4_K_M.gguf ==
+
+== A. 纯函数（import ./code-review-multi.mjs，不需要服务 / 模型）==
+ok   A1 常量口径 8 / 6000 / 36000 / 40  [8 / 6000 / 36000 / 40]
+ok   A2 normalizeMultiPaths 非数组 / 空输入 → paths: []、dropped: []  [{"paths":[],"dropped":[]} / {"paths":[],"dropped":[]}]
+ok   A3 normalizeMultiPaths 归一（trim / 反斜杠转斜杠 / 去 ./ / 折叠 // / 去尾 /）  [{"paths":["code/a.js","code/b.js","code/c.js","code/d.js","code/e"],"dropped":[]}]
+ok   A4 normalizeMultiPaths 大小写不敏感去重（保留第一次）  [{"paths":["code/a.js","code/b.js"],"dropped":[{"path":"code/A.JS","reason":"duplicate"},{"path":"code/a.js","reason":"duplicate"}]}]
+ok   A5 normalizeMultiPaths 非法（空 / NUL / .. 段 / 盘符）→ dropped reason invalid  [{"paths":["code/a.js"],"dropped":[{"path":"","reason":"invalid"},{"path":"code/a\u0000b.js","reason":"invalid"},{"path":"code/../x.js","reason":"invalid"},{"path":"C:/x/y.js","reason":"invalid"}]}]
+ok   A6 normalizeMultiPaths 接受 { path } 对象  [{"paths":["code/obj.js","code/str.js"],"dropped":[]}]
+ok   A7 以 / 开头 → 归一成 code/slash.js 或 dropped invalid（§1.1 两处口径不一，二者都算过）  [{"paths":[],"dropped":[{"path":"/code/slash.js","reason":"invalid"}]}]
+ok   A8 isUnderCodeDir：归一后以 code/ 开头且长度 > 5
+ok   A9 buildMultiPlan lang 扩展名映射（28 例，含大写扩展名 / 无扩展名 / 未知）  [n=28]
+ok   A10 buildMultiPlan name=basename、files 顺序 = entries 顺序  [n=28]
+ok   A11 buildMultiPlan 四类 reason：ok / unreadable / empty / too_large / 6000 字符边界不超  [["ok","unreadable","empty","ok","too_large","ok"]]
+ok   A12 buildMultiPlan reviewable = 只含 ok:true 的 path（顺序同上）  [["code/m-main-a.js","code/m-main-b.js","code/m-bound.js"]]
+ok   A13 buildMultiPlan totals 自洽（input/reviewable/skipped/chars/lines 只算 ok）  [{"input":6,"reviewable":3,"skipped":3,"chars":6063,"lines":4} 期望 chars=6063 lines=4]
+ok   A14 buildMultiPlan skipped 项带 chars（too_large=6001 / unreadable=0）  [{"big":6001,"err":0,"empty":7}]
+ok   A15 buildMultiPlan budget（totalChars=100，60+60 超预算 → 第 2 个起 budget）  [["ok","budget","budget"]]
+ok   A16 buildMultiPlan limit（9 个文件 → 8 个可审 + 第 9 个 limit）  [["ok","ok","ok","ok","ok","ok","ok","ok","limit"]]
+ok   A17 buildMultiPlan 空数组 / null → 空结构、不抛  [{"input":0,"reviewable":0,"skipped":0,"chars":0,"lines":0}]
+ok   A18 multiReviewPrompt 第一行带【第 i/N 个文件】  [【第 2/3 个文件】]
+ok   A19 multiReviewPrompt 沿用【用户意图】【文件】【语言】【代码行数】+ 围栏  [【第 2/3 个文件】 | 【用户意图】检查并发写入 | 【文件】code/a.js | 【语言】javascript | 【代码行数】42]
+ok   A20 multiReviewPrompt lang 为空 → 围栏不带语言标记  [["```","```"]]
+ok   A21 multiReviewPrompt 确定性（同参数两次相同）
+ok   A22 issueLineTexts 行原文 + 空行 "" + 行号 clamp 到 [1, lines.length]  [["const x = 1;","","function a() {","}"]]
+ok   A23 issueLineTexts trim + 截断 <= 80 字符、不改入参  [len=80 inPlace=]
+ok   A24 normalizeCrossFindings 全等 / basename 唯一匹配 + 字段归一（line/endLine/severity/title）  [[["code/a.js",3,3,"error","T1"],["code/b.js",6,6,"info","问题"],["code/sub/c.py",1,1,"info","问题"],["code/a.js",1,1,"warn","T2"]]]
+ok   A25 normalizeCrossFindings 未知 file → 丢弃计数（不抛）  [{"findings":[],"dropped":2}]
+ok   A26 normalizeCrossFindings basename 有多个同名 → 丢弃（不猜）  [{"findings":[],"dropped":1}]
+ok   A27 normalizeCrossFindings title<=120 / detail,fix<=800 / 空 title → 问题  [title=120 detail=800 fix=800]
+ok   A28 normalizeCrossFindings 默认截断 12 / opts.maxFindings=2  [12 / 2]
+ok   A29 normalizeCrossFindings 非数组 / 脏元素 → 空结构、不抛  [{"nul":0,"bad":2}]
+ok   A30 multiCrossPrompt：intent + 路径 + 行数 + 问题标题 + JSON 约束（file 必须是给定路径之一）  [【用户意图】看看两个文件之间的一致性 【本次一起审查的文件】共 2 个 - code/a.js（12 行，已发现 1 个问题）   行 3（error）循环越界 - code/b.py（8 行，已发现 0 个问题）  请你只做跨文件分析：找]
+ok   A31 multiCrossPrompt 简短（只放摘要与问题标题，不放代码正文）  [len=482]
+ok   A32 aggregateMultiReview：files=3 / issues=4 / clean=1 / bySeverity error2 warn1 info1  [{"files":3,"issues":4,"clean":1,"bySeverity":{"error":2,"warn":1,"info":1}}]
+ok   A33 buildMultiReviewMarkdown 标题「# 多文件审查 · N 个文件」+ 四节 + 说明  [# 多文件审查 · 2 个文件 / 缺: ]
+ok   A34 buildMultiReviewMarkdown meta 四行（审查时间 / 模型 / 用户意图 / 计划）  [- **审查时间**：2026-11-19T23:30:00+08:00 | - **模型**：Qwen3.5-9B | - **用户意图**：一起看看多文件 | - **计划**：审查 2 个 / 跳过 2 个 | - **文件**：2 个（无问题 1 个） | - **问题**：2 个（error 1 · warn 1 · info 0）]
+ok   A35 buildMultiReviewMarkdown 逐文件小节（行数 / 问题数 / 摘要 / 问题行 / 无问题与无摘要兜底）  [ /  / ### 1. code/a.js（12 行 · 2 个问题） /  / 有 2 个问题 /  / - 行 3（error）循环越界 —— i<=len 会越界（建议：改成 i<len） / - 行 5（warn）没判空 /  / ### 2. code/b.js（4 行 · 0 个问题） /  / （没有摘要） /  / （没有发现问题） /  / ## 三、跨文件问题 /  / 两个文件都有边界问题 /  / - code/a.js 行 3（error）越界]
+ok   A36 buildMultiReviewMarkdown 跨文件问题（summary + 每条 finding 的 文件/行/严重度/标题）  [ /  / 两个文件都有边界问题 /  / - code/a.js 行 3（error）越界 —— 同上 /  / ## 四、跳过的文件 /  / - code/big.js —— too_large（6001 字符）：超过单文件 6000 字符上限，请单独审查 / - code/emp.js —— empty（0 字符）：空文件（没有可审查的内容） /  / ]
+ok   A37 buildMultiReviewMarkdown 空 cross 兜底（没有生成跨文件总览 / 没有发现跨文件问题）  [## 三、跨文件问题]
+ok   A38 buildMultiReviewMarkdown 跳过清单（path + reason + 6001 字符）+ 空清单兜底  [ /  / - code/big.js —— too_large（6001 字符）：超过单文件 6000 字符上限，请单独审查 / - code/emp.js —— empty（0 字符）：空文件（没有可审查的内容） /  / ## 说明 /  / - 本文件由「审查面板 → 导出多文件复审」生成，只含结论与问题描述，**不含代码正文**。]
+ok   A39 buildMultiReviewMarkdown at 非法 → 「未知」+ 0 文件标题  [# 多文件审查 · 0 个文件 /  / - **审查时间**：未知]
+
+== B. API plan + 参数校验（不需要模型）==
+ok   B1 /api/state 200 且拿到本机令牌  [tokenLen=36]
+ok   B2 plan 无令牌 → 403  [HTTP 403 缺少或错误的本地令牌（x-local-token）]
+ok   B3 plan 缺 files → 400 且文案提到 files / 文件  [HTTP 400 缺少 files（只能审查 code/ 下的文件）]
+ok   B4 plan files 不是数组 → 400  [HTTP 400 {"error":{"message":"缺少 files（只能审查 code/ 下的文件）"}}]
+ok   B5 plan 41 个路径 → 400（一次最多 40 个）  [HTTP 400 一次最多提交 40 个文件]
+ok   B6 plan 非 code/ 路径 → 400 且文案提到 code/  [HTTP 400 只能审查 code/ 下的文件：note.txt]
+ok   B7 plan 路径穿越（.. 段）→ 400  [HTTP 400 缺少 files（只能审查 code/ 下的文件）]
+ok   B8 夹具建好（POST /api/workspace/save 200 ×3）  [HTTP 200/200/200]
+ok   B9 plan 200：reviewable 只含 ok 夹具、skipped = empty/too_large/unreadable、files 顺序 = 请求顺序  [HTTP 200 reviewable=["code/probe-multi-mwp658mg-b-ok.js"] skipped=["empty","too_large","unreadable"] ]
+ok   B10 plan 顶层带 dropped：大小写重复路径 → duplicate、files 只 1 个  [HTTP 200 dropped=[{"path":"code/probe-multi-mwp658mg-DUP.JS","reason":"duplicate"}]]
+ok   B11 plan 40 个（边界内）→ 200，40 个都按 unreadable 跳过（不因数量 400）  [HTTP 200 files=40 skipped=40]
+ok   B12 plan 9 个文件 → 200、reviewable 8 个、skipped 1 个 reason=limit  [HTTP 200 reviewable=8 reasons=["limit"]]
+ok   B13 /multi files 为空 → 400（参数错误先于模型校验；不是 409、不是 SSE）  [HTTP 400 ct=application/json; charset=utf-8 缺少 files（只能审查 code/ 下的文件）]
+ok   B14 /multi 非 code/ 路径 → 400  [HTTP 400 只能审查 code/ 下的文件：note.txt]
+ok   B15 /multi 41 个路径 → 400  [HTTP 400 一次最多提交 40 个文件]
+
+== C. 真模型 SSE（模型没加载 / 接口 404 → skip）==
+  事件序列: meta -> plan -> file-start -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> delta -> d
+ok   C1 /api/code/review/multi → 200 + text/event-stream  [HTTP 200 ct=text/event-stream; charset=utf-8 （63.0s）]
+ok   C2 事件顺序：meta 第一、plan 第二、done 最后  [{"total":295,"meta":0,"plan":1,"done":294,"tail":["cross-start","cross","done"]}]
+ok   C3 plan 事件带 totals、reviewable = 2 个夹具  [["code/probe-multi-mwp658mg-c1.js","code/probe-multi-mwp658mg-c2.py"]]
+ok   C4 file-start 2 个且字段齐全（index/total/path/name/lang/chars/lines）  [[[1,"code/probe-multi-mwp658mg-c1.js",8],[2,"code/probe-multi-mwp658mg-c2.py",7]]]
+ok   C5 每个文件：file-start 早于自己的 file-findings，且 file-findings 2 个  [findings=2]
+ok   C6 有 delta 流式输出、全程没有 error 事件  [delta=286 error=[]]
+ok   C7 每个 file-findings 的 issues 是数组且行号落在该文件行数内（1<=line<=endLine<=lineCount）
+ok   C8 每条 issue 字段齐全（severity/title/detail/fix + lineText）
+ok   C9 cross 事件在 file-findings 之后、done 之前，summary 字符串 + findings 数组（2 个文件不禁用跨文件）  [{"cross":293,"findings":0,"summary":"两个文件之间未发现接口不一致、重复定义或依赖方向错误等跨文件问题"}]
+ok   C10 cross.findings 的 file ∈ 送审路径、line 落在该文件行数内（服务端 clamp）
+ok   C11 done.stats 自洽（files=2、issues=各文件之和、clean=0 问题文件数、bySeverity 合计=issues）  [{"stats":{"files":2,"issues":3,"clean":0,"bySeverity":{"error":2,"warn":1,"info":0}},"issues":3,"clean":0,"sev":{"error":2,"warn":1,"info":0}}]
+ok   C12 done.files / done.skipped 与 plan 一致、done.seconds > 0  [{"files":2,"skipped":0,"seconds":62.9}]
+ok   C13 审查进行中并发 POST /api/load → 409（五流程共用 codeJobLocked 一把锁）  [HTTP 409 代码审查/修正正在进行，等它结束再切换模型]
+ok   C14 跑完服务仍 /api/state 200、模型仍是原来的  [HTTP 200 loaded=qwen3-5-4B-Q4_K_M.gguf]
+
+== D. 导出 kind=multi（不需要模型）==
+ok   D1 export kind=multi → 200  [HTTP 200 ]
+ok   D2 文件名 <slug>-YYYYMMDD-HHmm.multi.review.md  [workspace-20261121-0004.multi.review.md]
+ok   D3 markdown 含四节 + 说明  [缺: ]
+ok   D4 标题按文件数 + 逐文件结论里有路径与问题  [# 多文件审查 · 1 个文件]
+ok   D5 含跨文件总览与跨文件问题
+ok   D6 跳过清单有内容（path + too_large + 6001 字符）  [ /  / - code/probe-multi-big.js —— too_large（6001 字符）：超过单文件 6000 字符上限，请单独审查 /  / ## 说明 /  / - 本文件由「审查面板 → 导出多文件复审」生成，只含结论与问题描述，**不含代码正文**。]
+ok   D7 export 无令牌 → 403  [HTTP 403 缺少或错误的本地令牌（x-local-token）]
+ok   D8 bytes 与 markdown UTF-8 长度一致 + 说明写明不含代码正文  [bytes=854 vs 854]
+
+== E. UI（CDP；cdp 不通 / 没模型 → skip）==
+ok   E1 多文件 UI 入口 id 齐全（cwSelAll / cwReviewSel / cwReviewWs / cwExportMulti）  [{"cwSelAll":true,"cwReviewSel":true,"cwReviewWs":true,"cwExportMulti":true}]
+ok   E2 代码面板打开、列表里能看到 2 个夹具的勾选框
+ok   E3 勾选 2 个文件 → #cwSelCount 文案「已选 2」  [已选 2]
+ok   E4 点「审查选中」→ #cwMultiFiles 出现 2 张文件卡  [cards=2]
+ok   E5 多文件审查跑完 → #cwMultiState 含「完成：」  [完成：2 个文件 · 2 个问题 · 跳过 0 · 57.1s]
+    截图: D:\LocalModels\server\docs\packaging-2026-11-20-v1100\multi\probe-code-review-multi-ui.png
+ok   E6 文件卡 data-path = 送审的 2 个夹具  [["code/probe-multi-mwp658mg-e1.js","code/probe-multi-mwp658mg-e2.py"]]
+ok   E7 点文件卡头部 → 编辑器打开该文件（#cwFile 文案）  [path=code/probe-multi-mwp658mg-e1.js]
+ok   E8 点「导出多文件复审」→ #cwExportState 含「已导出」  [已导出 workspace-20261121-0004.multi.review.md（1256 字节）]
+ok   E9 收尾：UI 夹具已删、localStorage['localai.lastSession'] 已还原  [gone=true restored="" prev=""]
+ok   F1 夹具已全部清理（code/probe-multi-mwp658mg-*）  [clean]
+
+== 结果: 86/86 通过 ==
+RESULT 86/86

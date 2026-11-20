@@ -127,6 +127,8 @@ $probes=@(
   @{n='probe-code-review-verify'; a=@($base,$cdp); t=900},
   # v1.9.0：审查结论导出 .challenge.md / .review.md + 三方对照（纯函数，不需要模型；带 cdp 时含 UI 段）
   @{n='probe-code-review-export'; a=@($base,$cdp); t=300},
+  # v1.10.0：多文件 / 整工作区一起审查（纯函数 + 真模型 SSE + 导出；带 cdp 时含 UI 段）
+  @{n='probe-code-review-multi'; a=@($base,$cdp,$shots); t=720},
   # v1.9.1：云端复审上游真流式（自带本地 node:http SSE stub，绝不真出网；不需要模型）
   @{n='probe-cloud-upstream-stream'; a=@($base); t=240},
   @{n='probe-gpu'; a=@($base); t=120},

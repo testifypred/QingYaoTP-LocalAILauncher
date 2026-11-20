@@ -1,0 +1,83 @@
+﻿
+== 目标 http://127.0.0.1:8099，CDP http://127.0.0.1:9333，令牌 已取到 ==
+
+== A. 令牌与参数 ==
+ok   A1 export 无令牌 403  [HTTP 403]
+ok   A2 compare3 无令牌 403  [HTTP 403]
+ok   A3 export kind 非法 400  [HTTP 400 kind 必须是 challenge、review 或 mu]
+ok   A4 compare3 全空合法 200 + rows=0  [HTTP 200 rows=0]
+ok   A5 compare3 全空 verdict=consistent  [consistent]
+
+== B. compare3 三方聚合 ==
+ok   B1 compare3 200  [HTTP 200]
+ok   B2 行数=5（3/4 归并、20/30/40 分开）  [rows=5]
+ok   B3 三方一致桶里 conflict3=1（严重度不同算矛盾）  [all3=1 conflict3=1]
+ok   B4 两方一致=1（30 行 cross+cloud 同为 error）  [two=1 pair2=1]
+ok   B5 仅一方=3（10/20/40 各自只有一方）  [one=3]
+ok   B6 矛盾计数=1（conflict2 + conflict3）  [conflict=1]
+ok   B7 bySource 各来源出现行数 3/2/3  [{"local":3,"cross":2,"cloud":3}]
+ok   B8 pair 两两同行数 lc=1 / lu=1 / cu=2  [{"lc":1,"lu":1,"cu":2}]
+ok   B9 verdict=contradicts（有矛盾优先）  [contradicts]
+ok   B10 恒等式 rows = all3 + two + one  [5 vs 5]
+ok   B11 恒等式 all3 = judgments.all3 + judgments.conflict3  [1 vs 1]
+ok   B12 恒等式 two = judgments.pair2 + judgments.conflict2  [1 vs 1]
+ok   B13 恒等式 conflict = judgments.conflict2 + judgments.conflict3  [1 vs 1]
+ok   B14 每行都有判定与 present  [rows=5]
+ok   B15 行号升序
+ok   B16 3/4 行合并为三源同行（3-4）  [line=3-4 present=local+cross+cloud]
+ok   B17 3/4 行各源都带自己的 title  [A/A2/A3]
+ok   B18 行距 3 不归并（rows=2）  [rows=2]
+ok   B19 两方同严重度 verdict=majority  [majority]
+ok   B20 两方同严重度 judgment=pair2  [pair2]
+ok   B21 两方严重度不同 verdict=contradicts  [contradicts]
+ok   B22 两方严重度不同 judgment=conflict2  [conflict2]
+ok   B23 仅一方 verdict=differs judgment=single  [differs/single]
+
+== C. 导出质询记录 ==
+ok   C1 challenge 导出 200  [HTTP 200]
+ok   C2 文件名格式 <name>-YYYYMMDD-HHmm.challenge.md  [demo-20261118-1906.challenge.md]
+ok   C3 bytes 与 markdown UTF-8 长度一致  [1045 vs 1045]
+ok   C4 一级标题含文件名  [# 质询记录 · demo.js]
+ok   C5 有原审查结论小节
+ok   C6 质询轮数=2
+ok   C7 两轮都有「质疑 / 回答」  [轮次=2]
+ok   C8 问答原文都在
+ok   C9 密钥已脱敏成 <API_KEY>
+ok   C10 不含代码正文（只导出结论）
+
+== D. 导出复审结论 ==
+ok   D1 review 导出 200  [HTTP 200]
+ok   D2 文件名格式 .review.md  [demo-20261118-1906.review.md]
+ok   D3 标题与文件  [# 审查结论 · demo.js]
+ok   D4 六个小节 + 说明齐全
+ok   D5 含两栏对照四类标签
+ok   D6 含三方对照表头
+ok   D7 三方表含矛盾行（3-4 行）
+ok   D8 判定标签正确（互相矛盾）
+ok   D9 云端上游/模型写进 meta
+ok   D10 质询问答也在 review 文件里
+ok   D11 计数展示（原审查/他人/一致/仅/矛盾）
+ok   D12 缺失部分有兜底文案
+ok   D13 空问题列表有「没有发现问题」
+
+== E. UI：三方对照 / 导出 / 存进会话 ==
+ok   E1 新按钮/面板 id 齐全  [{"cwCompare3":true,"cwExportReview":true,"cwExportChallenge":true,"cwStoreExport":true,"cwExportState":true,"cwCompare3Panel":true,"cwCompare3Table":true}]
+ok   E2 三方对照面板初始隐藏
+ok   E3 按钮初始可用（无任务）
+ok   E4 建临时会话成功  [id=mwp4jtoo-769c53f7]
+ok   E5 注入两份结论快照（本地 + 他人）  [code/main.py|941|15fs9jn]
+ok   E6 点三方对照后表格渲染（≥2 行数据）  [tr=3]
+ok   E7 三方对照判定文案在状态徽标  [仅一方提出 · 共 2 行 · 三方一致 0 · 两方 1 · 仅一方 1 · 矛盾 0（本地 2 / 他人 1 / 云端 0）]
+ok   E8 表格行有「行 / 原审查 / 他人复审 / 云端复审 / 判定」表头
+    截图: D:\LocalModels\server\docs\feature-review-multi-2026-11-19\export\probe-export-compare3.png
+ok   E9 点「导出复审结论」→ 状态显示 .review.md  [已导出 main-20261120-2319.review.md（1712 字节）]
+ok   E10 导出状态含「已导出」与字节数
+ok   E11 点「导出质询记录」→ 状态显示 .challenge.md  [已导出 main-20261120-2319.challenge.md（792 字节）]
+ok   E12 点「存进会话」→ 状态显示已存进会话  [已存进会话：main-20261120-2319.review.md]
+ok   E13 会话里真的多了这条审查结论（assistant + 正文）  [messages=1]
+ok   E14 存进会话的正文含三方对照表
+ok   E15 消息带短 ctx（避免以后整段进模型上下文）  [（审查结论已存进会话：main-20261120-2319.review.md，]
+    截图: D:\LocalModels\server\docs\feature-review-multi-2026-11-19\export\probe-export-stored.png
+
+== 结果: 66/66 通过 ==
+RESULT 66/66
