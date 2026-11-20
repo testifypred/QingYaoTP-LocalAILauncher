@@ -3,7 +3,7 @@
 > 原名 `HANDOFF.md`，由上一任开发者写于 **2026-10-18 21:45**。
 > 从 **2026-10-18 21:44** 起，本文件改为**按时间流水记录**：每一笔写清「几点、改了什么、落在哪、怎么验的」。
 > 第一节是日志索引，其后的一~七节是原交接正文（保留原样，仅修正两处日期笔误），八~十节是本次三项需求的详细设计说明。
-> 最新一笔：**2026-11-19 深夜**（第七十一节，**v1.9.2 老账清算**：一键纠正自动写回文件 + 保存并运行 + toolEnabled 同步 + scope=single 真模型；`probe-code-panel-v2` 40→**44/44**（dev+发布包）、全量口径 **65 条 / 1318 断言**（整跑待补）；主包 `dist\QingYaoTP-AILauncher-v1.9.2.zip` **127,913,497B / SHA256 `217ABDC8…5BA16`**；**Release 仍未创建**（无 gh/PAT）。上一笔第七十节 = v1.9.1 云端流式）。全部时间均为 China Standard Time，本机时钟。
+> 最新一笔：**2026-11-21 凌晨**（第七十三节：v1.8.1 / v1.9.0 / v1.9.1 / v1.9.2 / v1.10.0 五个 Release 全部发布并挂 zip 附件，PAT 用完即删；上一笔第七十二节 = v1.10.0 多文件审查交付）。旧头部：**2026-11-19 深夜**（第七十一节，**v1.9.2 老账清算**：一键纠正自动写回文件 + 保存并运行 + toolEnabled 同步 + scope=single 真模型；`probe-code-panel-v2` 40→**44/44**（dev+发布包）、全量口径 **65 条 / 1318 断言**（整跑待补）；主包 `dist\QingYaoTP-AILauncher-v1.9.2.zip` **127,913,497B / SHA256 `217ABDC8…5BA16`**；**Release 仍未创建**（无 gh/PAT）。上一笔第七十节 = v1.9.1 云端流式）。全部时间均为 China Standard Time，本机时钟。
 >
 > **接手先读 [`交接文档.md`](交接文档.md)**（一页纸：定位、现状、代码地图、下一步）。
 > 技术专题已抽到 [`technique/`](technique/)：架构、接口、插件、模型、打包、探针、坑。本文件保留**按时间流水**的原始记录，作为「为什么这么做」的证据。
@@ -3520,3 +3520,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 2. 代码面板：改过的文件自动备份 `xxx.bak`；
 3. 视觉增强包瘦身（剔 `ggml-vulkan.dll`，可选）；
 4. 等凭据：发 v1.8.1 / v1.9.0 / v1.9.1 / v1.9.2 / v1.10.0 的 Release。
+
+## 第七十三节（2026-11-21）v1.8.1 / v1.9.0 / v1.9.1 / v1.9.2 / v1.10.0 发 Release
+
+> 用户提供了一次性细粒度 GitHub PAT（Contents: Read/Write），把欠了四轮的 Release 一次补齐。
+
+- **5 个 Release 全部创建**（2026-11-21 00:20 前后）：`v1.8.1` / `v1.9.0` / `v1.9.1` / `v1.9.2` / `v1.10.0`；每个挂对应 `dist\QingYaoTP-AILauncher-v<ver>.zip`，v1.10.0 另挂视觉增强包 `QingYaoTP-AILauncher-v1.6.0-vision-pack.zip`（36.6MB）；正文用 `.github/RELEASE-<ver>.md`；tag 早已推送（v1.10.0 = `ec3d4e2`）。
+- 发布方式：GitHub REST API（`POST /repos/{owner}/{repo}/releases` + `uploads.github.com` 上传附件），脚本与 PAT 用完即删（不进仓库、不进日志）。
+- **踩坑**：本机 hosts 被 Watt Toolkit 把 `api.github.com` / `uploads.github.com` 指向 `127.0.0.1`（本地 MITM），Node 默认 CA 不认它的证书 → `unable to verify the first certificate`（`fetch failed`）；加 **`node --use-system-ca`**（信任 Windows 证书库）后正常。以后要调 GitHub API 记住这个开关。
+- **About topics 未设置**：这个细粒度 PAT 只给了 Contents 权限，`PATCH /repos/...` 的 topics 需要 Administration 权限 → 网页手动加，或下次给带 Administration 的 token。建议：`local-ai` `llama-cpp` `windows` `offline-first` `deepseek-harness` `rag` `code-review`。
+- 文档已同步：交接文档 / 新会话启动词的「Release 未创建」全部改为已创建；README 的「SHA256 见发布说明」现在指向真实 Release。
