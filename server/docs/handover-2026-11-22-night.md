@@ -52,4 +52,4 @@
 - 打包：`258.8MB / 3448 文件` → `dist\QingYaoTP-AILauncher-v1.11.0.zip` **127,961,662B / 122.0MB / 3,948 条目 / SHA256 `18B83B2920DF2617CC6D72EE39F900095648D33568C14C10F42BEF63ECCA7932`**。
 - 发布包冒烟：version 14/14、debug 54/54、readme 21/21、window-ui 10/10、panel-v2 44/44、stream 45/45（跳 3：Phi 切换）、watchdog 56/56 → failed=0。
 - 8099 已切回发布包实例 v1.11.0（dist\app；4B ctx=16384；视觉增强包 source=pack / 53 文件）。
-- GitHub Release v1.11.0：正文 `.github/RELEASE-v1.11.0.md`，附件主包 + 视觉增强包；tag `v1.11.0`。
+- tag `v1.11.0` 与 `main`（e5a1b52）已推；GitHub Release 创建需要一次 PAT，待用户提供后补（正文 `.github/RELEASE-v1.11.0.md`，附件主包 + 视觉增强包）。
