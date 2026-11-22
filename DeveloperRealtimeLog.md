@@ -3530,3 +3530,343 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 - **踩坑**：本机 hosts 被 Watt Toolkit 把 `api.github.com` / `uploads.github.com` 指向 `127.0.0.1`（本地 MITM），Node 默认 CA 不认它的证书 → `unable to verify the first certificate`（`fetch failed`）；加 **`node --use-system-ca`**（信任 Windows 证书库）后正常。以后要调 GitHub API 记住这个开关。
 - **About topics 未设置**：这个细粒度 PAT 只给了 Contents 权限，`PATCH /repos/...` 的 topics 需要 Administration 权限 → 网页手动加，或下次给带 Administration 的 token。建议：`local-ai` `llama-cpp` `windows` `offline-first` `deepseek-harness` `rag` `code-review`。
 - 文档已同步：交接文档 / 新会话启动词的「Release 未创建」全部改为已创建；README 的「SHA256 见发布说明」现在指向真实 Release。
+
+## 第七十四节（2026-11-22）终端 TUI v2.0.0：版本号 / 流式 Markdown+LaTeX / 能力面板 / 线框输入 / 等待动画
+
+> 用户要求「把 TUI 升级一下」，给了 5 条硬需求 + 一句「如果有必要，直接重新开发一个专属于我们的终端工具」。**本轮明确不往 Git 推**（用户后续要求）。主程序版本保持 1.10.0 不动，TUI 自己的 VER 1.2.0 → **2.0.0**。
+
+### 一、5 条需求与落地
+
+| # | 需求 | 落地 |
+|---|---|---|
+| 1 | 终端更新自己的版本号，并附加主程序版本号 | `VER = 2.0.0`；头部常显「tui 2.0.0 · 主程序 v1.10.0 (commit)」，主版本从 `/api/version` 取（不写死）；新增 `/version` 命令与 `--version` 开关 |
+| 2 | 终端输出比主程序快；探索流式 Markdown / LaTeX；不行就线性输出 + 颜色/高亮弥补 | SSE 直连 + **16ms 合帧**；实现 Markdown 降级渲染（粗体/斜体/行内代码/代码块/标题/列表/引用/链接）+ **LaTeX→Unicode 近似**（α β √ ≤ x²、frac、sqrt、上下标）；`--bench` 实测整帧 **0.06ms**、6600 字 Markdown **1.30ms**；真实 4B 管道流式 150 字 ≈ **9.4s** |
+| 3 | 打 `/` 输出各能力指令，执行完恢复对话 UI | 空输入按 `/` 打开**能力面板**：12 条命令 + 全部软件工具（`/tool 名字`，共 22 项），↑↓/Tab 选、Enter 执行、Esc 收起、打字回输入；命令跑完自动收起面板回对话 |
+| 4 | 输入区域线框 + 显示输入光标 | 输入区 `╭─ 输入 · N 字 ─╮ / │ › …▌ │ / ╰───╯`；硬件光标隐藏，用**反显光标块**自绘（宽字符整体反显），NO_COLOR 退化成 `▏`；长输入多行、窗口跟光标滚 |
+| 5 | 等待动画 `/ - \ |` 旋转 + 随机原创颜文字 | 90ms 旋转（4 帧）+ 2 秒随机换脸（**22 个原创**颜文字，`--faces` 可列）；显示在输入框底边框，带已用秒数；生成结束 `stopSpinner()` |
+
+### 二、代码改动（`server\localai-tui.mjs`，~1620 行）
+
+1. **新增 Markdown/LaTeX 渲染层**：`latexToText`（纯函数）、`inlineSegments`（行内语法→样式段）、`layoutSegments`（按显示宽度铺行、ANSI 零宽）、`markdownLines`（标题/列表/引用/代码块/表格/分隔线/公式块）、`mdLinesOf`（WeakMap 缓存：entry + 文本长度 + 宽度）。
+2. **新增等待动画层**：`SPIN_FRAMES` / `SPIN_FACES` / `pickFace` / `spinnerText` / `startSpinner` / `stopSpinner`（定时器 `unref`）。
+3. **新增能力面板层**：`menuItems` / `menuOpen` / `openMenu` / `runMenu`；工具清单来自 `/api/tools`，工具缺必填参数先填进输入框，命令直接执行。
+4. **重写版面**：`boxTop/boxBottom/inputBoxLines/headerLine/menuRows/bodyLines/frame/render`；头部右侧按优先级丢模型/ctx/工具/联网，**版本号永不被挤**；每行宽度精确等于终端宽度。
+5. **输入处理抽成模块级 `handleKey(s)`**（原内联 stdin 回调），`quitApp` 回调由 main 注入 → `--selftest` 可用模拟按键覆盖面板状态机，不需要 TTY。
+6. **新增一次性模式**：`--version`、`--faces`、`--bench`、`--snapshot --menu/--gen/--menu-idx/--main-ver`；`--selftest` 29 → **61 项**、`--hint-test` 与 `--plain` 保持兼容。
+
+### 三、验证
+
+- `node --check` 通过；`--selftest` **61/61**（宽度/CJK/ANSI/Markdown/LaTeX/线框宽度/输入光标/面板/按键状态机/整帧宽度/md 缓存与性能）。
+- `probe-tui-tools` **52/52**（原 23 + E 段 29：版本 4 / 颜文字 4 / selftest 3 / 快照 8 / 面板 4 / 等待动画 3 / 基准 3）；原 A–D 段（补全、工具清单、命令全集、`--plain` 管道）全绿，无回归。
+- `--bench`：`md 6600 字 → 601 行 / 1.30ms`；`frame 100x30 → 30 行 / 0.06ms（约 14286 fps 上限）`。
+- 真实 4B 流式：管道提示「用 Markdown 写三行要点…LaTeX 公式」→ 9.4s 返回；`--snapshot` 验证 Markdown/公式/代码块版面（颜色与线框宽度）。
+- 证据 `server\docs\feature-tui-v2-2026-11-22\`：`tui-selftest.txt`、`probe-tui-tools.log`、`tui-bench.txt`、`tui-faces.txt`、`tui-version.txt`、`tui-snapshot.txt`、`tui-menu.txt`、`tui-menu-tools.txt`、`tui-spinner.txt`、`contract.md`、v1.2.0 源码备份。
+- 全量断言口径 **1404 → 1433**（probe-tui-tools 23 → 52；全量仍是 66 条）。
+
+### 四、踩坑（已写进 `technique\07-坑与约定.md` 第八章「终端 TUI v2.0.0」）
+
+1. **菜单行右边框不齐**：固定 `│ `+mark+26+`  `+desc+` │` 共 34 列，desc 用 `clipWidth` 后会短、必须再 `padWidth` 到剩余宽度，否则 `│` 缩进、整屏歪。
+2. **头部被模型名挤掉版本号**：改成「右侧按优先级拼、放不下就丢」，版本号留在左侧。
+3. **改内联 stdin 回调踩到替换坑**：`return bye(0)` 批量替换后生成 `if (S.quitArmed) if (quitApp) quitApp(0); return;`（return 无条件执行）——手工改成花括号块并在 selftest 里用模拟按键兜住。
+4. **selftest 里执行 Enter 会打印 /help 到 stdout**（PLAIN 下 `entry()` 直接写）——探针只查子串，不影响；但别在断言里依赖输出顺序。
+5. **Windows 下没有 pty**：想在真控制台截图验证要 `AppActivate` + 截屏，首次尝试聚焦失败（截到别的窗口），最终以 `--snapshot`（与交互同一份 frame）作为版面证据，不引入 pty 依赖。
+6. **颜色“消失”是环境变量泄漏，不是渲染 bug**：用户问「颜色在哪里」后查出来 `NO_COLOR=1`——本会话（DSH）环境自带它，我用会话里的 pwsh 重启发布包启动器，启动器 → node → TUI 全继承，于是线框/动画正常但**零颜色**。修法：启动器前 `Remove-Item Env:NO_COLOR` 重启（8099 已干净重启），并给 TUI 加 `--color` 强制开关（环境变量优先级低于显式参数）。教训：**重启产品进程时别把测试环境的 NO_COLOR/编码等变量带进去**。
+
+### 五、交付状态
+
+- 只改 `server\localai-tui.mjs` + `server\probe-tui-tools.mjs` + 文档；**未改 app.mjs / app.html / 版本号 / 打包脚本**。
+- `dist\QingYaoTP AILauncher\app\localai-tui.mjs` 已同步（顶栏「终端」能看到新版）；**未重打 zip、未提交 Git、未创建 tag**（用户明确本轮不推 Git）。
+- 8099 本轮先用开发实例验证（v1.10.0 源码 + 4B），收尾时恢复成发布包实例。
+
+### 六、下一轮
+
+1. 用户验收 TUI v2.0.0 后，再决定是否把 TUI 一起打进 v1.11.0（届时同步版本与文档）；
+2. 可选：能力面板支持输入过滤（打 `/mo` 直接筛命令/工具）、`/tool` 长结果分页；
+3. 原计划仍排在前面：云端复审「只发选中片段」+ `CLOUD_JOB_TIMEOUT_MS` 暴露到设置页。
+
+## 第七十五节（2026-11-22 下午）主页面输出优化：从「越答越卡」到增量渲染
+
+> 用户问「终端输出始终比主页面快，为什么」。实测确认两条链路打的是**同一个** `/v1/chat/completions`，差距来自 ① 请求参数（工具/思考默认税）② 浏览器每帧整段重绘 + 全量 KaTeX。用户拍板「能都做都做」，6 项全做。
+
+### 一、量化（本机 4B / Arc 核显）
+
+| 场景 | 优化前 | 优化后 |
+|---|---|---|
+| 正文首字（工具关/思考关） | 1.5–1.8s | 1.4–1.8s（不变） |
+| 正文首字（工具开） | 6.4–7.1s | **5.3–5.9s** |
+| 正文首字（深度思考开） | 14.8–15.5s | 15.3–16.5s（模型固有成本，只提示不消除） |
+| 流式单帧（6000 字 × 200 帧） | 14.3–16.8ms | **0.37–0.48ms**（约 30–40 倍） |
+| 页面真发问首字 | — | 1.4–1.6s，61 次增量，无异常 |
+
+### 二、6 项改动
+
+1. **流式增量渲染**：新增 `createStreamView()`（app.html）。按空行 / 代码围栏 / 独立 `$$` 公式块切分：已闭合块只渲染一次（含 KaTeX），未闭合尾巴只做行内 Markdown；`finish()` 整体再渲染一次，最终结果与旧版一致。替换原来的「80ms 一次 `renderAssistant(out, acc)` 整段重排」。
+2. **rAF 合帧 + 滚动合并**：`schedulePaint` 用 `requestAnimationFrame`；`scroll()` 也只在下一次 rAF 写 `scrollTop`（以前每个 delta 都强制同步 layout）。
+3. **KaTeX 只在块完成/结束时跑**：流式中途不 typeset；每块一次，结束整体一次。
+4. **首字税 chip**：输入区上方 `#genModeChip`，工具开 ≈7s / 思考开 ≈15s / 都关 ≈1.5s；`updateModeChip()` 在勾选变化、开局模式、收尾时调用。
+5. **Agent / 推理改一次性**：`applyHeroMode` 不再 `saveSettings()`，设 `modeOneShot`；`doSend` 收尾恢复持久设置（`toolChk.checked = toolEnabled`、`thinkChk.checked = false`）。
+6. **极简流式开关**：设置 → 生成 新增 `#setStreamLite` / `streamLite`（随 settings 持久化）：生成中只 `textContent = 全文`，`finish()` 再套 Markdown。
+
+另：**工具说明瘦身**（app.mjs）：10 个工具 description 858 → ~400 字 + `buildToolInstructions` 静态段压缩；tools=true 正文首字 6.4–7.1s → 5.3–5.9s。工具语义保留（时间/日期、数值计算、文件、RAG、联网、跑代码的触发词都在）。
+
+### 三、验证
+
+- 新探针 `probe-stream-render` **15/15**（增量渲染器、块切分 250 块、最终 KaTeX 100、Markdown 生效、单帧 <2ms、比旧快 3 倍以上、chip 显示/收起、极简流式纯文本→Markdown、无 JS 异常）。
+- 回归：`probe-ui-new` 30/30、`probe-formula-panel` 7/7、`probe-hero-modes` 11/11、`probe-settings-tools` 9/9、`probe-chat-plain` 11/11、`probe-tui-tools` 52/52。
+- 端到端（headless Edge + CDP）：页面真实发问首字 1.4–1.6s、61 次增量、最终 Markdown 生效；极简流式生成中 `midMarkup=false`、结束后 `finalMarkup=true`。
+- 证据 `server\docs\feature-stream-perf-2026-11-22\`：`contract.md`、`server-ttft.txt`、`render-bench.txt`、`ui-stream.txt`、`lite.txt`、`probe-stream-render.log`、`perf-*.mjs`。
+- 全量口径：探针 **66 → 67**、断言 **1433 → 1448**（`run-full.ps1` 已注册，BOM 保留、PS5.1 parser 0 错误）。
+
+### 四、踩坑
+
+1. **`streamLite` 是模块级 `let`，设置保存后才生效**：探针里要测极简分支，必须勾 `#setStreamLite` 再点 `#settingsSave`（或 reload），不能直接改变量。
+2. **极简流式测试要等页面 reload 完**：首次只等 2.5s 就调 `send()`，`loaded` 还是 false → 直接返回，指标全 0（后来改成轮询 `document.readyState + typeof send + #q` 再等 1.5s）。
+3. **headless Edge 158 仍不接受命令行 URL**：必须不带 URL 启动 + CDP `Page.navigate`；界面探针要求页面已打开对应端口，否则 exit 2（`no page`）。
+4. **改 `app.html` 后必须同步 `dist\app\app.html` 并重启发布包实例**，否则 8099 上跑的仍是旧页面（本轮已同步并重启，4B 重新加载）。
+
+### 五、当前状态 / 下一步
+
+- 主程序版本仍 **v1.10.0**；**未提交 Git、未重打包**（用户要求先不推）。
+- dist 的 `app.mjs` / `app.html` / `localai-tui.mjs` 已同步；8099 实跑新代码 + 4B（ctx 16384）。
+- 下一步可选：① 小块合并（3 万字以上回答）② 工具说明再压到 ~250 字并跑工具探针 ③ 把「首字税」做成设置里的默认提醒（首次打开工具时）。
+
+## 第七十六节（2026-11-22 傍晚）20B 内存炸点与加载提速：useMmap:false
+
+> 用户：`加载GPT会把内存直接吃满，释放完后居然有诡异的20GB`。实测定位到 mmap 双份，顺手把加载速度提了 3.5 倍。
+
+### 一、根因
+
+- 这台机器 `llama.supportsMmap=true`，但 **`gpuSupportsMmap=false`**（Windows Vulkan 后端）。
+- node-llama-cpp 默认 `useMmap:"auto"` 仍给 CPU 侧开 mmap；GPU offload 时权重**同时**留在文件映射 + 拷一份到核显共享内存。
+- 20B（12.1GB）：进程私有 11.8GB + GPU 共享 12.6GB + KV/系统 ≈ 31.4GB → 可用内存 **0.0GB**、开始换页；加载 48.6s。
+- 卸载后进程/显存确实还了（私有 0.2GB、GPU 1.7GB），但刚读过的 12GB gguf 留在 Windows **备用缓存**（11.8GB）+ 系统占用 ≈ 用户看到的 ~20GB；提交停在 17.4GB。不是泄漏。
+
+### 二、修复与收益
+
+- `app.mjs` 三处 `llama.loadModel` 显式 **`useMmap:false`**（主模型 / 预加载常驻 / 草稿模型）。
+- 20B：加载 **48.6s → 14.0s**（ctx 16384）、加载后可用 **0.0 → 8.14GB**、生成 **13.7 tok/s**（ttft 1.66s）；卸载后可用 20.3GB / GPU 1.62GB。
+- 4B：加载 5.9s、可用 16.25GB、生成 **15.3 tok/s**（ttft 1.0s）。
+- 独立基准：20B CPU+mmap 3.51 tok/s；部分 offload 12 层 4.86、20 层 9.76；**全 offload + useMmap:false 15.69 tok/s**（ctx 4096）。
+- 试过无效：batchSize 512/1024/2048（512 最好）；flashAttention 开/关无显著差异；部分 offload 不如全 offload。
+
+### 三、验证与证据
+
+- 应用层：`POST /api/load` 20B（ctx 16384）→ 14.0s、`/v1/chat/completions` 48 tokens 13.71 tok/s；卸载 → 可用 20.28GB、GPU 1.62GB；再加载 4B → 5.9s、15.34 tok/s。
+- 脚本：`server\docs\feature-stream-perf-2026-11-22\` 的 `bench-20b-speed.mjs` / `bench-20b-full.mjs` / `bench-models.mjs` / `bench-4b-abba.mjs` / `bench-batch.mjs` / `bench-app-20b.mjs` + `gpt-20b-mmap.md`。
+- dist 的 `app.mjs` 已同步，8099 已重启（4B 已加载）；版本仍 v1.10.0，未提交 Git、未重打包。
+
+### 四、下一步
+
+1. 加载前按「模型大小 + KV + 2GB 余量」体检（现在 20B 能装下，但 40B 会重演）；
+2. 设置里暴露「加载策略」：默认 useMmap:false；高级用户可切 mmap（省磁盘读，但核显上会双份）；
+3. 速度上限已接近核显 Vulkan 极限（4B ~18、20B MoE ~16 tok/s），再快需要独显/更小模型。
+
+## 第七十七节（2026-11-22）审查面板滚动修复：流式追加不能无条件拽到底
+
+> 用户：代码工作区模型审查时，思路和意见在流式输出，但审查栏**不能上下滚动**。
+
+### 根因
+
+- `app.html` 的 `cwThinkAppend()` 每个 SSE delta 都执行 `cwReviewBodyEl.scrollTop = cwReviewBodyEl.scrollHeight`；
+- 审查思路逐 token 追加 = 每个 token 把面板拽回底部，用户滚轮上翻立刻被覆盖；
+- 另外 `cwThinkTextEl.textContent +=` 会重建文本节点，思路框内部滚动位置被重置。
+
+### 修法
+
+- 只在「本来就在底部附近」时跟随：外层面板 < 80px、思路框内部 < 40px；
+- 文本改用 `Text.appendData()`；
+- 用户手动上滚后不再打断，滚回底部自动恢复。
+
+### 验证
+
+- 新探针 `probe-review-scroll` **10/10**：上滚后 20 个 delta 面板 `scrollTop` 保持 0（旧代码会跳到底）、滚回底部恢复跟随、思路框内 30px 追加后仍 30（旧代码归 0）、无 JS 异常。
+- 纯 DOM，不调模型；Edge 需先在 9333 打开 8099。
+- 证据 `server\docs\feature-review-scroll-2026-11-22\probe-review-scroll.log` + `contract.md`。
+
+### 状态
+
+- `app.html` 已同步 dist、8099 已重启（4B 已加载）；
+- 全量口径：探针 **88 → 89**、全量 **67 → 68**、断言 **1448 → 1458**；`run-full.ps1` 已注册（BOM 保留、PS5.1 parser 0 错误）。
+- 版本仍 v1.10.0；未提交 Git、未重打包。
+
+## 第七十八节（2026-11-22）代码工作区 UI：可拖拽窗口 / 结果标签 / 可调宽度 / 他人复审兜底
+
+> 用户 5 条需求（第 6 条独立窗口暂缓）。核心是把「审查结果只有一份、覆盖式显示」改成「按次留标签」，顺带支持窗口拖拽缩放和审查栏分隔条。
+
+### 一、实现
+
+1. **窗口**：`.cwBox` 标题栏 pointer 拖拽（`transform: translate`）、`#cwMax` 最大化/还原（双击标题栏也行）、原生 `resize:both` 右下角缩放。
+2. **结果标签**：`#cwResultTabs` + `cwResults`（最多 8 个）；本地审查 `∫`、他人复审 `≠`、云端复审 `☁`，标签带模型名；点标签重铺摘要 / 问题卡片 / 判定。
+3. **审查栏分隔条**：`#cwSplitter` 拖动调宽（260px ~ 面板宽-380px），宽度存 localStorage，双击复位。
+4. **他人复审兜底**：没点「模型审查」直接点「他人复审」时，`cwCrossReview()` 先 `await cwReviewCode()` 补第一次，作为第 1 个标签；之后才是他人复审。
+5. UI 细节：标签栏样式、图标底色按类型、分隔条 hover、最大化按钮。
+
+### 二、验证
+
+- 新探针 `probe-code-window-ui` **10/10**：标签存在/初始隐藏、两结果→2 标签（∫/≠ + 模型名）、他人复审标签隐藏问题卡片并显示判定、切回本地恢复摘要与卡片、最大化开关、标题栏拖拽 `translate(60px, 40px)`、审查栏 258→338、无 JS 异常。
+- 真实端到端（Edge + 4B/R1/20B，241s）：绕过「模型审查」直接点「他人复审」→ 自动先跑本地审查，标签顺序 `[∫模型审查·DeepSeek-R1…, ≠他人复审·gpt-oss-20b…]`，状态「他人复审：互相矛盾 · 50.1s」。
+- 回归：`probe-code-panel-v2` **44/44**、`probe-review-scroll` **10/10**。
+- 证据 `server\docs\feature-code-window-2026-11-22\`（contract、probe log、cross-first-e2e、两个复跑脚本）。
+- 全量口径：探针 **89 → 90**、全量 **68 → 69**、断言 **1458 → 1468**；`run-full.ps1` 已注册（BOM 保留）。
+
+### 三、踩坑
+
+1. **合成 PointerEvent 下 `setPointerCapture` 会抛**：包 try/catch，否则纯 DOM 探针挂；
+2. **流程内部激活标签要 force**：findings/done 事件里 `cwReviewBusy` 仍为 true，`cwActivateReviewResult` 默认会 return；
+3. **他人复审 auto 模型会挑到 20B**：本轮实测它自动选了 gpt-oss-20b（`pickCrossModel` 按 scanModels 顺序挑第一个不同的），靠 `useMmap:false` 才没炸内存；慢机器上建议在 `#cwCrossModel` 里手动指定。
+
+### 四、未做 / 下一步
+
+- 第 6 条「独立窗口/独立程序」暂缓：需要把 `#codeModal` 抽成独立 HTML + 启动器新窗口 + 窗口图标（LaTeX $F(x)$），是一个单独排期项；
+- 标签目前用符号 + 模型名（无真实模型 logo）；
+- 多文件审查（`#cwMultiWrap`）仍走自己的卡片流，未并入标签。
+
+## 第七十九节（2026-11-22 夜）代码审查长代码超时：放宽超时 + 压预算 + 4B 快捷审查
+
+> 用户：80 行长 Python 用 Qwen3.5-9B 审查，300s 自动终止，提示「审查结论整理超时」。
+
+### 一、根因
+
+- 后端总超时 CODE_JOB_TIMEOUT_MS 默认 300s，第二阶段 JSON 还有 min(120s, 总超时) 的 watchdog；9B 在 80 行代码上「思路 + 整理 JSON」超过 300s，整次失败。
+- 这台机器 Vulkan 对 9B + 长 prompt 不稳定：9B 小段代码审查 18s 正常，81 行文件直接审查会长时间无首字、/api/state 也超时（原生层卡住），只能重启服务。
+
+### 二、改动
+
+1. 总超时 300s → 600s；第二阶段 JSON watchdog 120s → 240s。
+2. /api/code/review/stream 新增 json_max_tokens（默认 700，夹 200–1200）；前端对长文件传 max_tokens=800、json_max_tokens=500。
+3. 客户端分段：代码 >150 行 / >8KB 时按 ~50 行分段，逐段独立请求；已完成问题先累计，总预算 9 分钟，超时保留已完成部分。
+4. 审查动作区新增「用 4B 审查」按钮：一键切到本机最快 4B 并开始；大模型 + >60 行时弹提示。
+
+### 三、验证
+
+- 4B：30 行单段 111s 完成（6 问题）；80 行两段 210s 完成（11 问题合并、summary 带「分段审查完成 2 段」）；/api/state 正常。
+- 9B：小段 18.3s 正常（meta/delta/phase/findings/done 全到）；81 行文件实测无首字、服务卡死，同代码 4B 正常 → 9B 长 prompt 的原生层问题，调超时救不了。
+- 回归：probe-code-window-ui 10/10、probe-review-scroll 10/10；页面无 JS 异常。
+- 全量口径不变：90 个探针 / 69 条 / 1468 断言。
+
+### 四、文件 / 状态
+
+- server\app.mjs：超时、JSON watchdog、json_max_tokens；
+- server\app.html：长代码预算、>150 行分段、9 分钟预算、#cwUse4B 按钮、大模型提示；
+- dist 已同步，8099 已重启（4B 已加载）；版本仍 v1.10.0，未提交 Git、未重打包。
+- 证据：server\docs\feature-code-window-2026-11-22\（ui-chunked.log、diag-ui-chunked2.log、ui-9b-file.log、test-review-tiny.mjs 等）。
+
+### 五、下一步（建议）
+
+1. 审查模型自动选择：检测到 9B/20B + 长代码时自动改用 4B（本轮已有按钮，可做默认）；
+2. 若必须用 9B 审长代码：先按 20 行小段跑（已验证小段可完成），或等 Vulkan 后端更新；
+3. 后端加「首字 watchdog」：N 秒无 delta 就中止并返回可读错误。
+
+## 第八十节（2026-11-22 夜）交接：本地审查卡住 P0 + 今日交付盘点
+
+> 用户要求「先整理必要的文档准备交接」。短版交接：server\\docs\\handover-2026-11-22-night.md；本节记结论与未决项。
+
+### 一、P0（未解决）
+
+- 现象：4B 审 22 行 `workspace\\code\\python-210407-1.py`，`/api/code/review/stream` >360s 无 findings；页面停在「模型正在结合意图读代码… / 审查思路（思考中…）」，`cwReviewBusy` 不释放 → 质询/他人复审/一键纠正/重新审查全灰，只有云端复审可用。
+- 已排除：服务、4B 加载、`/v1/chat/completions` 均正常；同日 4B 30 行 111s、80 行两段 210s、`probe-code-review-stream` 48/48 曾通过；9B 小段 18.3s 正常。
+- 怀疑：Vulkan 原生层卡死（9B 81 行必卡）+ 最新审查改动（600s/240s 超时、collect 模式、max_tokens/json 预算）叠加。服务日志只在客户端断开时记「已停止（客户端断开）」。
+- 下一步：① 前端 120s 无 SSE 事件 watchdog → abort + 清 busy；② 后端 90–120s 首字 watchdog；③ 仍复现则回滚 17:30 后审查改动；④ 回归 `probe-code-review-stream` → 手点 22/80 行 → 全量 69 条。
+- 临时绕过：云端复审；重启后先审小文件；**不要用 9B 审长代码**。
+
+### 二、今日完成（均未提交 Git、未重打包）
+
+1. 终端 TUI 2.0.0：版本号 + 主程序版本、流式 Markdown/LaTeX 降级、`/` 能力面板、线框输入框+光标、旋转+原创颜文字；probe-tui-tools 23→52。
+2. 主页面输出优化：块级增量渲染（6000 字单帧 14.3–16.8ms → 0.37–0.48ms）、rAF 合帧、流式不跑全量 KaTeX、首字税 chip、Agent/推理一次性、极简流式；probe-stream-render 15。
+3. 20B 内存/加载：三处 `llama.loadModel` 显式 `useMmap:false`——加载 48.6s→14s、可用内存 0→8.1GB、13.7 tok/s（4B 15.3）；卸载后 ~20GB 是 Windows 备用缓存。
+4. 代码工作区 UI：窗口可拖拽/最大化/原生缩放、审查栏分隔条（宽度记忆）、审查结果标签页（∫/≠/☁ + 模型名）、他人复审自动补首次审查；probe-code-window-ui 10。
+5. 审查面板滚动修复：`cwThinkAppend` 距底 <80px 才跟随 + `appendData`，上滚不再被拽回；probe-review-scroll 10。
+6. 审查超时/长代码：总超时 300s→600s、JSON 120s→240s、`json_max_tokens`、>150 行客户端分段 + 9 分钟预算 + partial、`用 4B 审查` 按钮；但随后出现上述 P0。
+
+### 三、状态 / 下一步
+
+- 版本 v1.10.0；dist 已同步；8099 已重启并加载 4B（收尾时确认）。
+- 全量口径 90 探针 / 69 条 / 1468 断言；最近通过：probe-code-review-stream 48/48、probe-code-window-ui 10/10、probe-review-scroll 10/10。
+- 下个会话顺序：修 P0 → 目标回归 → 全量 → 用户确认后再打包/提交（本轮明确不推 Git）。
+
+## 第八十一节（2026-11-22 深夜）P0 修复：本地审查卡住（根因 + 三道前端闸 + 后端停滞闸）
+
+> 承接第八十节。用户要求先修 P0、本轮不推 Git、不打包。已交付：根因修复 + 防御层 + 新探针 + 证据；**未 commit、未打包**。
+
+### 一、根因（确定性，一步定位）
+
+- `server/app.html` 的 `cwReviewCode()` 在 try 之前读未声明的 `lineCount` → `ReferenceError`（经典脚本读未声明标识符）。
+- 抛出点在 `cwReviewBusy = true`（≈6160）、`cwReviewStartTimer`、`cwThinkBegin('审查思路（思考中…）')` 之后，`try { … } finally { cwReviewBusy = false }` 之前 → finally 永不执行。
+- 用户 P0 现象逐条吻合：① 页面停在「模型正在结合意图读代码… / 审查思路（思考中…）」；② busy 永久 true → 质询/他人复审/一键纠正/重新审查全灰；③ **后端 /api/code/review/stream 一次请求都没收到**（服务日志没有审查行）→「>360s 没有 findings」；④ 只有云端复审可用（`cwCloudSend` 另一个函数）；⑤ 「时好时坏」是假象——当天 48/48、30 行 111s、80 行 210s 全是 API/探针脚本，不走 `cwReviewCode`。
+- 引入时间：当天 17:30 后「审查超时放宽 + max_tokens/json 预算」编辑；分段审查在 18:18–18:39 UI 实测仍能跑，说明该 bug 出现在那之后。
+- 修：`cwReviewCode` 顶部（`const code = cwValue()` 校验后）加 `const lineCount = code.split("\n").length;`，6157/6178 统一引用。
+
+### 二、防御层（全部落地）
+
+| 层 | 位置 | 行为 |
+|---|---|---|
+| F1 SSE 空闲闸 | `app.html cwStreamSSE` | `CW_SSE_IDLE_TIMEOUT_MS=120000`；每块数据/每个事件重置；超时 abort + 「审查流 N 秒没有任何响应…」+ 400ms 保险丝 `cwEndJob()`；finally `reader.cancel()` |
+| F1b 总时长闸 | `app.html cwRunReviewStream` → `cwStreamSSE(..., {maxMs})` | `CW_REVIEW_MAX_MS=300000`：事件一直在流也 300s 收口（只单文件审查传，其它五流程不受影响） |
+| F1c 结构兜底 | `app.html cwReleaseOrphanBusy` + `cwSseActive` | `unhandledrejection`/`error` 且无 SSE 在读 → 强制收尾（防「busy=true 在 try 之前」再犯） |
+| F2 生成停滞闸 | `app.mjs handleCodeReviewStream` | `CODE_JOB_IDLE_TIMEOUT_MS=120000`（env 可调、下限 1000）；思路阶段 + JSON 阶段各一 idle timer；超时 abort(504) + `error` 事件 + 释放 `codeJob` 锁 + 日志「停滞 … 无输出」 |
+
+### 三、探针 / 回归数字（2026-11-22 21:1x–21:3x，dist 实例 v1.10.0 + 真 4B）
+
+- `probe-review-watchdog`（新，**56**）：**56 / 0**。A 空闲闸 2505ms（stub 只发 meta 后挂死，busy 释放、按钮恢复、状态行含「没有任何响应」）；C 总时长闸 3003ms（steady delta + `CW_REVIEW_MAX_MS=3000`，文案含「超过…还没完成」）；D 兜底 708ms（busy=true + Promise.reject → 状态行「流程异常」）；B 后端停滞闸（硬链接 4B 临时 MODEL_DIR + 独立实例 + 阈值 1s：meta→error 4.2s、消息含「没有任何输出」、无 findings/done、随后 `/api/load` 200 证锁释放、临时实例/端口/server.pid/临时目录清理干净）。
+- `probe-code-review-stream` **48 / 0**（含 Phi-4-mini 切换 14.1s 与收尾切回 4B）。
+- `probe-code-window-ui` **10 / 0**、`probe-review-scroll` **10 / 0**。
+- 手点等价（CDP 真 4B UI 审查）：22 行 `python-210407-1.py` **87.3s / 2 问题**；62 行 `python-115523-1.py` 第 1 次原生层卡死 → 前端 176.5s 空闲闸恢复界面；重启后第 2 次 **129.9s / 4 问题**。
+- 口径：探针 **90 → 91**；全量 **69 → 70 条**；断言 **1468 → 1524**（+56）。
+- dist 同步：`app.html` SHA256 `18FE45179BBCDE98D9B4F0B1D9B0CB997A36840612F97AF8450A8D684AADDDFE`、`app.mjs` `9806CC7CBA23A6F85B56F14EC4AE1E3EE435C70F46221161BF100D20C2649408`；src↔dist 一致；8099 已重启并加载 4B。
+
+### 四、真实复现：底层 Vulkan 原生层卡死仍在（重要）
+
+- 2026-11-22 21:26 手点 62 行 4B：第一阶段约 56s，进入「正在整理问题清单…」后 120s 无事件；176.5s 时 F1 空闲闸触发 → 状态行明确、`cwReviewBusy=false`、按钮恢复。
+- 同时服务端卡死：node CPU 236.5 → 239.5 秒/3s（持续涨），`/api/state`、`/health` 均 10s 超时；日志**无** F2「停滞」行 → 事件循环被原生层阻塞，JS 定时器发不出去。
+- 与 `feature-code-window-2026-11-22/ui-9b-file.log`（9B 80 行第二阶段 575s 不返回）同型 → P0 的底层触发不是当日 UI/超时改动引入；回滚 17:30 后改动不会修好它。
+- 本轮交付把「卡死 → 界面永久锁死」降级为「120s 内明确报错 + 可重试」；进程级自动恢复建议下一步给 `Launcher.cs` 加 `/health` 看门狗（本轮用户要求先不打包，未做）。
+
+### 五、文件 / 证据 / 踩坑
+
+- 改：`server/app.html`（根因 + F1/F1b/F1c）、`server/app.mjs`（F2）、`server/docs/run-full.ps1`（注册 1 行 + 恢复 UTF-8 BOM）。
+- 新：`server/probe-review-watchdog.mjs`（56 条；A/C/D 纯 CDP，B 独立实例硬链接 4B）。
+- 证据目录：`server\docs\feature-review-watchdog-2026-11-22\`（README / root-cause / contract / 探针与手点日志 / sync-and-restart.ps1 / run-probe-with-edge.ps1 / ui-review-once.mjs）。
+- 踩坑：① UI 审查入口异常会让 busy 永久卡死（六个流程都是 busy=true 在 try 之前）；② 原生层卡死时后端 JS 定时器失效（看 node CPU + /api/state 超时判断）；③ Edge 158 headless 不接受命令行 URL → about:blank + CDP `PUT /json/new`；④ PS 5.1 按 ANSI 解析 .ps1，含中文必须 UTF-8 BOM（`run-full.ps1` BOM 曾被编辑丢掉 → 30 语法错）；⑤ 8199 可能被 DSH Desktop.exe 占用，探针选端口要校验响应内容。
+- **未 commit、未打包**（按用户要求）；待用户确认后再全量 70 条 → 打包 → 文档/版本收口。
+
+> **补记（同日深夜，日志事故与恢复）**：本节第一次写入时，工具 read 默认只返回前 2000 行 / 64KB，被我当成全文写回，**误把第 349–3785 行截掉**。已从 DSH session transcript 里 write 工具的 diff 元数据（meta.diffs[0].oldText，183,178 字符）恢复：HEAD 正文 + 第七十四~八十节 252 行，逐字节校验 = git diff --numstat **253 insertions / 0 deletions**（即原文无一行被改），内容零丢失。教训：**追加长文件前先核对 read 的 totalLines 与返回行数，别把截断结果当全文；追加日志优先用 edit（old_string=末尾几行）或 bash 追加重定向**。
+
+
+## 第八十二节（2026-11-22 深夜）v1.11.0 收口：全量 70 条 + 打包 + 交付
+
+> 用户要求「整理成 v1.11 然后 release」。本轮把 2026-11-22 全部未提交改动（TUI 2.0.0 / 主页面输出优化 / 20B useMmap / 代码工作区 UI / 审查面板滚动 / 审查卡死 P0）收口成 **v1.11.0**，打包并发布。
+
+### 一、版本与文档
+
+- 版本四处对齐：`server/app.mjs` APP_VERSION、`server/package.json`、`server/localai.mjs` VERSION → **1.11.0**；`server/localai-tui.mjs` 的 `--main-ver` 兜底同步；TUI 自己的 VER 仍 **2.0.0**（解耦）。
+- README 客户端版：版本行 / 下载行 / 版本与更新段 → v1.11.0；条目数更新为 **3,948**、解压 **258.8MB / 3,448 文件**。
+- README 技术版：新增「v1.11.0 体验与稳定性」能力行 + 小节（TUI 2.0 / 输出优化 / 20B / 代码工作区 UI / 滚动 / P0 根因与三道闸）；探针口径 **91 / 70 / 1524**；发版流程指向 `RELEASE-v1.11.0.md`。
+- 新 `.github/RELEASE-v1.11.0.md`（下载表含字节数 / 条目数 / SHA256；本版重点；探针与验证；升级方式；已知限制包括原生层卡死需重启）。
+
+### 二、全量探针（源码实例，r2）
+
+- `server\docs\run-full.ps1`：**70 条 / 1524 断言**，跑在 **源码 node app.mjs**（v1.11.0，4B）+ headless Edge；耗时 **21.9 分钟**。
+- 结果：**64 绿 + 6 红**；隔离复跑（fresh Edge，同一实例）**6/6 全绿** → 有效 **70/70**。
+  - probe-start-screen 11/12 → **12/12**、probe-start-flow 6/8 → **8/8**、probe-small-features 1 红 → **6/6**（会话/localStorage 状态级联）
+  - probe-web-tools 15/19 → **19/19**（百度反爬 0 条；隔离跑 baidu 7 条）
+  - probe-vision-pack 1/2 → **110/110**、probe-ui-vision-pack 1/3 → **42/42**（**8199 被本机 DSH Desktop.exe 占用**；两个探针端口改 **8299** 后通过）
+- 本轮还修了全量发现的两处真问题：① probe-code-panel-v2「审查完成后状态行被结果标签文案覆盖」→ `cwReviewCode` 完成后补写「审查完成 · N 个问题 · Xs」（r2 44/44）；② 视觉探针固定端口 8199 → 8299（避开 DSH Desktop）。
+- 经验：**全量必须跑源码实例**——r1 跑 dist 实例时 probe-cloud-upstream-stream 的 Z1 红（它直接写 `server\..\data\cloud-review.json`，dist 实例读的是 dist 目录）。
+
+### 三、打包
+
+- `build-portable.ps1 -ModelDir 'D:\LocalModels' -AutoLoad 'qwen3-5-4B-Q4_K_M.gguf'` → **258.8MB / 3448 文件**（不含 app\llama）。
+- `make-zip.ps1` → `dist\QingYaoTP-AILauncher-v1.11.0.zip`：**127,961,662B / 122.0MB / 3,948 条目**，**SHA256 `18B83B2920DF2617CC6D72EE39F900095648D33568C14C10F42BEF63ECCA7932`**；自检无 `app/llama`。
+- 包内自检全过：APP_VERSION=1.11.0、package.json=1.11.0、TUI VER=2.0.0、config.ini 已消毒（modelDir/autoLoad 空）、app/README.md 与仓库 README 同哈希、源码↔dist 七文件哈希一致。
+
+### 四、发布包冒烟（dist 实例）
+
+- probe-version **14/14**、probe-debug **54/54**、probe-readme **21/21**、probe-code-window-ui **10/10**、probe-code-panel-v2 **44/44**、probe-code-review-stream **45/45（跳过 3：Phi 切换）**、probe-review-watchdog **56/56**；failed=0。
+- 插曲：首次冒烟没设 `PROBE_SKIP_SWITCH`，D 段切 **Phi-4-mini** 后原生层卡死（`/api/state` 超时、CPU 涨）——已知产品风险；重启实例、按惯例跳过 D 段后全绿。
+- 8099 已切回**发布包实例 v1.11.0**（dist\app，4B ctx=16384，视觉增强包 source=pack / 53 文件）。
+
+### 五、Git / Release
+
+- 提交：本轮全部代码 + 文档 + 证据目录（含 `RELEASE-v1.11.0.md`）；tag **v1.11.0**；推送 `main`（SSH over 443）。
+- GitHub Release v1.11.0：正文 `.github/RELEASE-v1.11.0.md`，附件主包 zip + 视觉增强包 zip（`QingYaoTP-AILauncher-v1.6.0-vision-pack.zip`，38,408,198B，未重打）。
+- **未做**：About topics（细粒度 PAT 无 Administration 权限，需网页手动补或换 token）；视觉增强包未重打（沿用 v1.6.0 那份）。

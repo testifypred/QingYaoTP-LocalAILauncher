@@ -1,0 +1,8 @@
+﻿== 服务端对比（同一接口 /v1/chat/completions，同 prompt，4B） ==
+预热                     firstByte=   55ms  firstThink=    0ms  firstContent= 1427ms  total=  3746ms  chars=52 think=0
+tools=false(default) #1 firstByte=   16ms  firstThink=    0ms  firstContent= 1756ms  total=  3542ms  chars=37 think=0
+tools=false(default) #2 firstByte=   21ms  firstThink=    0ms  firstContent= 1807ms  total=  4128ms  chars=47 think=0
+tools=true #1          firstByte=   25ms  firstThink=    0ms  firstContent= 5902ms  total=  7816ms  chars=38 think=0
+tools=true #2          firstByte=   23ms  firstThink=    0ms  firstContent= 5927ms  total=  8433ms  chars=48 think=0
+thinking=true #1       firstByte=   15ms  firstThink= 1845ms  firstContent=16548ms  total= 16548ms  chars=53 think=582
+thinking=true #2       firstByte=   14ms  firstThink=  771ms  firstContent=15333ms  total= 15333ms  chars=53 think=592

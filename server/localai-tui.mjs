@@ -18,8 +18,10 @@
  */
 import process from "node:process";
 
-const VER = "1.2.0";
+const VER = "2.0.0";
 const DEFAULT_URL = "http://127.0.0.1:8099";
+/** 主程序版本：启动后从 /api/version 取；终端版本自己走 VER（独立演进，见 /version） */
+const MAIN = { version: "", commit: "", builtAt: 0 };
 
 const argv = process.argv.slice(2);
 const has = (f) => argv.includes(f);
@@ -35,12 +37,16 @@ function flagValue(name) {
   return v === undefined || v.startsWith("--") ? "" : v;
 }
 const BASE = (val("--url", process.env.LOCALAI_URL || DEFAULT_URL)).replace(/\/+$/, "");
-const NO_COLOR = has("--no-color") || Boolean(process.env.NO_COLOR);
+/** 颜色：--no-color 强制关；--color 强制开（绕过 NO_COLOR，调试/被上层环境污染时用） */
+const NO_COLOR = has("--no-color") || (!has("--color") && Boolean(process.env.NO_COLOR));
 const SELFTEST = has("--selftest");
 const SNAPSHOT = has("--snapshot");
 const HINT_TEST = has("--hint-test");
 const HINT_INPUT = HINT_TEST ? flagValue("--hint-test") : null;
 const PLAIN = has("--plain") || !process.stdout.isTTY;
+const PRINT_VERSION = has("--version");
+const FACES_TEST = has("--faces");
+const BENCH = has("--bench");
 
 // ---------------------------------------------------------------- 宽度
 /** 中日韩全角字符按 2 列计。覆盖常用区段即可，不做完整 Unicode 表。 */
@@ -140,6 +146,7 @@ const C = NO_COLOR
   ? new Proxy({}, { get: () => "" })
   : {
       reset: "\u001b[0m", dim: "\u001b[2m", bold: "\u001b[1m",
+      italic: "\u001b[3m", underline: "\u001b[4m",
       cyan: "\u001b[36m", green: "\u001b[32m", yellow: "\u001b[33m",
       red: "\u001b[31m", magenta: "\u001b[35m", gray: "\u001b[90m",
       inv: "\u001b[7m",
@@ -174,6 +181,9 @@ async function api(path, { method = "GET", body, headers, timeout = 0 } = {}) {
   return d;
 }
 
+/** 退出回调：main() 里挂上 cleanup（离开 alt screen + 恢复 raw mode），--selftest 里为空 */
+let quitApp = null;
+
 // ---------------------------------------------------------------- 状态
 const S = {
   model: val("--model"),
@@ -195,6 +205,8 @@ const S = {
   quitArmed: false,
   token: null,        // /api/state.localToken 缓存
   toolList: null,     // GET /api/tools 归一化后的缓存
+  menu: null,         // 能力面板（输入 / 时打开）：{ idx }
+  spin: { frame: 0, face: "", faceAt: 0, t0: 0, timer: null }, // 等待动画
   hints: { idx: -1, closed: false, cycle: null },
 };
 
@@ -363,6 +375,7 @@ const COMMANDS = [
   { cmd: "/new", desc: "清空上下文（不删会话文件）", usage: "/new" },
   { cmd: "/model", desc: "换模型（不给参数列出候选）", usage: "/model <文件>" },
   { cmd: "/state", desc: "打印服务状态", usage: "/state" },
+  { cmd: "/version", desc: "终端版本 + 主程序版本", usage: "/version" },
   { cmd: "/tools", desc: "列出软件工具；on|off 切换工具调用", usage: "/tools [on|off]" },
   { cmd: "/tool", desc: "调用软件工具（名称 + 参数）", usage: "/tool <name> [key=value …] [--json '<json>']" },
   { cmd: "/run", desc: "直接跑代码（python/js/c/cpp…）", usage: "/run <语言> <代码>" },
@@ -452,6 +465,289 @@ function hintBar(inner) {
   return rows;
 }
 
+// ---------------------------------------------------------------- Markdown / LaTeX（v2.0.0）
+/**
+ * 终端没有浏览器：Markdown 只能「降级渲染」——粗体 / 斜体 / 行内代码 / 代码块 / 标题 / 列表 /
+ * 引用 / 链接各有自己的颜色与符号；LaTeX 折成 Unicode 近似（α β √ ≤ x² …）并染洋红。
+ * 折行仍走 strWidth（中文 2 列），所以彩色行不会歪。
+ * 流式：模型每来一段就把整段重铺一遍；mdLinesOf 按 entry + 文本长度缓存，长回答也只解析一次。
+ */
+const FENCE = "\u0060\u0060\u0060";
+const BT = "\u0060";
+const LATEX_SYMBOLS = {
+  alpha: "α", beta: "β", gamma: "γ", delta: "δ", epsilon: "ε", varepsilon: "ε",
+  zeta: "ζ", eta: "η", theta: "θ", vartheta: "ϑ", iota: "ι", kappa: "κ", lambda: "λ",
+  mu: "μ", nu: "ν", xi: "ξ", omicron: "ο", pi: "π", rho: "ρ", sigma: "σ", tau: "τ",
+  upsilon: "υ", phi: "φ", varphi: "φ", chi: "χ", psi: "ψ", omega: "ω",
+  Gamma: "Γ", Delta: "Δ", Theta: "Θ", Lambda: "Λ", Xi: "Ξ", Pi: "Π", Sigma: "Σ",
+  Upsilon: "Υ", Phi: "Φ", Psi: "Ψ", Omega: "Ω",
+  sum: "∑", prod: "∏", coprod: "∐", int: "∫", iint: "∬", oint: "∮",
+  infty: "∞", partial: "∂", nabla: "∇", forall: "∀", exists: "∃", neg: "¬",
+  pm: "±", mp: "∓", times: "×", div: "÷", cdot: "·", cdots: "⋯", ldots: "…", dots: "…",
+  le: "≤", leq: "≤", ge: "≥", geq: "≥", ne: "≠", neq: "≠", approx: "≈", equiv: "≡",
+  sim: "∼", propto: "∝", perp: "⊥", parallel: "∥", angle: "∠", degree: "°", circ: "∘",
+  to: "→", rightarrow: "→", leftarrow: "←", leftrightarrow: "↔",
+  Rightarrow: "⇒", Leftarrow: "⇐", implies: "⟹",
+  in: "∈", notin: "∉", subset: "⊂", subseteq: "⊆", supset: "⊃", supseteq: "⊇",
+  cup: "∪", cap: "∩", emptyset: "∅", varnothing: "∅", therefore: "∴", because: "∵",
+};
+const SUP_MAP = { "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹", "+": "⁺", "-": "⁻", "=": "⁼", "(": "⁽", ")": "⁾", n: "ⁿ", i: "ⁱ" };
+const SUB_MAP = { "0": "₀", "1": "₁", "2": "₂", "3": "₃", "4": "₄", "5": "₅", "6": "₆", "7": "₇", "8": "₈", "9": "₉", "+": "₊", "-": "₋", "=": "₌", "(": "₍", ")": "₎", a: "ₐ", e: "ₑ", i: "ᵢ", j: "ⱼ", k: "ₖ", n: "ₙ", o: "ₒ", p: "ₚ", s: "ₛ", t: "ₜ", u: "ᵤ", v: "ᵥ", x: "ₓ" };
+
+function toSup(text) {
+  let ok = true;
+  const out = [...String(text)].map((ch) => {
+    const v = SUP_MAP[ch];
+    if (v === undefined) ok = false;
+    return v === undefined ? ch : v;
+  }).join("");
+  return ok ? out : "^(" + String(text) + ")";
+}
+function toSub(text) {
+  let ok = true;
+  const out = [...String(text)].map((ch) => {
+    const v = SUB_MAP[ch];
+    if (v === undefined) ok = false;
+    return v === undefined ? ch : v;
+  }).join("");
+  return ok ? out : "_(" + String(text) + ")";
+}
+
+/** LaTeX → Unicode 近似文本（纯函数，selftest 直接断言；不追求排版，只求可读） */
+function latexToText(src) {
+  let s = String(src ?? "");
+  s = s.replace(/\\(?:left|right|big|Big|bigg|Bigg)\b/g, "");
+  s = s.replace(/\\(?:,|;|:|!|\s)/g, " ");
+  s = s.replace(/\\quad\b/g, "  ").replace(/\\qquad\b/g, "    ");
+  s = s.replace(/\\(?:text|mathrm|mathbf|mathit|operatorname|mathcal|mathbb)\s*\{([^{}]*)\}/g, "$1");
+  for (let i = 0; i < 3; i += 1) s = s.replace(/\\(?:d|t)?frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, "($1)/($2)");
+  s = s.replace(/\\sqrt\s*\[([^\]]+)\]\s*\{([^{}]*)\}/g, "($1)√($2)");
+  s = s.replace(/\\sqrt\s*\{([^{}]*)\}/g, "√($1)");
+  s = s.replace(/\^\s*\{([^{}]*)\}/g, (m, g) => toSup(g));
+  s = s.replace(/\^(\w)/g, (m, g) => toSup(g));
+  s = s.replace(/_\s*\{([^{}]*)\}/g, (m, g) => toSub(g));
+  s = s.replace(/_(\w)/g, (m, g) => toSub(g));
+  s = s.replace(/\\([A-Za-z]+)/g, (m, name) => (LATEX_SYMBOLS[name] !== undefined ? LATEX_SYMBOLS[name] : name));
+  s = s.replace(/\\begin\{[^}]*\}/g, "").replace(/\\end\{[^}]*\}/g, "");
+  s = s.replace(/\\\\/g, "；").replace(/&/g, " ");
+  s = s.replace(/[{}]/g, "");
+  return s.replace(/[ \t]{2,}/g, " ").trim();
+}
+
+/** 行内语法 → 段（{t:文本, s:样式前缀}），样式是 ANSI 前缀，NO_COLOR 下为空串 */
+const INLINE_RE = /(\u0060[^\u0060\n]*\u0060|\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^\n]+~~|\$\$[^$\n]+\$\$|\$[^$\n]+\$|\[[^\]\n]*\]\([^)\s]+\)|\*[^*\n]+\*|_[^_\n]+_)/g;
+function inlineSegments(text) {
+  const s = String(text ?? "");
+  const segs = [];
+  let last = 0;
+  INLINE_RE.lastIndex = 0;
+  let m;
+  while ((m = INLINE_RE.exec(s)) !== null) {
+    if (m.index > last) segs.push({ t: s.slice(last, m.index), s: "" });
+    const tok = m[0];
+    if (tok.startsWith(BT)) segs.push({ t: tok.slice(1, -1), s: C.cyan });
+    else if (tok.startsWith("**")) segs.push({ t: tok.slice(2, -2), s: C.bold });
+    else if (tok.startsWith("__")) segs.push({ t: tok.slice(2, -2), s: C.bold + C.underline });
+    else if (tok.startsWith("~~")) segs.push({ t: tok.slice(2, -2), s: C.dim });
+    else if (tok.startsWith("$$")) segs.push({ t: latexToText(tok.slice(2, -2)), s: C.magenta + C.bold });
+    else if (tok.startsWith("$")) segs.push({ t: latexToText(tok.slice(1, -1)), s: C.magenta + C.bold });
+    else if (tok.startsWith("[")) {
+      const mm = /^\[([^\]]*)\]\(([^)]+)\)$/.exec(tok);
+      const label = mm ? mm[1] : tok;
+      const url = mm ? mm[2] : "";
+      segs.push({ t: label, s: C.cyan + C.underline });
+      if (url && url !== label) segs.push({ t: " (" + url + ")", s: C.dim });
+    } else {
+      segs.push({ t: tok.slice(1, -1), s: C.italic });
+    }
+    last = m.index + tok.length;
+  }
+  if (last < s.length) segs.push({ t: s.slice(last), s: "" });
+  return segs;
+}
+
+/** 按显示宽度把段铺成多行；段内样式随断行重新施加，行尾统一 reset（padWidth 会补空格） */
+function layoutSegments(segs, width) {
+  const lines = [];
+  let cur = "";
+  let curW = 0;
+  const push = () => { lines.push(cur + C.reset); cur = ""; curW = 0; };
+  for (const seg of segs) {
+    const style = seg.s || "";
+    const text = String(seg.t ?? "");
+    let piece = "";
+    for (const ch of text) {
+      if (ch === "\n") {
+        if (piece) { cur += style + piece + C.reset; piece = ""; }
+        push();
+        continue;
+      }
+      const cw = charWidth(ch.codePointAt(0));
+      if (curW + cw > width) {
+        if (piece) { cur += style + piece + C.reset; piece = ""; }
+        push();
+      }
+      piece += ch;
+      curW += cw;
+    }
+    if (piece) cur += style + piece + C.reset;
+  }
+  lines.push(cur + C.reset);
+  return lines;
+}
+
+/** 整段 Markdown → 每行都 ≤ width 的 ANSI 行（indent 为左侧缩进空格数） */
+function markdownLines(text, width, indent) {
+  const pad = " ".repeat(Math.max(0, indent || 0));
+  const w = Math.max(10, width - (indent || 0));
+  const out = [];
+  let fence = null;
+  let math = false;
+  for (const raw of String(text ?? "").split("\n")) {
+    const line = raw.replace(/\r$/, "");
+    const trimmed = line.trim();
+    if (fence !== null) {
+      if (trimmed.startsWith(FENCE)) {
+        fence = null;
+        out.push(pad + C.gray + "  └" + C.reset);
+        continue;
+      }
+      for (const p of wrapText(line.replace(/\t/g, "    "), Math.max(8, w - 4))) {
+        out.push(pad + C.gray + "  │ " + C.reset + C.cyan + p + C.reset);
+      }
+      continue;
+    }
+    if (math) {
+      if (trimmed === "$$") { math = false; out.push(pad + C.magenta + "  ∑ 公式" + C.reset); continue; }
+      for (const p of wrapText(latexToText(trimmed), Math.max(8, w - 2))) out.push(pad + "  " + C.magenta + C.bold + p + C.reset);
+      continue;
+    }
+    if (trimmed === "$$") { math = true; out.push(pad + C.magenta + "  ∑ 公式" + C.reset); continue; }
+    if (trimmed.startsWith(FENCE)) {
+      const lang = trimmed.slice(FENCE.length).trim() || "code";
+      fence = lang;
+      const dash = "─".repeat(Math.max(2, Math.min(18, w - 6 - strWidth(lang))));
+      out.push(pad + C.gray + "  ┌─ " + lang + " " + dash + C.reset);
+      continue;
+    }
+    if (!trimmed) { out.push(""); continue; }
+    const h = /^(#{1,6})\s+(.*?)\s*#*$/.exec(trimmed);
+    if (h) {
+      const level = h[1].length;
+      const color = level === 1 ? C.cyan : level === 2 ? C.green : level === 3 ? C.yellow : C.bold;
+      for (const l of layoutSegments([{ t: "▌ ", s: C.cyan + C.bold }, { t: h[2], s: C.bold + color }], Math.max(8, w - 2))) out.push(pad + l);
+      continue;
+    }
+    if (/^(?:-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+      out.push(pad + C.gray + "  " + "─".repeat(Math.max(4, Math.min(w - 2, 60))) + C.reset);
+      continue;
+    }
+    if (/^\|.*\|$/.test(trimmed)) {
+      for (const p of wrapText(trimmed, w - 2)) out.push(pad + "  " + C.dim + p + C.reset);
+      continue;
+    }
+    const q = /^>\s?(.*)$/.exec(trimmed);
+    if (q) {
+      for (const l of layoutSegments([{ t: "▎ ", s: C.gray }, ...inlineSegments(q[1])], Math.max(8, w - 2))) out.push(pad + l);
+      continue;
+    }
+    const b = /^([-*+]|\d+[.)])\s+(.*)$/.exec(trimmed);
+    if (b) {
+      const mark = /^\d/.test(b[1]) ? b[1] + " " : "• ";
+      for (const l of layoutSegments([{ t: "  " + mark, s: C.cyan }, ...inlineSegments(b[2])], Math.max(8, w - 1))) out.push(pad + l);
+      continue;
+    }
+    for (const l of layoutSegments(inlineSegments(line), w)) out.push(pad + l);
+  }
+  return out;
+}
+
+const MD_CACHE = new WeakMap();
+function mdLinesOf(entry, width) {
+  const c = MD_CACHE.get(entry);
+  if (c && c.w === width && c.len === entry.text.length) return c.lines;
+  const lines = markdownLines(entry.text, Math.max(12, width - 2), 2);
+  MD_CACHE.set(entry, { w: width, len: entry.text.length, lines });
+  return lines;
+}
+
+// ---------------------------------------------------------------- 等待动画（v2.0.0）
+/** 斜杠旋转：/ - \ |（契约要求），配随机原创颜文字，2 秒换一张脸 */
+const SPIN_FRAMES = ["/", "-", "\\", "|"];
+const SPIN_FACES = [
+  "(∫_∫)", "∂(・_・)", "(⌁_⌁)", "(◔_◔)", "(￣ω￣)", "(·_·)", "(°_°)", "(¬_¬)",
+  "(⌐_⌐)", "(๑_๑)", "(￣﹏￣)", "(⇀_↼)", "(⊙_⊙)", "(⌒_⌒)", "(￢_￢)", "(￣へ￣)",
+  "∫(￣▽￣)", "(・ω・)∫", "(˙ᵕ˙)", "(⌬_⌬)", "(￣◇￣)", "(⌯_⌯)",
+];
+function pickFace(prev) {
+  if (!SPIN_FACES.length) return "";
+  let f = SPIN_FACES[Math.floor(Math.random() * SPIN_FACES.length)];
+  if (SPIN_FACES.length > 1 && f === prev) f = SPIN_FACES[(SPIN_FACES.indexOf(f) + 1) % SPIN_FACES.length];
+  return f;
+}
+function spinnerText() {
+  const secs = ((Date.now() - (S.spin.t0 || Date.now())) / 1000).toFixed(1);
+  return C.cyan + SPIN_FRAMES[S.spin.frame] + C.reset + " " + C.magenta + (S.spin.face || "(・_・)") + C.reset +
+    C.gray + " 生成中 " + secs + "s · Ctrl+C 中断" + C.reset;
+}
+function startSpinner() {
+  stopSpinner();
+  S.spin.t0 = Date.now();
+  S.spin.frame = 0;
+  S.spin.face = pickFace(S.spin.face);
+  S.spin.faceAt = Date.now();
+  S.spin.timer = setInterval(() => {
+    S.spin.frame = (S.spin.frame + 1) % SPIN_FRAMES.length;
+    if (Date.now() - S.spin.faceAt > 2000) { S.spin.face = pickFace(S.spin.face); S.spin.faceAt = Date.now(); }
+    requestRender();
+  }, 90);
+  if (S.spin.timer.unref) S.spin.timer.unref();
+}
+function stopSpinner() {
+  if (S.spin.timer) clearInterval(S.spin.timer);
+  S.spin.timer = null;
+}
+
+// ---------------------------------------------------------------- 能力面板（/）
+/** 面板内容 = 命令 + 软件工具（来自 /api/tools）。工具名逐字来自服务端，不硬编码。 */
+function menuItems() {
+  const cmds = COMMANDS.map((c) => ({ kind: "cmd", label: c.cmd, desc: c.desc }));
+  const tools = (S.toolList || []).map((t) => ({
+    kind: "tool", label: "/tool " + t.name, desc: t.desc, name: t.name,
+    needArgs: (t.args || []).some((a) => a.required),
+  }));
+  return cmds.concat(tools);
+}
+function menuOpen() { return S.menu !== null; }
+/** 输入 / 时打开：先把缓存里的工具清单铺上，再静默刷新一次（/api/tools） */
+function openMenu() {
+  S.menu = { idx: 0 };
+  if (!S.toolList) loadTools(true, 4000).then(() => requestRender()).catch(() => {});
+  requestRender();
+}
+/** 执行面板选中项：命令直接跑；工具缺必填参数就先填进输入框，回车再发 */
+async function runMenu() {
+  const items = menuItems();
+  const it = items[Math.max(0, Math.min(S.menu ? S.menu.idx : 0, items.length - 1))];
+  S.menu = null;
+  if (!it) return true;
+  if (it.kind === "tool") {
+    if (it.needArgs) {
+      S.input = "/tool " + it.name + " ";
+      S.cursor = S.input.length;
+      resetHints();
+      requestRender();
+      return true;
+    }
+    S.input = ""; S.cursor = 0; resetHints();
+    requestRender();
+    return await handleSlash("/tool " + it.name);
+  }
+  S.input = ""; S.cursor = 0; resetHints();
+  requestRender();
+  return await handleSlash(it.label);
+}
+
 // ---------------------------------------------------------------- 日志
 function entry(role, text, meta) {
   const t = stripAnsi(text);
@@ -513,101 +809,194 @@ async function streamChat(onDelta, onTool) {
 }
 
 // ---------------------------------------------------------------- 渲染
-function frame(cols, rows) {
-  const inner = Math.max(20, cols);
-  const out = [];
-  const hints = hintBar(inner);
-  const bodyH = Math.max(3, rows - 5 - hints.length);
+/** 线框顶：╭─ 标题 ─…─╮（宽度锚定 inner，中文按 2 列算） */
+function boxTop(inner, title, right) {
+  const t = " " + String(title || "") + " ";
+  const r = right ? " " + String(right) : "";
+  const dash = inner - 3 - strWidth(t) - strWidth(r);
+  if (dash < 1) return C.gray + clipWidth("╭─" + t + r + "╮", inner) + C.reset;
+  return C.gray + "╭─" + C.reset + C.bold + t + C.reset + C.gray + "─".repeat(dash) + r + "╮" + C.reset;
+}
+/** 线框底：╰─ 说明 ─…─╯ */
+function boxBottom(inner, label) {
+  const lab = label ? " " + String(label) + " " : "";
+  const dash = inner - 3 - strWidth(lab);
+  if (dash < 1) return C.gray + clipWidth("╰─" + lab + "╯", inner) + C.reset;
+  return C.gray + "╰─" + C.reset + lab + C.gray + "─".repeat(dash) + "╯" + C.reset;
+}
 
-  const head = " QingYaoTP AILauncher " + VER + C.gray + "  " + (S.model || "（未指定）") + "  ctx " + (S.ctx || "?") +
-    (S.tools ? "  " + C.green + "工具开" : "  " + C.gray + "工具关") +
-    (S.web ? C.green + " 联网开" : "") + C.reset;
-  out.push(padWidth(head, inner));
+/** 输入区：线框 + 可见光标块（反显；NO_COLOR 降级成 ▏），多行时窗口跟着光标滚 */
+function inputBoxLines(inner, maxLines) {
+  const avail = Math.max(8, inner - 6);
+  const chars = [...S.input];
+  const cursorIdx = [...S.input.slice(0, S.cursor)].length;
+  const raw = [];
+  let text = "";
+  let w = 0;
+  let start = 0;
+  for (let i = 0; i < chars.length; i += 1) {
+    const ch = chars[i];
+    const cw = charWidth(ch.codePointAt(0));
+    if (w + cw > avail && text) {
+      raw.push({ text, start });
+      text = "";
+      start = i;
+      w = 0;
+    }
+    text += ch;
+    w += cw;
+  }
+  raw.push({ text, start });
+  let cl = raw.length - 1;
+  for (let i = 0; i < raw.length; i += 1) {
+    const arr = [...raw[i].text];
+    if (cursorIdx >= raw[i].start && cursorIdx <= raw[i].start + arr.length) { cl = i; break; }
+  }
+  const maxL = Math.max(1, maxLines);
+  let from = 0;
+  if (raw.length > maxL) from = Math.min(Math.max(0, cl - maxL + 1), raw.length - maxL);
+  const rows = [boxTop(inner, "输入" + (S.input ? " · " + [...S.input].length + " 字" : ""), S.generating ? "生成中" : "")];
+  for (let i = from; i < Math.min(raw.length, from + maxL); i += 1) {
+    const arr = [...raw[i].text];
+    const off = cursorIdx >= raw[i].start && cursorIdx <= raw[i].start + arr.length ? cursorIdx - raw[i].start : -1;
+    let bodyText = "";
+    for (let k = 0; k < arr.length; k += 1) {
+      if (k === off) bodyText += NO_COLOR ? arr[k] + "▏" : C.inv + arr[k] + C.reset;
+      else bodyText += arr[k];
+    }
+    if (off === arr.length) bodyText += NO_COLOR ? "▏" : C.inv + " " + C.reset;
+    const prompt = i === 0 ? C.cyan + "› " + C.reset : (from > 0 && i === from ? C.gray + "↑ " + C.reset : "  ");
+    const curW = off === arr.length ? 1 : 0;
+    const fill = " ".repeat(Math.max(0, avail - strWidth(raw[i].text) - curW));
+    rows.push("│ " + prompt + bodyText + fill + " │");
+  }
+  rows.push(boxBottom(inner, S.generating ? spinnerText() : ""));
+  return rows.map((r) => padWidth(r, inner));
+}
 
-  const rule = C.gray + "─".repeat(inner) + C.reset;
-  out.push(rule);
+function headerLine(inner) {
+  // 左：产品名 + 终端版本 + 主程序版本（两者都要在，排障时一眼看到）
+  const left = " QingYaoTP AILauncher" + C.gray + " · tui " + VER + " · 主程序 v" + (MAIN.version || "?") +
+    (MAIN.commit ? " (" + String(MAIN.commit).slice(0, 7) + ")" : "") + C.reset;
+  // 右：模型 / ctx / 工具 / 联网 —— 宽度不够就按优先级丢掉后面的，绝不把版本号挤掉
+  const model = (S.model || "（未指定）").replace(/\.gguf$/i, "");
+  const ctxText = S.ctx ? (S.ctx >= 1024 && S.ctx % 1024 === 0 ? S.ctx / 1024 + "k" : String(S.ctx)) : "?";
+  const cands = [
+    C.gray + model + C.reset,
+    C.gray + "ctx " + ctxText + C.reset,
+    S.tools ? C.green + "工具开" + C.reset : C.gray + "工具关" + C.reset,
+    S.web ? C.green + "联网开" + C.reset : "",
+  ].filter(Boolean);
+  let right = "";
+  for (const c of cands) {
+    const w = strWidth(c) + (right ? 2 : 0);
+    if (strWidth(left) + 1 + strWidth(right) + w > inner) break;
+    right = right ? right + "  " + c : c;
+  }
+  const gap = inner - strWidth(left) - strWidth(right);
+  const line = gap >= 1 ? left + " ".repeat(gap) + right : clipWidth(left, inner);
+  return padWidth(line, inner);
+}
 
-  // 正文：把 log 铺成行
+/** 能力面板（输入 / 打开）：命令 + 工具，↑↓ 选、Enter 跑、Esc 收起 */
+function menuRows(inner) {
+  if (!menuOpen()) return [];
+  const items = menuItems();
+  if (!items.length) return [];
+  const maxShown = 9;
+  const shown = Math.min(maxShown, items.length);
+  const idx = Math.max(0, Math.min(S.menu.idx, items.length - 1));
+  const from = items.length > shown ? Math.min(Math.max(0, idx - Math.floor(shown / 2)), items.length - shown) : 0;
+  const rows = [boxTop(inner, "能力面板", "↑↓ 选择 · Enter 执行 · Esc 收起")];
+  for (let i = from; i < from + shown; i += 1) {
+    const it = items[i];
+    const on = i === idx;
+    const label = padWidth(clipWidth(it.label, 26), 26);
+    const room = Math.max(6, inner - 34);
+    const row = C.gray + "│ " + C.reset + (on ? C.bold + C.cyan + "▸ " : C.gray + "  ") + C.reset +
+      (on ? C.bold + C.cyan : C.gray) + label + C.reset + "  " + C.gray + padWidth(clipWidth(it.desc, room), room) + C.reset +
+      " " + C.gray + "│" + C.reset;
+    rows.push(padWidth(row, inner));
+  }
+  rows.push(boxBottom(inner, "工具来自 /api/tools · 共 " + items.length + " 项"));
+  return rows;
+}
+
+/** 正文：assistant 走 Markdown 降级渲染，其余按角色着色的普通行 */
+function bodyLines(inner) {
   const body = [];
   for (const e of S.log) {
     if (e.role === "user") {
       body.push("");
-      body.push(C.cyan + "› " + C.reset + truncWidth(e.text, inner - 2));
-      const rest = wrapText(e.text, inner - 2).slice(1);
-      for (const l of rest) body.push("  " + l);
-    } else if (e.role === "tool") {
-      for (const l of String(e.text).split("\n")) body.push(C.gray + "  🔧 " + l + C.reset);
-    } else if (e.role === "error") {
-      body.push("");
-      for (const l of wrapText(e.text, inner - 4)) body.push(C.red + "  " + l + C.reset);
-    } else if (e.role === "sys") {
-      for (const l of String(e.text).split("\n")) body.push(C.magenta + "  " + l + C.reset);
-    } else {
-      for (const l of wrapText(e.text, inner)) body.push(l);
-      if (e.meta) body.push(C.gray + "  " + e.meta + C.reset);
+      const ls = wrapText(e.text, Math.max(8, inner - 2));
+      for (let i = 0; i < ls.length; i += 1) body.push(i === 0 ? C.cyan + "› " + C.reset + ls[i] : "  " + ls[i]);
+      continue;
     }
+    if (e.role === "assistant") {
+      for (const l of mdLinesOf(e, inner)) body.push(l);
+      if (e.meta) body.push(C.gray + "  " + e.meta + C.reset);
+      continue;
+    }
+    if (e.role === "tool") {
+      for (const l of String(e.text).split("\n")) body.push(C.gray + "  🔧 " + l + C.reset);
+      continue;
+    }
+    if (e.role === "error") {
+      body.push("");
+      for (const l of wrapText(String(e.text), Math.max(8, inner - 4))) body.push(C.red + "  " + l + C.reset);
+      continue;
+    }
+    for (const l of String(e.text).split("\n")) body.push(C.magenta + "  " + l + C.reset);
   }
   if (!S.log.length) {
     body.push("");
-    body.push(C.gray + "  直接输入问题回车发送。" + C.reset);
-    body.push(C.gray + "  输入 / 看命令提示（Tab 补全 / → 接受）· Ctrl+C 中断生成，再按一次退出" + C.reset);
+    body.push(C.gray + "  直接输入问题回车发送；输入 " + C.cyan + "/" + C.gray + " 打开能力面板（命令 + 工具）。" + C.reset);
+    body.push(C.gray + "  Tab 补全 · ↑↓ 历史 · PgUp/PgDn 滚动 · Ctrl+C 中断（再按一次退出）" + C.reset);
+    body.push("");
+    body.push(C.dim + "  localai tui " + VER + " · 主程序 v" + (MAIN.version || "?") + C.reset);
   }
+  return body;
+}
 
-  const total = body.length;
-  const maxScroll = Math.max(0, total - bodyH);
+function frame(cols, rows) {
+  const inner = Math.max(32, cols);
+  const out = [headerLine(inner), C.gray + "─".repeat(inner) + C.reset];
+  const menu = menuRows(inner);
+  const box = inputBoxLines(inner, Math.max(1, Math.min(6, rows - 14)));
+  let hints = menu.length ? [] : hintBar(inner);
+  const room = rows - 2 - menu.length - box.length - 1;
+  if (hints.length > Math.max(0, room - 2)) hints = hints.slice(0, Math.max(0, room - 2));
+  const bodyH = Math.max(2, room - hints.length);
+  const body = bodyLines(inner);
+  const maxScroll = Math.max(0, body.length - bodyH);
   S.scroll = Math.min(S.scroll, maxScroll);
-  const end = total - S.scroll;
+  const end = body.length - S.scroll;
   const slice = body.slice(Math.max(0, end - bodyH), end);
-  // 内容不足一屏时贴顶，多了才滚动；不能 unshift，否则历史短时正文全挤在屏幕底部
   while (slice.length < bodyH) slice.push("");
   out.push(...slice.map((l) => padWidth(l, inner)));
-
-  out.push(rule);
-
-  // 输入行：光标超宽时左移窗口，保证光标可见
-  const promptW = 2;
-  const avail = inner - promptW;
-  const chars = [...S.input];
-  const cursorChars = [...S.input.slice(0, S.cursor)].length;
-  const beforeCursor = S.input.slice(0, S.cursor);
-  const cw = strWidth(beforeCursor);
-  let startIdx = 0;
-  if (cw >= avail) {
-    let w = 0, i = cursorChars;
-    while (i > 0) {
-      const ch = chars[i - 1];
-      const cwid = charWidth(ch.codePointAt(0));
-      if (w + cwid > avail - 1) break;
-      w += cwid; i -= 1;
-    }
-    startIdx = i;
-  }
-  const shown = truncWidth(chars.slice(startIdx).join(""), avail);
-  const cursorCol = promptW + strWidth(chars.slice(startIdx, cursorChars).join(""));
-  const ghost = startIdx === 0 ? inlineGhost() : "";
-  const lineBase = (S.generating ? C.yellow + "… " : C.cyan + "› ") + C.reset;
-  const line = ghost ? lineBase + shown + C.dim + ghost + C.reset : lineBase + shown;
-  const inputRow = out.length;
-  out.push(padWidth(line, inner));
-
-  for (const h of hints) out.push(padWidth(h, inner));
-
-  const hint = S.generating
-    ? C.yellow + " 生成中 · Ctrl+C 中断" + C.reset
-    : hints.length
-      ? C.gray + " Tab 切换候选 · → 接受补全 · Esc 收起 · Enter 执行" + C.reset
-      : C.gray + " Enter 发送 · Tab 补全命令 · ↑↓ 历史 · PgUp/PgDn 滚动 · /help" + C.reset;
-  const stat = S.status ? C.gray + " " + S.status + C.reset : hint;
+  out.push(...menu);
+  out.push(...box);
+  out.push(...hints.map((h) => padWidth(h, inner)));
+  const stat = S.generating
+    ? C.gray + " 生成中 · Ctrl+C 中断" + C.reset
+    : S.status
+      ? C.yellow + " " + S.status + C.reset
+      : menu.length
+        ? C.gray + " ↑↓/Tab 选择 · Enter 执行 · Esc 收起 · 也可以直接打 /tool 名字 调用" + C.reset
+        : hints.length
+          ? C.gray + " Tab 切换候选 · → 接受补全 · Esc 收起 · Enter 执行" + C.reset
+          : C.gray + " Enter 发送 · / 能力面板 · Tab 补全 · ↑↓ 历史 · PgUp/PgDn 滚动" + C.reset;
   out.push(padWidth(stat, inner));
-
-  // inputRow 是 0 基下标，终端行号 1 基
-  return { lines: out.slice(0, rows), cursorRow: inputRow + 1, cursorCol };
+  // 极端小终端（menu + 多行输入把正文挤没）时也保证铺满 rows 行：否则底部会残留上一帧
+  while (out.length < rows) out.push(" ".repeat(inner));
+  return { lines: out.slice(0, rows) };
 }
 
 let renderTimer = null;
+/** 16ms 合并（约 60fps）：SSE 每个 delta 都触发，但不逐字重绘整屏 */
 function requestRender() {
   if (renderTimer || PLAIN || SNAPSHOT) return;
-  renderTimer = setTimeout(() => { renderTimer = null; render(); }, 40);
+  renderTimer = setTimeout(() => { renderTimer = null; render(); }, 16);
 }
 function render() {
   if (PLAIN) return;
@@ -618,14 +1007,16 @@ function render() {
   for (let i = 0; i < f.lines.length; i += 1) {
     s += padWidth(f.lines[i], cols) + (i === f.lines.length - 1 ? "" : "\n");
   }
-  s += "\u001b[" + f.cursorRow + ";" + (f.cursorCol + 1) + "H";
   process.stdout.write(s);
 }
 
 // ---------------------------------------------------------------- 命令实现
 function helpText() {
   const width = Math.max(...COMMANDS.map((c) => strWidth(c.usage)));
-  const lines = ["命令（输入 / 开头可出现命令提示；Tab 补全、→ 接受、Esc 收起）："];
+  const lines = [];
+  lines.push("localai tui " + VER + " · 主程序 v" + (MAIN.version || "?") + "（详情 /version）");
+  lines.push("");
+  lines.push("命令（输入 / 开头可出现命令提示；Tab 补全、→ 接受、Esc 收起）：");
   for (const c of COMMANDS) lines.push("  " + padWidth(c.usage, width) + "  " + c.desc);
   lines.push("", "工具：/tools 看清单 · /tool <name> key=value … · /tool <name> --json '{\"k\":\"v\"}'");
   return lines.join("\n");
@@ -716,6 +1107,19 @@ async function slashCommand(line) {
       if (r.stdout) entry("assistant", r.stdout.trimEnd());
       return true;
     }
+    case "version": {
+      let v = null;
+      try { v = await api("/api/version", { timeout: 5000 }); } catch {}
+      entry("sys", [
+        "localai tui    " + VER,
+        "主程序         v" + ((v && v.version) || MAIN.version || "?") + (v && v.commit ? " · commit " + String(v.commit).slice(0, 10) : ""),
+        v && v.builtAt ? "构建           " + new Date(v.builtAt).toLocaleString() : "",
+        "Node           " + process.version,
+        "服务           " + BASE,
+        "模型           " + (S.model || "未指定") + " · ctx " + (S.ctx || "?"),
+      ].filter(Boolean).join("\n"));
+      return true;
+    }
     default:
       entry("sys", "未知命令 /" + cmd + "，输入 /help");
       return true;
@@ -739,6 +1143,8 @@ async function send(text) {
   S.messages.push({ role: "user", content: trimmed });
   S.generating = true;
   S.status = "";
+  S.menu = null;
+  startSpinner();
   const holder = { role: "assistant", text: "", meta: null };
   S.log.push(holder);
   let acc = "";
@@ -764,6 +1170,7 @@ async function send(text) {
   } finally {
     S.generating = false;
     S.abort = null;
+    stopSpinner();
     requestRender();
   }
 }
@@ -819,62 +1226,59 @@ function completeHint() {
   render();
 }
 
-async function main() {
-  if (HINT_TEST) return hintTest(HINT_INPUT ?? "");
-  if (SELFTEST) return selftest();
-  if (SNAPSHOT) return snapshot();
-  if (PLAIN) return plainMode();
-  await ensureModel();
-
-  process.stdout.write("\u001b[?1049h\u001b[?25l\u001b[2J");
-  const cleanup = () => {
-    process.stdout.write("\u001b[?25h\u001b[?1049l");
-    if (process.stdin.isTTY) { try { process.stdin.setRawMode(false); } catch {} }
-    process.stdin.pause();
-  };
-  const bye = (code = 0) => { cleanup(); process.exit(code); };
-  process.on("exit", () => { try { process.stdout.write("\u001b[?25h\u001b[?1049l"); } catch {} });
-  process.on("SIGINT", () => bye(0));
-  process.stdout.on("resize", () => render());
-
-  process.stdin.setRawMode(true);
-  process.stdin.resume();
-  process.stdin.setEncoding("utf8");
-  render();
-  // 预先拉一次工具清单：输入 /tool 时提示条立刻有内容
-  loadTools(true, 4000).catch(() => {});
-
-  // 挂完处理器就进入事件循环：这里必须挂住，否则 main() 一返回外层就 process.exit，窗口秒关
-  const done = new Promise(() => {});
-
-  process.stdin.on("data", async (chunk) => {
-    const s = String(chunk);
-    // Ctrl+C
+async function handleKey(s) {
+    // Ctrl+C：生成中先中断；面板打开先收起；都没有才走「再按一次退出」
     if (s === "\u0003") {
       if (S.generating && S.abort) { S.abort.abort(); return; }
-      if (S.quitArmed) return bye(0);
+      if (menuOpen()) { S.menu = null; render(); return; }
+      if (S.quitArmed) { if (quitApp) quitApp(0); return; }
       S.quitArmed = true;
       S.status = "再按一次 Ctrl+C 退出";
       requestRender();
       setTimeout(() => { S.quitArmed = false; S.status = ""; requestRender(); }, 2500);
       return;
     }
-    if (s === "\u000c") { S.log = []; render(); return; } // Ctrl+L
+    if (s === "\u000c") { S.log = []; S.menu = null; render(); return; } // Ctrl+L
+    // 能力面板：Tab/↑↓ 选、Enter 执行、Esc 收起、退格回空；打字即回输入区
+    if (menuOpen()) {
+      if (s === "\t" || s === "\u001b[B") {
+        S.menu.idx = (S.menu.idx + 1) % Math.max(1, menuItems().length);
+        render();
+        return;
+      }
+      if (s === "\u001b[Z" || s === "\u001b[A") {
+        const n = Math.max(1, menuItems().length);
+        S.menu.idx = (S.menu.idx - 1 + n) % n;
+        render();
+        return;
+      }
+      if (s === "\u001b") { S.menu = null; render(); return; }
+      if (s === "\u007f" || s === "\b") { S.input = ""; S.cursor = 0; S.menu = null; resetHints(); render(); return; }
+      if (s === "\r" || s === "\n") {
+        if (S.generating) { render(); return; }
+        const keep = await runMenu();
+        if (!keep) { if (quitApp) quitApp(0); return; }
+        render();
+        return;
+      }
+    }
     if (s === "\t") { completeHint(); return; }            // Tab 补全/切换候选
     if (s === "\r" || s === "\n") {
       // 生成中再回车不并发发问：服务端一次只跑一轮，并发只会让两边都卡
-      if (S.generating) { S.status = "上一轮还在生成，Ctrl+C 可中断"; render(); return; }
+      if (S.generating) { S.status = "上一轮还在生成，Ctrl+C 可中断"; requestRender(); return; }
       let text = S.input;
-      // 半截命令 + 回车：先补成首个候选（/he → /help），再执行
       const head = text.trim();
+      // 只打了「/」就回车：重开能力面板，绝不能补成 /new 把上下文清了
+      if (head === "/") { S.input = "/"; S.cursor = 1; openMenu(); render(); return; }
+      // 半截命令 + 回车：先补成首个候选（/he → /help），再执行
       if (head.startsWith("/") && !/\s/.test(head) && !findCommand(head)) {
         const c = computeHints(head)[0];
         if (c && c.insert) text = c.insert;
       }
-      S.input = ""; S.cursor = 0; resetHints();
+      S.input = ""; S.cursor = 0; S.menu = null; resetHints();
       if (text.trim().startsWith("/")) {
         const keep = await handleSlash(text.trim());
-        if (!keep) return bye(0);
+        if (!keep) { if (quitApp) quitApp(0); return; }
         render();
       } else {
         render();
@@ -886,6 +1290,7 @@ async function main() {
       if (S.cursor > 0) {
         S.input = S.input.slice(0, S.cursor - 1) + S.input.slice(S.cursor);
         S.cursor -= 1;
+        S.menu = null;
         resetHints();
         render();
       }
@@ -915,12 +1320,56 @@ async function main() {
     if (s.startsWith("\u001b")) return; // 其它转义序列忽略
     const printable = s.replace(/[\u0000-\u001f]/g, "");
     if (!printable) return;
+    const wasEmpty = S.input === "" && S.cursor === 0;
     S.input = S.input.slice(0, S.cursor) + printable + S.input.slice(S.cursor);
     S.cursor += printable.length;
     S.quitArmed = false;
-    resetHints();
+    if (wasEmpty && printable === "/") {
+      openMenu(); // 空输入按 / 直接开能力面板
+    } else {
+      if (S.menu) S.menu = null;
+      resetHints();
+    }
     if (S.input.startsWith("/tool")) maybeLoadTools();
     render();
+}
+
+
+async function main() {
+  if (HINT_TEST) return hintTest(HINT_INPUT ?? "");
+  if (SELFTEST) return selftest();
+  if (SNAPSHOT) return snapshot();
+  if (PRINT_VERSION) return await printVersion();
+  if (FACES_TEST) return facesTest();
+  if (BENCH) return bench();
+  if (PLAIN) return plainMode();
+  await ensureModel();
+
+  process.stdout.write("\u001b[?1049h\u001b[?25l\u001b[2J");
+  const cleanup = () => {
+    process.stdout.write("\u001b[?25h\u001b[?1049l");
+    if (process.stdin.isTTY) { try { process.stdin.setRawMode(false); } catch {} }
+    process.stdin.pause();
+  };
+  const bye = (code = 0) => { cleanup(); process.exit(code); };
+  quitApp = bye;
+  process.on("exit", () => { try { process.stdout.write("\u001b[?25h\u001b[?1049l"); } catch {} });
+  process.on("SIGINT", () => bye(0));
+  process.stdout.on("resize", () => render());
+
+  process.stdin.setRawMode(true);
+  process.stdin.resume();
+  process.stdin.setEncoding("utf8");
+  render();
+  // 首帧先出来，再异步补版本号与工具清单（/ 面板与 /tool 提示条都靠它）
+  loadVersion().then(() => requestRender()).catch(() => {});
+  loadTools(true, 4000).catch(() => {});
+
+  // 挂完处理器就进入事件循环：这里必须挂住，否则 main() 一返回外层就 process.exit，窗口秒关
+  const done = new Promise(() => {});
+
+  process.stdin.on("data", (chunk) => {
+    Promise.resolve(handleKey(String(chunk))).catch(() => {});
   });
 
   return await done;
@@ -1024,6 +1473,93 @@ function selftest() {
   // 12) JSON 截断
   const big = formatJson({ s: "x".repeat(5000) });
   check(big.includes("已截断"), "formatJson 截断");
+  // 13) v2.0.0：LaTeX 降级（纯函数，确定性断言）
+  check(latexToText("\\frac{1}{2}") === "(1)/(2)", "latex frac", latexToText("\\frac{1}{2}"));
+  check(latexToText("\\alpha+\\beta").includes("α") && latexToText("\\alpha+\\beta").includes("β"), "latex 希腊字母", latexToText("\\alpha+\\beta"));
+  check(latexToText("x^2") === "x²", "latex 上标", latexToText("x^2"));
+  check(latexToText("\\sqrt{2}").includes("√"), "latex 根号", latexToText("\\sqrt{2}"));
+  check(latexToText("a \\le b").includes("≤"), "latex 关系符", latexToText("a \\le b"));
+  // 14) Markdown 行内：标记被吃掉、换成样式
+  const segs = inlineSegments("**粗** 与 " + BT + "码" + BT + " 与 $x^2$");
+  const segText = segs.map((x) => x.t).join("");
+  check(segText === "粗 与 码 与 x²", "inline 文本", segText);
+  if (!NO_COLOR) {
+    check(segs.some((x) => x.s === C.bold), "inline 粗体样式");
+    check(segs.some((x) => x.s === C.cyan), "inline 行内代码样式");
+    check(segs.some((x) => x.s === C.magenta + C.bold), "inline 公式样式");
+  }
+  // 15) Markdown 块：列表 / 标题 / 代码块 / 宽度
+  const mdSample = "- 一\n- 二\n\n# 标题\n\n" + FENCE + "js\nconst a = 1;\n" + FENCE;
+  const md = markdownLines(mdSample, 60, 2);
+  const mdPlain = md.join("\n").replace(/\u001b\[[0-9;]*m/g, "");
+  check(mdPlain.includes("•"), "md 列表");
+  check(mdPlain.includes("标题") && mdPlain.includes("▌"), "md 标题");
+  check(mdPlain.includes("const a = 1;") && mdPlain.indexOf("**") < 0, "md 代码块/无标记");
+  check(md.every((l) => strWidth(l) <= 60), "md 不超宽", md.map((l) => strWidth(l)).filter((w) => w > 60).slice(0, 3));
+  // 16) 等待动画：/ - \ | 顺序 + 原创颜文字
+  check(SPIN_FRAMES.join("") === "/-\\|", "旋转帧顺序", SPIN_FRAMES.join(""));
+  check(SPIN_FACES.length >= 12 && new Set(SPIN_FACES).size === SPIN_FACES.length, "颜文字数量/唯一", SPIN_FACES.length);
+  check(SPIN_FACES.every((fc) => strWidth(fc) > 0 && fc.indexOf("\u001b") < 0), "颜文字无控制码");
+  // 17) 线框：宽度必须精确等于终端宽度，否则右边框会歪
+  check(strWidth(boxTop(40, "输入")) === 40 && boxTop(40, "输入").includes("╭") && boxTop(40, "输入").includes("╮"), "boxTop 宽度", strWidth(boxTop(40, "输入")));
+  check(strWidth(boxBottom(40, "Enter 发送")) === 40, "boxBottom 宽度", strWidth(boxBottom(40, "Enter 发送")));
+  // 18) 输入框：光标可见（反显块；NO_COLOR 降级 ▏），宽度不歪
+  S.input = ""; S.cursor = 0; S.menu = null;
+  const ib0 = inputBoxLines(46, 3);
+  check(ib0.length >= 3 && ib0.some((l) => l.indexOf("▏") >= 0 || l.indexOf("\u001b[7m") >= 0), "输入框光标");
+  check(ib0.every((l) => strWidth(l) === 46), "输入框宽度", ib0.map((l) => strWidth(l)));
+  S.input = "你好世界"; S.cursor = 2;
+  check(inputBoxLines(46, 3).some((l) => l.indexOf("▏") >= 0 || l.indexOf("\u001b[7m") >= 0), "输入框光标随文字");
+  S.input = "x".repeat(200); S.cursor = 200;
+  check(inputBoxLines(46, 3).every((l) => strWidth(l) === 46), "输入框长文本不超宽");
+  S.input = ""; S.cursor = 0;
+  // 19) 能力面板：命令 + 工具都在
+  S.toolList = [{ name: "get_current_time", desc: "当前时间", args: [] }];
+  const mi = menuItems();
+  check(mi.length >= COMMANDS.length + 1 && mi.some((x) => x.label === "/tool get_current_time"), "菜单含命令与工具", mi.length);
+  S.menu = { idx: 0 };
+  const mr = menuRows(80);
+  check(mr.length >= 3 && mr[0].includes("能力面板") && mr[0].includes("╭") && mr[mr.length - 1].includes("╯"), "菜单线框");
+  S.menu = null; S.toolList = null;
+  // 20) 头部版本：终端自己 + 主程序；整帧每行都必须是终端宽度
+  const hd = frame(100, 26).lines;
+  check(hd.join("\n").includes("localai tui " + VER) && hd.join("\n").includes("主程序 v"), "头部版本");
+  check(hd.every((l) => strWidth(l) === 100), "整帧宽度", hd.map((l) => strWidth(l)).filter((w) => w !== 100).slice(0, 3));
+  // 20b) 按键处理：/ 打开面板、↑↓ 选择、Esc 收起、打字回输入、Enter 执行命令
+  const simKey = (k) => { try { const p = handleKey(k); if (p && p.catch) p.catch(() => {}); } catch {} };
+  S.input = ""; S.cursor = 0; S.menu = null; S.toolList = null;
+  simKey("/");
+  check(S.menu !== null && S.input === "/", "按键 / 打开能力面板", S.menu && S.input);
+  simKey("\u001b[B");
+  check(S.menu && S.menu.idx === 1, "面板 ↓ 选择", S.menu && S.menu.idx);
+  simKey("\u001b[A");
+  check(S.menu && S.menu.idx === 0, "面板 ↑ 回到顶部", S.menu && S.menu.idx);
+  simKey("\u001b");
+  check(S.menu === null, "Esc 收起面板并回到对话");
+  S.input = ""; S.cursor = 0;
+  simKey("/");
+  simKey("x");
+  check(S.input === "/x" && S.menu === null, "面板里打字回到输入", S.input);
+  S.input = ""; S.cursor = 0; S.menu = null;
+  // 只打 / 就回车：应重开面板而不是执行 /new
+  S.input = "/"; S.cursor = 1; S.menu = null;
+  const logKeep = S.log.length;
+  simKey("\r");
+  check(S.menu !== null && S.log.length === logKeep, "回车在 / 上重开面板");
+  S.menu = null; S.input = ""; S.cursor = 0;
+  const logBefore = S.log.length;
+  simKey("/");
+  simKey("\r");
+  check(S.menu === null && S.log.length > logBefore, "面板 Enter 执行命令（/help）", S.log.length - logBefore);
+  S.log = [];
+  // 21) Markdown 缓存 + 解析性能（流式每帧都要重铺，必须便宜）
+  const e1 = { role: "assistant", text: "**粗** " + BT + "码" + BT + " $x^2$ 和一段中文补充说明。".repeat(300) };
+  let cacheHit = true;
+  for (let i = 0; i < 40; i += 1) { const a1 = mdLinesOf(e1, 100); const b1 = mdLinesOf(e1, 100); if (a1 !== b1) cacheHit = false; }
+  check(cacheHit, "md 缓存命中");
+  const tmd = Date.now();
+  const bigLines = mdLinesOf({ role: "assistant", text: e1.text }, 100);
+  check(bigLines.length > 0 && Date.now() - tmd < 2000, "md 解析 <2s", Date.now() - tmd);
   console.log(bad ? "SELFTEST 失败 " + bad + " 项（共 " + n + " 项）" : "SELFTEST 通过（" + n + " 项）");
   return bad ? 1 : 0;
 }
@@ -1031,18 +1567,34 @@ function selftest() {
 async function snapshot() {
   S.model = "qwen3-5-4B-Q4_K_M.gguf";
   S.ctx = 16384; S.tools = true;
+  if (!MAIN.version) MAIN.version = val("--main-ver", "1.11.0");
   S.log = [
     { role: "user", text: "用一句话说明 KV 缓存为什么能加速多轮对话" },
     { role: "tool", text: "get_current_time {} → 2ms" },
-    { role: "assistant", text: "因为多轮对话的前缀完全一样，模型可以复用上一次已经算好的 KV，只对新增的 token 做前向计算，所以首字延迟从十几秒降到一秒左右。", meta: "38 tok · 1 次工具 · 3.2s" },
+    {
+      role: "assistant",
+      text: "因为多轮对话的前缀完全一样，**KV 缓存**可以复用上一次算好的 K/V，只对新增 token 做前向计算。\n\n" +
+        "- 首字延迟：16.7s → **0.97s**（约 94%）\n- 代价：显存随上下文线性增长\n\n" +
+        FENCE + "js\nconst first = cached ? 0.97 : 16.7;\n" + FENCE + "\n\n" +
+        "公式：$\\frac{\\Delta t}{t_0}$ 约 94%，$\\sum_{i=1}^{n} t_i$ 只剩新增 token。",
+      meta: "38 tok · 1 次工具 · 3.2s",
+    },
   ];
   S.input = val("--input") ?? "那它为什么会失效";
   S.cursor = S.input.length;
   S.hints = { idx: Number(val("--hint-idx", -1)), closed: false, cycle: null };
+  S.menu = has("--menu") ? { idx: Number(val("--menu-idx", 0)) } : null;
+  if (has("--gen")) {
+    S.generating = true;
+    S.spin.t0 = Date.now() - 3200;
+    S.spin.face = SPIN_FACES[0];
+    S.spin.frame = 2;
+  }
+  if (S.menu && !S.toolList) { try { await loadTools(true, 1500); } catch {} }
   // 版面自检时顺手把工具清单拉下来：/tool 的提示条才有真实内容（服务没起就退化成一行命令提示）
   if (S.input.startsWith("/tool")) { try { await loadTools(true, 1500); } catch {} }
   const cols = Number(val("--cols", 88));
-  const rows = Number(val("--rows", 20));
+  const rows = Number(val("--rows", 24));
   const f = frame(cols, rows);
   console.log("+" + "-".repeat(cols) + "+");
   for (const l of f.lines) {
@@ -1051,6 +1603,55 @@ async function snapshot() {
   console.log("+" + "-".repeat(cols) + "+");
   return 0;
 }
+
+// ---------------------------------------------------------------- 一次性模式：版本 / 颜文字 / 基准
+async function loadVersion() {
+  try {
+    const v = await api("/api/version", { timeout: 5000 });
+    if (v && v.version) {
+      MAIN.version = String(v.version);
+      MAIN.commit = String(v.commit || "");
+      MAIN.builtAt = Number(v.builtAt) || 0;
+    }
+  } catch {}
+}
+
+async function printVersion() {
+  let v = null;
+  try { v = await api("/api/version", { timeout: 5000 }); } catch {}
+  const ver = (v && v.version) || MAIN.version || "?";
+  process.stdout.write([
+    "localai tui " + VER,
+    "主程序      v" + ver + (v && v.commit ? " · " + String(v.commit).slice(0, 10) : ""),
+    "Node        " + process.version,
+    "服务        " + BASE,
+  ].join("\n") + "\n");
+  return 0;
+}
+
+function facesTest() {
+  process.stdout.write(SPIN_FACES.join("\n") + "\n");
+  return 0;
+}
+
+/** 渲染基准：用数字说明「终端为什么快」（Markdown 解析 + 整帧重绘），不靠感觉 */
+function bench() {
+  const text = ("**粗体** 与 " + BT + "code" + BT + " 和 $x^2$ 公式，还有一段中文说明文字。\n\n- 列表项一\n- 列表项二\n\n").repeat(120);
+  const t0 = Date.now();
+  let lines = 0;
+  for (let i = 0; i < 20; i += 1) lines = markdownLines(text, 96, 2).length;
+  const mdMs = (Date.now() - t0) / 20;
+  S.model = "qwen3-5-4B";
+  S.log = [{ role: "user", text: "基准" }, { role: "assistant", text }];
+  const t1 = Date.now();
+  let n = 0;
+  for (let i = 0; i < 200; i += 1) n = frame(100, 30).lines.length;
+  const frameMs = (Date.now() - t1) / 200;
+  process.stdout.write("md " + text.length + " 字 → " + lines + " 行 / 每次 " + mdMs.toFixed(2) + "ms\n");
+  process.stdout.write("frame 100x30 → " + n + " 行 / 每次 " + frameMs.toFixed(2) + "ms（约 " + Math.round(1000 / Math.max(0.001, frameMs)) + " fps 上限）\n");
+  return 0;
+}
+
 
 main()
   .then(async (c) => {

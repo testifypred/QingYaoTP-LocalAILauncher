@@ -1,0 +1,8 @@
+﻿{
+  "liteSetting": true,
+  "firstTextMs": 1495,
+  "midMarkup": false,
+  "finalLen": 91,
+  "finalMarkup": true
+}
+exceptions=[]

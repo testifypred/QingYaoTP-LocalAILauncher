@@ -647,6 +647,7 @@ details.think .thinkText{white-space:pre-wrap;color:var(--dim);margin-top:8px;ma
 
 /* ---------------- 输入区 ---------------- */
 footer{border-top:1px solid var(--line);padding:12px 18px 15px;display:flex;flex-direction:column;gap:8px;background:linear-gradient(180deg,var(--panel),var(--bg-2))}
+.genMode{max-width:900px;margin:0 auto 4px;padding:0 2px;font:12px/1.5 var(--mono,monospace);color:var(--dim);text-align:center}
 .footerMain{display:flex;gap:10px;align-items:flex-end}
 textarea{
   flex:1;resize:none;height:56px;padding:11px 14px;border-radius:6px;
@@ -719,7 +720,25 @@ math-field:focus-within{border-color:var(--cyan)}
 
 /* ---- 代码工作区（VS Code 式：文件列表 / 标签页 / 编辑器 / 审查面板） ---- */
 /* 双类选择器：.modalBox 的基础规则在本文件更后面，单类会被它压回 720px */
-.modalBox.cwBox{width:min(1180px,96vw);height:min(880px,90vh);max-height:92vh}
+.modalBox.cwBox{width:min(1180px,96vw);height:min(880px,90vh);max-height:92vh;min-width:720px;min-height:460px;resize:both;overflow:hidden}
+.cwBox.cwMax{position:fixed;left:8px;top:8px;right:8px;bottom:8px;width:auto!important;height:auto!important;max-height:none!important;resize:none;transform:none!important;border-radius:4px}
+.cwBox .modalHead{cursor:move;user-select:none}
+.cwBox.cwMax .modalHead{cursor:default}
+.cwSplitter{width:7px;flex:none;cursor:col-resize;position:relative;background:transparent}
+.cwSplitter::after{content:"";position:absolute;inset:0 3px;background:var(--line);opacity:.55;transition:opacity .15s,background .15s}
+.cwSplitter:hover::after,.cwSplitter.on::after{background:var(--cyan);opacity:.9}
+.cwSplitter[hidden]{display:none}
+.cwResultTabs{display:flex;gap:6px;padding:8px 10px 0;overflow-x:auto;flex:none}
+.cwResultTabs[hidden]{display:none}
+.cwResTab{display:flex;align-items:center;gap:5px;padding:4px 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--text-2);font-size:11.5px;cursor:pointer;white-space:nowrap;max-width:220px}
+.cwResTab:hover{border-color:var(--line-2);color:var(--text)}
+.cwResTab.sel{border-color:var(--cyan);background:var(--accent-soft);color:var(--text)}
+.cwResTab:disabled{opacity:.55;cursor:default}
+.cwResIco{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;font-size:11px;font-weight:700;background:var(--code-bg);border:1px solid var(--line);flex:none}
+.cwResIco.local{color:var(--cyan)}
+.cwResIco.cross{color:var(--warn)}
+.cwResIco.cloud{color:var(--accent-2)}
+.cwResName{overflow:hidden;text-overflow:ellipsis}
 .cwBox .hintText{font-size:11px;color:var(--dim);font-family:var(--mono)}
 .cwBox .spacer{flex:1}
 .cwBody{flex:1;display:flex;min-height:0}
@@ -1336,6 +1355,7 @@ header::before{
 
 <footer>
   <div id="imgPreview" class="imgPreview" hidden></div>
+  <div class="genMode" id="genModeChip" hidden></div>
   <div class="footerMain">
     <button id="imgBtn" class="ghost" type="button" title="添加图片（也支持粘贴 / 拖拽）"><span class="sigmaIcon">Σ</span></button>
     <input type="file" id="imgInput" accept="image/*" multiple hidden>
@@ -1662,6 +1682,7 @@ header::before{
       <b>代码工作区</b><span id="cwDir" class="hintText">code/</span><span class="spacer"></span>
       <span id="cwStatus" class="hintText"></span>
       <button id="cwReviewToggle" class="ghost">审查面板</button>
+      <button id="cwMax" class="ghost" title="最大化 / 还原（双击标题栏也行）">⤢</button>
       <button id="codeClose" class="ghost" title="关闭">✕</button>
     </div>
     <div class="cwBody">
@@ -1712,6 +1733,7 @@ header::before{
         <textarea id="cwEditor"></textarea>
         <div id="cwOutput" class="codeOut" hidden></div>
       </div>
+      <div id="cwSplitter" class="cwSplitter" title="拖动调整审查栏宽度；双击恢复默认"></div>
       <div id="cwReviewPanel" class="cwReview">
         <div class="cwReviewHead">模型审查 <span id="cwReviewMeta" class="hintText"></span>
           <select id="cwReviewModel" title="用哪个模型审查：默认本对话已加载的模型">
@@ -1727,6 +1749,7 @@ header::before{
         </div>
         <div class="cwReviewActions cwVerifyActions">
           <button id="cwChallenge" class="ghost" type="button" title="质询：让模型反驳或自证当前审查结论">质询</button>
+          <button id="cwUse4B" class="ghost" type="button" title="用本机最快的 4B 模型审查：9B/20B 审长代码容易超时或卡死">用 4B 审查</button>
           <button id="cwCross" class="ghost" type="button" title="换一个模型独立再审一次，并列对照">他人复审</button>
           <button id="cwCloud" class="ghost" type="button" title="把脱敏后的代码发到云端服务复审（每次都要确认）">云端复审</button>
         </div>
@@ -1738,6 +1761,7 @@ header::before{
           <button id="cwStoreExport" class="ghost" type="button" title="把复审结论存进当前会话（和「发回对话」并列；只存档，不发给模型）">存进会话</button>
           <span id="cwExportState" class="hintText"></span>
         </div>
+        <div id="cwResultTabs" class="cwResultTabs" hidden></div>
         <div class="cwCrossModelRow">
           <span class="hintText">复审模型</span>
           <select id="cwCrossModel" title="他人复审用哪个模型：默认自动挑一个与当前不同的（不会选 Phi-4-mini）">
@@ -1828,6 +1852,11 @@ header::before{
         <span class="lbl">温度 <i>temperature</i><b id="setTempVal">0.7</b></span>
         <input type="range" id="setTemp" min="0" max="1.5" step="0.1" value="0.7">
         <em>越低越稳定保守，越高越发散；代码/数学建议 0.2 以下。</em>
+      </div>
+      <div class="field">
+        <span class="lbl">流式渲染</span>
+        <label class="chk"><input type="checkbox" id="setStreamLite">极简流式（生成中只追加纯文本，结束后再套 Markdown）</label>
+        <em>默认关：生成中按 Markdown 块增量渲染，已完成的块只渲染一次、公式只在块完成时排版，长回答不再越答越卡；勾上后生成中完全不做 Markdown/公式，CPU 最省，代价是结束后才看到排版。</em>
       </div>
       <div class="field">
         <span class="lbl">代码块</span>
@@ -4073,6 +4102,76 @@ function renderAssistant(el, text, opts) {
   decorateFormulas(el);
 }
 
+// ---------------------------------------------------------------- 流式增量渲染（2026-11-22）
+/**
+ * 旧做法：每 80ms 把整段答案 innerHTML 重建 + 全量 KaTeX；长回答是 O(n²)，越答越卡。
+ * 新做法：按 Markdown 块（空行 / 代码围栏 / 独立公式块）切分——
+ *   · 已闭合的块只渲染一次（含 KaTeX），追加到 head；
+ *   · 未闭合的尾巴只做行内 Markdown（不跑公式），很便宜；
+ *   · 流结束整体再渲染一次，最终结果与旧版一致。
+ * 「极简流式」打开时（设置 → 生成），生成中只追加纯文本，结束再套 Markdown。
+ */
+const MD_FENCE = String.fromCharCode(96, 96, 96);
+function createStreamView(el) {
+  el.innerHTML = '';
+  if (streamLite) {
+    return {
+      update(text) { el.textContent = text; },
+      finish(text) { renderAssistant(el, text); },
+    };
+  }
+  const head = document.createElement('div');
+  const tail = document.createElement('div');
+  tail.className = 'streamTail';
+  el.append(head, tail);
+  let scan = 0;       // 已扫描到的位置（行首）
+  let blockStart = 0; // 当前块起点
+  let fence = false;
+  let math = false;
+  let text = '';
+  const commit = (end) => {
+    const md = text.slice(blockStart, end);
+    if (md.trim()) {
+      const box = document.createElement('div');
+      renderAssistant(box, md);
+      head.appendChild(box);
+    }
+    blockStart = end;
+  };
+  return {
+    update(next) {
+      text = next;
+      let i = scan;
+      while (i < text.length) {
+        const nl = text.indexOf('\n', i);
+        if (nl < 0) break;
+        const t = text.slice(i, nl + 1).trim();
+        if (fence) {
+          if (t.startsWith(MD_FENCE)) { fence = false; commit(nl + 1); }
+        } else if (math) {
+          if (t === '$') { math = false; commit(nl + 1); }
+        } else if (t.startsWith(MD_FENCE)) {
+          fence = true;
+        } else if (t === '$') {
+          math = true;
+        } else if (t === '') {
+          commit(nl + 1);
+        }
+        i = nl + 1;
+      }
+      scan = i;
+      const rest = text.slice(blockStart);
+      if (fence || math) tail.textContent = rest;
+      else tail.innerHTML = renderMarkdown(rest);
+    },
+    finish(next) {
+      text = next;
+      el.innerHTML = '';
+      renderAssistant(el, next);
+    },
+  };
+}
+
 // ---------------------------------------------------------------- 代码块：复制 / 运行
 function applyCodeRunSetting() {
   document.body.classList.toggle('noCodeRun', !codeRunOn);
@@ -4837,6 +4936,15 @@ let cwTabs = [];        // 打开过的标签（按打开顺序）
 let cwLangs = null;     // /api/run/langs 结果：判断本机能不能运行
 let cwReviewTimer = null;
 let cwReviewBusy = false;
+// 2026-11-22 F1：当前有几个 cwStreamSSE 在读（>0 表示审查请求真的在跑）。
+// 用于 P0 兜底：只有「没有 SSE 在跑」时出现的未捕获异常才判定为流程提前崩了。
+let cwSseActive = 0;
+// 2026-11-22 F1：SSE 空闲看门狗阈值（毫秒，可变——探针会覆盖成小值）。
+// 本地模型（Vulkan 原生层）偶发卡死时服务端会长时间没有 delta，前端必须自己中止并恢复界面。
+let CW_SSE_IDLE_TIMEOUT_MS = 120000;
+// 2026-11-22 F1 最后一道闸：单次「模型审查」请求总时长上限（事件一直在流也不能无限等；探针会覆盖成小值）。
+// 后端 CODE_JOB_TIMEOUT_MS 是 600s，前端更早收口，避免用户看到 6~10 分钟「思考中」。
+let CW_REVIEW_MAX_MS = 300000;
 let cwAbortCtl = null;        // 当前审查/纠正的 AbortController（「停止」按钮用）
 let cwStopRequested = false;  // 用户点了停止：收尾时显示「已停止」而不是失败
 let cwReviewT0 = 0;           // 当前审查/纠正的开始时间（秒数计时用）
@@ -5226,10 +5334,29 @@ function cwThinkBegin(title) {
   cwThinkTextEl.textContent = '';
 }
 
+/**
+ * 追加审查思路。
+ * 2026-11-22 修：以前每个 delta 都把 #cwReviewBody 强行滚到底，用户想往上翻会被立刻拽回去。
+ * 现在只在「本来就在底部附近」时才跟随（外层面板 80px、思路框内 40px 阈值），
+ * 用户手动上滚后就不再打断；文本用 appendData 追加，不重建节点、不重置滚动位置。
+ */
 function cwThinkAppend(text) {
-  if (!text) return;
-  cwThinkTextEl.textContent += String(text);
-  if (cwThinkEl.open) cwReviewBodyEl.scrollTop = cwReviewBodyEl.scrollHeight;
+  if (!text || !cwThinkTextEl) return;
+  const pre = cwThinkTextEl;
+  const body = cwReviewBodyEl;
+  const followThink = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 40;
+  const followBody = body ? body.scrollHeight - body.scrollTop - body.clientHeight < 80 : false;
+  let node = pre.firstChild;
+  if (!node || node.nodeType !== 3) {
+    pre.textContent = '';
+    node = document.createTextNode('');
+    pre.appendChild(node);
+  }
+  node.appendData(String(text));
+  if (cwThinkEl.open) {
+    if (followThink) pre.scrollTop = pre.scrollHeight;
+    if (followBody && body) body.scrollTop = body.scrollHeight;
+  }
 }
 
 function cwThinkEnd(label) {
@@ -5435,6 +5562,10 @@ function cwResetReviewView() {
   cwThinkHide();
   cwResetCrossView();
   cwSetReviewState('');
+  cwActiveResultId = null;
+  cwCrossLastCompare = null;
+  cwRenderResultTabs();
+  if (cwIssuesEl) cwIssuesEl.hidden = false;
   cwRefreshActionButtons();
 }
 
@@ -5528,49 +5659,151 @@ function cwPopulateReviewModels() {
   cwReviewModelEl.value = prev && files.includes(prev) ? prev : '';
 }
 
+/** F1（2026-11-22）：空闲看门狗的报错文案（秒数按当前阈值取整）。 */
+function cwSseIdleMessage() {
+  const secs = Math.round((Number(CW_SSE_IDLE_TIMEOUT_MS) || 120000) / 1000);
+  return '审查流 ' + secs + ' 秒没有任何响应（本地模型可能卡死）：可改用云端复审；若其它本地功能也无响应，请重启启动器';
+}
+
+/** F1 最后一道闸的报错文案：事件一直在流，但总时长仍然失控。 */
+function cwSseMaxMessage() {
+  const secs = Math.round((Number(CW_REVIEW_MAX_MS) || 300000) / 1000);
+  return '审查超过 ' + secs + ' 秒还没完成（本地模型太慢或卡死）：已自动中止，可重试或改用云端复审';
+}
+
+/**
+ * F1 保险丝：空闲 abort 后 400ms，若 busy 还没被各流程的 finally 释放，就强制收尾
+ * （cwEndJob 已含停表 + busy=false + 刷新按钮），并把状态行写成明确报错。
+ */
+function cwArmSseIdleFuse(reason) {
+  setTimeout(() => {
+    if (!cwReviewBusy) return;
+    cwEndJob();
+    const msg = '审查失败：' + (reason || cwSseIdleMessage());
+    cwSetReviewState(msg, 'err');
+    showToast(msg, 'err', 5200);
+  }, 400);
+}
+
 /**
  * 读 SSE：response.body.getReader() + TextDecoder，按空行切事件（契约 2.3）。
  * handler 收到解析后的 JSON 事件；handler 抛错会中断整个读取并向上抛。
+ * F1：内部 AbortController 组合外部 signal + 空闲看门狗——超过 CW_SSE_IDLE_TIMEOUT_MS
+ * 没有任何数据/事件就 abort，并抛「没有任何响应」的明确错误（name 不是 AbortError，
+ * 各流程走「失败」分支）；用户点「停止」仍然表现为 AbortError。
+ * 读循环外包 try/finally：任何出口都 cancel reader，让后端 res close 掐掉生成。
  */
-async function cwStreamSSE(url, payload, handler, signal) {
-  const r = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-local-token': localToken },
-    body: JSON.stringify(payload),
-    signal,
-  });
-  if (!r.ok) {
-    const j = await r.json().catch(() => ({}));
-    const err = new Error((j.error && j.error.message) || j.message || ('HTTP ' + r.status));
-    err.status = r.status;
-    throw err;
+async function cwStreamSSE(url, payload, handler, signal, opts) {
+  // opts.maxMs：本次请求的总时长上限（可选；只有「模型审查」传，其它流程不受影响）
+  const maxMs = Number(opts && opts.maxMs) || 0;
+  cwSseActive += 1;
+  // 内部 abort 控制器：外部 abort（用户点「停止」）时跟着 abort，调用方仍看到 AbortError
+  const ac = new AbortController();
+  let abortReject = null;
+  // 外部「停止」也要能解开卡住的 reader.read()（真实 fetch 会抛 AbortError，这里兜底成同名错误）
+  const abortSignal = new Promise((_, reject) => { abortReject = reject; });
+  abortSignal.catch(() => {});
+  const onOuterAbort = () => {
+    try { ac.abort(); } catch {}
+    try { abortReject(Object.assign(new Error('已停止'), { name: 'AbortError' })); } catch {}
+  };
+  if (signal) {
+    if (signal.aborted) onOuterAbort();
+    else { try { signal.addEventListener('abort', onOuterAbort, { once: true }); } catch {} }
   }
-  if (!r.body || typeof r.body.getReader !== 'function') throw new Error('这个浏览器不支持流式读取');
-  const reader = r.body.getReader();
-  const dec = new TextDecoder();
-  let buf = '';
-  for (;;) {
-    const step = await reader.read();
-    if (step.done) break;
-    buf += dec.decode(step.value, { stream: true });
-    let cut;
-    while ((cut = buf.indexOf('\n\n')) >= 0) {
-      const chunk = buf.slice(0, cut);
-      buf = buf.slice(cut + 2);
-      for (const line of chunk.split('\n')) {
-        if (!line.startsWith('data:')) continue;
-        const raw = line.slice(5).trim();
-        if (!raw) continue;
-        let ev = null;
-        try { ev = JSON.parse(raw); } catch { continue; }
-        if (ev) handler(ev);
+  let idleTimer = null;
+  let idleFired = false;
+  let reader = null;
+  let readerDone = false;
+  let idleReject = null;
+  // 空闲触发后用它解开卡住的 reader.read()：合成流（探针 stub）不会被 fetch 的 abort 打断
+  const idleSignal = new Promise((_, reject) => { idleReject = reject; });
+  idleSignal.catch(() => {});
+  // 总时长闸（可选）：到点 abort + 用独立信号解开卡住的 read（同空闲闸的写法）
+  let maxTimer = null;
+  let maxFired = false;
+  let maxReject = null;
+  const maxSignal = new Promise((_, reject) => { maxReject = reject; });
+  maxSignal.catch(() => {});
+  if (maxMs > 0) {
+    maxTimer = setTimeout(() => {
+      maxTimer = null;
+      if (maxFired || idleFired) return;
+      maxFired = true;
+      try { ac.abort(); } catch {}
+      try { maxReject(new Error(cwSseMaxMessage())); } catch {}
+    }, maxMs);
+  }
+  const clearIdle = () => { if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; } };
+  const bumpIdle = () => {
+    if (idleFired) return;
+    clearIdle();
+    idleTimer = setTimeout(() => {
+      idleTimer = null;
+      if (idleFired) return;
+      idleFired = true;
+      try { ac.abort(); } catch {}
+      try { idleReject(new Error(cwSseIdleMessage())); } catch {}
+    }, Math.max(1, Number(CW_SSE_IDLE_TIMEOUT_MS) || 120000));
+  };
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-local-token': localToken },
+      body: JSON.stringify(payload),
+      signal: ac.signal,
+    });
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      const err = new Error((j.error && j.error.message) || j.message || ('HTTP ' + r.status));
+      err.status = r.status;
+      throw err;
+    }
+    if (!r.body || typeof r.body.getReader !== 'function') throw new Error('这个浏览器不支持流式读取');
+    bumpIdle(); // 收到响应头后启动空闲计时
+    reader = r.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const step = await Promise.race([reader.read(), idleSignal, abortSignal, maxSignal]);
+      if (step.done) { readerDone = true; break; }
+      bumpIdle(); // 每读到一块数据都重置
+      buf += dec.decode(step.value, { stream: true });
+      let cut;
+      while ((cut = buf.indexOf('\n\n')) >= 0) {
+        const chunk = buf.slice(0, cut);
+        buf = buf.slice(cut + 2);
+        for (const line of chunk.split('\n')) {
+          if (!line.startsWith('data:')) continue;
+          const raw = line.slice(5).trim();
+          if (!raw) continue;
+          let ev = null;
+          try { ev = JSON.parse(raw); } catch { continue; }
+          if (ev) { bumpIdle(); handler(ev); } // 每个解析出的事件也重置
+        }
       }
     }
-  }
-  // 收尾：最后一个事件后面没跟空行也尽量吃掉
-  const tail = buf.trim();
-  if (tail.startsWith('data:')) {
-    try { handler(JSON.parse(tail.slice(5).trim())); } catch {}
+    // 收尾：最后一个事件后面没跟空行也尽量吃掉
+    const tail = buf.trim();
+    if (tail.startsWith('data:')) {
+      try { handler(JSON.parse(tail.slice(5).trim())); } catch {}
+    }
+  } catch (e) {
+    if (maxFired) {
+      cwArmSseIdleFuse(cwSseMaxMessage());
+      throw new Error(cwSseMaxMessage()); // name 不是 AbortError：各流程走「失败」而不是「已停止」
+    }
+    if (idleFired) {
+      cwArmSseIdleFuse(cwSseIdleMessage());
+      throw new Error(cwSseIdleMessage()); // name 不是 AbortError：各流程走「失败」而不是「已停止」
+    }
+    throw e;
+  } finally {
+    cwSseActive = Math.max(0, cwSseActive - 1);
+    clearIdle();
+    if (maxTimer) clearTimeout(maxTimer);
+    if (signal) { try { signal.removeEventListener('abort', onOuterAbort); } catch {} }
+    if (reader && !readerDone) { try { reader.cancel().catch(() => {}); } catch {} }
   }
 }
 
@@ -5751,6 +5984,8 @@ function cwReviewOpenPref() {
 function cwApplyReviewOpen(open) {
   cwReviewPanelEl.hidden = !open;
   cwReviewToggleEl.classList.toggle('on', !!open);
+  const sp = $('cwSplitter');
+  if (sp) sp.hidden = !open;
 }
 
 function cwToggleReviewPanel() {
@@ -5759,11 +5994,163 @@ function cwToggleReviewPanel() {
   try { localStorage.setItem(CW_REVIEW_OPEN_KEY, open ? '1' : '0'); } catch {}
 }
 
+// ---------------------------------------------------------------- 代码工作区：结果标签 / 窗口拖拽与缩放（2026-11-22）
+let cwResults = [];            // 审查结果（本地 / 他人复审 / 云端），按完成顺序
+let cwActiveResultId = null;
+let cwCrossLastCompare = null; // 最近一次 compare 事件，给「他人复审」标签重放
+
+function cwResultShortName(name) {
+  const t = String(name || '').replace(/\.gguf$/i, '');
+  return t.length > 18 ? t.slice(0, 17) + '…' : t;
+}
+
+function cwResultModelFromMeta() {
+  return String((cwReviewMetaEl && cwReviewMetaEl.textContent) || '').split('·')[0].trim();
+}
+
+/** 追加一个结果标签；不主动改当前视图（调用方刚渲染完/正在渲染） */
+function cwAddReviewResult(res) {
+  if (!res) return null;
+  res.id = res.id || ('r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+  res.at = res.at || Date.now();
+  cwResults.push(res);
+  if (cwResults.length > 8) cwResults.shift();
+  cwActiveResultId = res.id;
+  cwRenderResultTabs();
+  return res;
+}
+
+function cwRenderResultTabs() {
+  const bar = $('cwResultTabs');
+  if (!bar) return;
+  bar.textContent = '';
+  bar.hidden = cwResults.length === 0;
+  for (const r of cwResults) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'cwResTab' + (r.id === cwActiveResultId ? ' sel' : '');
+    b.dataset.id = r.id;
+    b.title = (r.title || r.label) + (r.model ? ' · ' + String(r.model).replace(/\.gguf$/i, '') : '') + (r.at ? ' · ' + new Date(r.at).toLocaleTimeString() : '');
+    b.disabled = cwReviewBusy;
+    const ico = document.createElement('span');
+    ico.className = 'cwResIco ' + (r.kind || 'local');
+    ico.textContent = r.icon || '∫';
+    const nm = document.createElement('span');
+    nm.className = 'cwResName';
+    nm.textContent = r.label + (r.model ? ' · ' + cwResultShortName(r.model) : '');
+    b.append(ico, nm);
+    b.onclick = () => cwActivateReviewResult(r.id);
+    bar.appendChild(b);
+  }
+}
+
+/** 点标签：把这次结果重新铺回审查面板（问题卡片 / 对照 / 状态行） */
+function cwActivateReviewResult(id, force) {
+  if (cwReviewBusy && !force) return;
+  const r = cwResults.find((x) => x.id === id);
+  if (!r) return;
+  cwActiveResultId = id;
+  cwRenderResultTabs();
+  cwSetReviewBody(renderMarkdown(r.summary || (r.issues && r.issues.length ? '审查发现问题。' : '没有发现问题。')));
+  cwIssues = (r.issues || []).slice();
+  cwRenderIssues(cwIssues);
+  if (!cwIssues.length) cwRenderIssueEmpty();
+  else cwApplyIssueHighlights(cwIssues);
+  if (cwReviewMetaEl) cwReviewMetaEl.textContent = r.meta || '';
+  if (r.kind === 'cross') {
+    if (cwIssuesEl) cwIssuesEl.hidden = true;
+    if (cwCrossPanelEl && r.compare) cwApplyCompare(r.compare);
+    else if (cwCrossPanelEl) cwCrossPanelEl.hidden = true;
+  } else {
+    if (cwIssuesEl) cwIssuesEl.hidden = false;
+    if (cwCrossPanelEl) cwCrossPanelEl.hidden = true;
+  }
+  cwSetReviewState(r.stateText || (r.label + ' · ' + cwIssues.length + ' 个问题'), r.stateKind || '');
+}
+
+function cwToggleMax() {
+  const box = document.querySelector('#codeModal .cwBox');
+  if (!box) return;
+  box.classList.toggle('cwMax');
+  if (box.classList.contains('cwMax')) box.style.transform = '';
+}
+
+/** 窗口拖拽（标题栏）+ 最大化 + 审查栏宽度拖拽 */
+function cwInitCodeWindow() {
+  const box = document.querySelector('#codeModal .cwBox');
+  const head = box && box.querySelector('.modalHead');
+  const maxBtn = $('cwMax');
+  if (maxBtn) maxBtn.onclick = cwToggleMax;
+  if (box && head) {
+    let drag = null;
+    const isCtl = (el) => !!(el && el.closest && el.closest('button,input,select,textarea,a'));
+    head.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || isCtl(e.target) || box.classList.contains('cwMax')) return;
+      const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(box.style.transform || '');
+      drag = { x: e.clientX, y: e.clientY, dx: m ? Number(m[1]) : 0, dy: m ? Number(m[2]) : 0 };
+      try { head.setPointerCapture(e.pointerId); } catch {}
+      e.preventDefault();
+    });
+    head.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      box.style.transform = 'translate(' + (drag.dx + e.clientX - drag.x) + 'px,' + (drag.dy + e.clientY - drag.y) + 'px)';
+    });
+    const stop = () => { drag = null; };
+    head.addEventListener('pointerup', stop);
+    head.addEventListener('pointercancel', stop);
+    head.addEventListener('dblclick', (e) => { if (!isCtl(e.target)) cwToggleMax(); });
+  }
+  const sp = $('cwSplitter');
+  const panel = $('cwReviewPanel');
+  const body = document.querySelector('#codeModal .cwBody');
+  if (sp && panel && body) {
+    try {
+      const saved = Number(localStorage.getItem('localai.cwReviewWidth'));
+      if (Number.isFinite(saved) && saved >= 260) panel.style.width = saved + 'px';
+    } catch {}
+    let startX = 0;
+    let startW = 0;
+    let on = false;
+    const clampW = (w) => {
+      const max = Math.max(320, body.clientWidth - 380);
+      return Math.max(260, Math.min(max, w));
+    };
+    sp.addEventListener('pointerdown', (e) => {
+      if (panel.hidden) return;
+      on = true;
+      startX = e.clientX;
+      startW = panel.getBoundingClientRect().width;
+      sp.classList.add('on');
+      try { sp.setPointerCapture(e.pointerId); } catch {}
+      e.preventDefault();
+    });
+    sp.addEventListener('pointermove', (e) => {
+      if (!on) return;
+      panel.style.width = clampW(startW + (startX - e.clientX)) + 'px';
+    });
+    const endSp = () => {
+      if (!on) return;
+      on = false;
+      sp.classList.remove('on');
+      try { localStorage.setItem('localai.cwReviewWidth', String(Math.round(panel.getBoundingClientRect().width))); } catch {}
+    };
+    sp.addEventListener('pointerup', endSp);
+    sp.addEventListener('pointercancel', endSp);
+    sp.addEventListener('dblclick', () => {
+      panel.style.width = '';
+      try { localStorage.removeItem('localai.cwReviewWidth'); } catch {}
+    });
+  }
+}
+
 /** 一次审查：优先流式 /api/code/review/stream；旧后端 404 时退回 /api/code/review（兼容契约 2.8） */
 async function cwReviewCode() {
   if (cwReviewBusy) return;
   const code = cwValue();
   if (!code.trim()) { showToast('先打开或写点代码', 'warn', 3200); return; }
+  // 2026-11-22 P0 修复：下面两处都引用行数；原先在 6175 直接读未声明的 lineCount，
+  // 抛 ReferenceError（发生在 try 之前）→ cwReviewBusy 永远 true、审查按钮全灰。统一在这里声明。
+  const lineCount = code.split("\n").length;
   if (!localToken) { try { await refresh(); } catch {} }
   const lang = cwLangFor(cwCurrent) || cwExt(cwCurrent) || '';
   const file = cwCurrent ? cwCurrent.split('/').pop() : '';
@@ -5772,6 +6159,9 @@ async function cwReviewCode() {
   intent = intent.slice(0, 500);
   try { localStorage.setItem(CW_INTENT_KEY, cwIntentEl.value); } catch {}
   const modelSel = cwReviewModelEl ? (cwReviewModelEl.value || '') : '';
+  if (lineCount > 60 && /(9B|8B|14B|20B|32B)/i.test(modelSel || loaded || '')) {
+    showToast('大模型审长代码容易超时/卡死；建议点「用 4B 审查」或分段审', 'warn', 8000);
+  }
   // 审查结果总要看得到：开始前自动展开面板
   cwApplyReviewOpen(true);
   try { localStorage.setItem(CW_REVIEW_OPEN_KEY, '1'); } catch {}
@@ -5789,12 +6179,87 @@ async function cwReviewCode() {
   cwReviewStartTimer('review', t0);
   const payload = { code, lang, file, intent };
   if (modelSel) payload.model = modelSel;
+  // 长文件单次请求也压小输出预算：9B 上「思路 1200 + JSON 700」动辄 300s+
+  if (lineCount > 60 && code.length <= 8000) {
+    payload.max_tokens = 800;
+    payload.json_max_tokens = 500;
+  }
+  // 2026-11-22：长代码在客户端分段（每段 ~50 行，最多 6 段），逐段请求后端。
+  // 后端保持「一次请求一个 prompt、独立 context」——在 Vulkan 上连续 prompt 同一 sequence 会卡死；
+  // 分段的好处：每段都能单独完成/超时，已完成的结果先累计，不会整份白跑。
+  const allLines = code.split("\n");
+  const totalLines = allLines.length;
+  const chunks = [];
+  // 只有真正很长（>150 行 / >8KB）才在客户端分段；80 行左右的单文件用一次请求（9B 上多次
+  // 连续建 context 反而容易踩到 Vulkan 卡死，且用户主要痛点是「300s 超时」而不是段数）
+  if (totalLines > 150 || code.length > 8000) {
+    const count = Math.min(6, Math.max(2, Math.ceil(totalLines / 50)));
+    const per = Math.ceil(totalLines / count);
+    for (let from = 0; from < totalLines; from += per) chunks.push({ from, to: Math.min(totalLines, from + per) });
+  } else {
+    chunks.push({ from: 0, to: totalLines });
+  }
+  const accIssues = [];
+  const summaries = [];
   try {
     try {
-      await cwRunReviewStream(payload, cwAbortCtl.signal);
+      for (let ci = 0; ci < chunks.length; ci += 1) {
+        if (cwStopRequested) throw Object.assign(new Error("已停止"), { name: "AbortError" });
+        const from = chunks[ci].from;
+        const to = chunks[ci].to;
+        const multi = chunks.length > 1;
+        if (multi) {
+          cwSetReviewState('分段审查 ' + (ci + 1) + '/' + chunks.length + '（全文第 ' + (from + 1) + '–' + to + ' 行）…', '');
+          cwThinkBegin('审查思路（第 ' + (ci + 1) + '/' + chunks.length + ' 段，第 ' + (from + 1) + '–' + to + ' 行）…');
+        }
+        const chunkPayload = Object.assign({}, payload, {
+          code: allLines.slice(from, to).join("\n"),
+          intent: (intent + (multi ? '（分段 ' + (ci + 1) + '/' + chunks.length + '，全文第 ' + (from + 1) + '–' + to + ' 行）' : '')).slice(0, 500),
+        });
+        // 分段时压小「思路 / JSON」的输出预算：9B 上每段能省一半时间
+        if (multi) {
+          chunkPayload.max_tokens = 700;
+          chunkPayload.json_max_tokens = 500;
+        }
+        let got;
+        try {
+          got = await cwRunReviewStream(chunkPayload, cwAbortCtl.signal, { collect: true });
+        } catch (e) {
+          if (e && e.status === 404 && chunks.length === 1) {
+            await cwReviewLegacy(chunkPayload, cwAbortCtl.signal); // 流式接口还没上线
+            return;
+          }
+          throw e;
+        }
+        if (!got) throw new Error('这一分段没有返回问题列表');
+        for (const it of got.issues) {
+          it.line = Math.max(1, Math.min(totalLines, Number(it.line || 1) + from));
+          it.endLine = Math.max(it.line, Math.min(totalLines, Number(it.endLine || it.line) + from));
+          accIssues.push(it);
+        }
+        if (got.summary) summaries.push(String(got.summary));
+        if (multi) cwSetReviewState('已审 ' + (ci + 1) + '/' + chunks.length + ' 段 · 累计 ' + accIssues.length + ' 个问题', '');
+        // 客户端总预算 9 分钟：超了就保留已完成分段（用户可再点一次继续审剩下的）
+        if (Date.now() - t0 > 9 * 60 * 1000 && ci < chunks.length - 1) {
+          summaries.push('（时间预算用尽，已审 ' + (ci + 1) + '/' + chunks.length + ' 段）');
+          break;
+        }
+      }
+      const summary = (summaries.join('；').slice(0, 300) || '审查完成。') + (chunks.length > 1 ? '（分段审查完成 ' + chunks.length + ' 段）' : '');
+      cwApplyFindings({ summary, issues: accIssues, lineCount: totalLines, parsed: true });
+      cwRecordLocalResult({ summary, issues: accIssues, lineCount: totalLines });
+      // 结果标签会把自己的 stateText 写进状态行（模型审查 · N 个问题）；这里补回用户要的「审查完成」。
+      cwSetReviewState('审查完成 · ' + accIssues.length + ' 个问题 · ' + ((Date.now() - t0) / 1000).toFixed(1) + 's', 'ok');
     } catch (e) {
-      if (e && e.status === 404) await cwReviewLegacy(payload, cwAbortCtl.signal); // 流式接口还没上线
-      else throw e;
+      if (accIssues.length) {
+        const summary = '已完成 ' + accIssues.length + ' 个问题（分段审查中断：' + String(e && e.message ? e.message : e) + '）';
+        cwApplyFindings({ summary, issues: accIssues, lineCount: totalLines, parsed: true });
+        cwRecordLocalResult({ summary, issues: accIssues, lineCount: totalLines });
+        cwSetReviewState('分段审查中断，已保留 ' + accIssues.length + ' 个问题', 'warn');
+        showToast('审查中断：已保留已完成部分的结果', 'warn', 6000);
+      } else {
+        throw e;
+      }
     }
   } catch (e) {
     if (cwStopRequested || (e && e.name === 'AbortError')) {
@@ -5818,8 +6283,10 @@ async function cwReviewCode() {
   }
 }
 
-async function cwRunReviewStream(payload, signal) {
+async function cwRunReviewStream(payload, signal, opts) {
+  const collect = !!(opts && opts.collect);
   let gotFindings = false;
+  let collected = null;
   await cwStreamSSE('/api/code/review/stream', payload, (ev) => {
     if (ev.type === 'meta') {
       const name = prettyName(ev.modelFile || ev.model || '');
@@ -5827,6 +6294,8 @@ async function cwRunReviewStream(payload, signal) {
       if (ev.switchedModel) showToast('已切换到 ' + name + ' 进行审查', 'ok', 5200);
     } else if (ev.type === 'delta') {
       cwThinkAppend(ev.text);
+    } else if (ev.type === 'chunk') {
+      cwSetReviewState('分段审查 ' + ev.index + '/' + ev.total + '（第 ' + ev.from + '–' + ev.to + ' 行）…', '');
     } else if (ev.type === 'phase') {
       // 后端两阶段：思路流完之后再单独要 JSON（契约外补充事件）。v1.7.1：第二阶段也要有实时秒数
       if (ev.phase === 'findings') {
@@ -5835,20 +6304,56 @@ async function cwRunReviewStream(payload, signal) {
       }
     } else if (ev.type === 'findings') {
       gotFindings = true;
-      cwApplyFindings(ev);
-      cwSnapshotLocal = { sig: cwCodeSig(), model: (cwReviewMetaEl && cwReviewMetaEl.textContent) || '', summary: String(ev.summary || ''), issues: Array.isArray(ev.issues) ? ev.issues.map((it, i) => cwNormIssue(it, i)) : [], at: Date.now() };
+      if (collect) {
+        collected = {
+          summary: String(ev.summary || ''),
+          issues: (Array.isArray(ev.issues) ? ev.issues : []).map((it, i) => cwNormIssue(it, i)),
+          partial: ev.partial === true,
+        };
+      } else {
+        cwApplyFindings(ev);
+        if (ev.partial) showToast('审查超时：只完成了部分分段，结论不完整', 'warn', 6000);
+        cwRecordLocalResult(ev);
+      }
     } else if (ev.type === 'done') {
       const secs = Number(ev.seconds);
       const n = cwIssues.length;
       const secTxt = Number.isFinite(secs) ? ' · ' + secs.toFixed(1) + 's' : '';
       if (ev.model) cwReviewMetaEl.textContent = prettyName(ev.model) + secTxt;
-      cwResetReviewTimer(); // 先停表再写最终状态，避免计时器把「审查完成」覆盖回「正在整理」
-      cwSetReviewState('审查完成 · ' + n + ' 个问题' + secTxt, 'ok');
+      if (!collect) {
+        cwResetReviewTimer(); // 先停表再写最终状态，避免计时器把「审查完成」覆盖回「正在整理」
+        cwSetReviewState('审查完成 · ' + n + ' 个问题' + secTxt, 'ok');
+        const lastLocal = cwResults.filter((r) => r.kind === 'local').pop();
+        if (lastLocal) {
+          lastLocal.meta = String((cwReviewMetaEl && cwReviewMetaEl.textContent) || '').trim();
+          lastLocal.stateText = '模型审查 · ' + n + ' 个问题' + secTxt;
+          cwRenderResultTabs();
+        }
+      }
     } else if (ev.type === 'error') {
       throw new Error(ev.message || '审查失败');
     }
-  }, signal);
+  }, signal, { maxMs: Number(CW_REVIEW_MAX_MS) || 0 });
   if (!gotFindings) throw new Error('审查流没有返回问题列表（模型输出可能被截断）');
+  return collect ? collected : undefined;
+}
+
+/** 把一次本地审查结果落到快照 + 结果标签（分段/单段共用） */
+function cwRecordLocalResult(ev) {
+  cwSnapshotLocal = {
+    sig: cwCodeSig(),
+    model: (cwReviewMetaEl && cwReviewMetaEl.textContent) || '',
+    summary: String(ev.summary || ''),
+    issues: cwIssues.slice(),
+    at: Date.now(),
+  };
+  const lr = cwAddReviewResult({
+    kind: 'local', label: '模型审查', icon: '∫', model: cwResultModelFromMeta(),
+    summary: String(ev.summary || ''), issues: cwIssues.slice(), sig: cwCodeSig(),
+    meta: String((cwReviewMetaEl && cwReviewMetaEl.textContent) || '').trim(),
+    stateText: '模型审查 · ' + cwIssues.length + ' 个问题', at: Date.now(),
+  });
+  if (lr) cwActivateReviewResult(lr.id, true);
 }
 
 /** findings 到达：摘要 markdown + 问题卡片 + 行高亮（契约 2.3 / 2.4） */
@@ -6633,6 +7138,29 @@ function cwEndJob() {
   cwRefreshActionButtons();
 }
 
+/**
+ * 2026-11-22 P0 兜底（结构残根）：六个审查流程都是「先 cwReviewBusy=true，再一堆初始化，最后才 try」。
+ * 这段里任何异常都不会执行 finally → busy 永久 true（今天 lineCount 的 ReferenceError 就是这样）。
+ * 这类错误会变成 unhandledrejection：只要「当前没有 SSE 在读」，就认定流程已提前崩掉，强制收尾。
+ * 有 SSE 在读时不动它，交给正常 catch/finally。
+ */
+function cwReleaseOrphanBusy(reason) {
+  if (!cwReviewBusy || cwSseActive > 0) return;
+  const why = String(reason || '未知错误').slice(0, 120);
+  cwEndJob();
+  try { cwSetReviewState('审查失败：流程异常（' + why + '）', 'err'); } catch {}
+  try { showToast('审查流程异常已自动中止：' + why, 'err', 5200); } catch {}
+}
+window.addEventListener('unhandledrejection', (ev) => {
+  try {
+    const r = ev && ev.reason;
+    cwReleaseOrphanBusy(r && (r.message || r));
+  } catch {}
+});
+window.addEventListener('error', (ev) => {
+  try { if (ev && ev.error) cwReleaseOrphanBusy(ev.message || String(ev.error)); } catch {}
+});
+
 // ---- 质询（POST /api/code/review/challenge，契约 §1.1） ----
 function cwToggleChallenge() {
   if (!cwChallengeBoxEl) return;
@@ -7132,6 +7660,12 @@ async function cwCrossReview() {
   if (cwReviewBusy) return;
   if (!cwValue().trim()) { showToast('先打开或写点代码', 'warn', 3200); return; }
   if (!localToken) { try { await refresh(); } catch {} }
+  // 2026-11-22：没点过「模型审查」就直接点「他人复审」——先补一次普通审查，作为第 1 个结果；
+  // 第二次起才是真正的「他人复审」标签（用户要求）。
+  if (!cwResults.some((r) => r.kind === 'local' && r.sig === cwCodeSig())) {
+    await cwReviewCode();
+    if (cwReviewBusy) return;
+  }
   const modelSel = cwCrossModelEl ? (cwCrossModelEl.value || '') : '';
   const payload = Object.assign(cwBasePayload(), {
     intent: cwIntentValue(),
@@ -7146,6 +7680,9 @@ async function cwCrossReview() {
   cwAbortCtl = new AbortController();
   cwCrossSecondIssues = [];
   cwCrossVerdictLabel = '';
+  cwCrossLastCompare = null;
+  cwActiveResultId = null;
+  cwRenderResultTabs();
   if (cwCrossVerdictEl) { cwCrossVerdictEl.className = 'cwVerdict'; cwCrossVerdictEl.textContent = '正在复审…'; }
   if (cwCrossColPrimaryEl) cwCrossColPrimaryEl.textContent = '';
   if (cwCrossColSecondEl) cwCrossColSecondEl.textContent = '';
@@ -7175,6 +7712,7 @@ async function cwCrossReview() {
         cwRenderCrossCols(cwIssues, cwCrossSecondIssues);
         cwThinkEnd('他人复审思路（已完成 · ' + cwThinkTextEl.textContent.length + ' 字）');
       } else if (e.type === 'compare') {
+        cwCrossLastCompare = e;
         cwApplyCompare(e);
       } else if (e.type === 'done') {
         const secs = Number(e.seconds);
@@ -7184,6 +7722,17 @@ async function cwCrossReview() {
         if (cwSnapshotCross && cwSnapshotCross.sig === cwCodeSig() && !cwSnapshotCross.model) cwSnapshotCross.model = cwCrossModelName;
         cwResetReviewTimer();
         cwSetReviewState('他人复审完成' + (cwCrossVerdictLabel ? '：' + cwCrossVerdictLabel : '') + secTxt + ' · 点条目可跳行', cwCrossVerdictLabel === '一致' ? 'ok' : '');
+        {
+          const cr = cwAddReviewResult({
+            kind: 'cross', label: '他人复审', icon: '≠', model: cwCrossModelName || cwResultModelFromMeta(),
+            summary: '他人复审（' + (cwCrossModelName ? prettyName(cwCrossModelName) : '独立模型') + '）',
+            issues: cwCrossSecondIssues.slice(), compare: cwCrossLastCompare, sig: cwCodeSig(),
+            meta: String((cwReviewMetaEl && cwReviewMetaEl.textContent) || '').trim(),
+            stateText: '他人复审完成' + (cwCrossVerdictLabel ? '：' + cwCrossVerdictLabel : '') + secTxt,
+            stateKind: cwCrossVerdictLabel === '一致' ? 'ok' : '', at: Date.now(),
+          });
+          if (cr) cwActivateReviewResult(cr.id, true);
+        }
       } else if (e.type === 'error') {
         throw new Error(e.message || '他人复审失败');
       }
@@ -7280,6 +7829,15 @@ async function cwCloudSend(host) {
         gotFindings = true;
         cwApplyFindings(e);
         cwSnapshotCloud = { sig: cwCodeSig(), host: h, model: String(e.model || (cwCloudCfgCache && cwCloudCfgCache.model) || ''), summary: String(e.summary || ''), issues: Array.isArray(e.issues) ? e.issues.map((it, i) => cwNormIssue(it, i)) : [], at: Date.now() };
+        {
+          const cl = cwAddReviewResult({
+            kind: 'cloud', label: '云端复审', icon: '☁', model: String(e.model || h),
+            summary: String(e.summary || ''), issues: cwIssues.slice(), sig: cwCodeSig(),
+            meta: String((cwReviewMetaEl && cwReviewMetaEl.textContent) || '').trim(),
+            stateText: '云端复审 · ' + cwIssues.length + ' 个问题', at: Date.now(),
+          });
+          if (cl) cwActivateReviewResult(cl.id, true);
+        }
         cwThinkEnd('云端复审输出（已完成）');
         cwReviewMetaEl.textContent = '云端 · ' + h;
         cwSetReviewState('云端复审完成 · ' + cwIssues.length + ' 个问题（可一键纠正）', cwIssues.length ? '' : 'ok');
@@ -7290,6 +7848,14 @@ async function cwCloudSend(host) {
         cwReviewMetaEl.textContent = '云端 · ' + h + ' · ' + model + secTxt;
         cwResetReviewTimer();
         cwSetReviewState('云端复审完成 · ' + cwIssues.length + ' 个问题' + secTxt + (deltaCount ? '（流式 ' + deltaCount + ' 段）' : '') + '（代码已脱敏，可一键纠正）', cwIssues.length ? '' : 'ok');
+        {
+          const lastCloud = cwResults.filter((r) => r.kind === 'cloud').pop();
+          if (lastCloud) {
+            lastCloud.meta = String((cwReviewMetaEl && cwReviewMetaEl.textContent) || '').trim();
+            lastCloud.stateText = '云端复审 · ' + cwIssues.length + ' 个问题' + secTxt;
+            cwRenderResultTabs();
+          }
+        }
       } else if (e.type === 'error') {
         throw new Error(e.message || '云端复审失败');
       }
@@ -7579,6 +8145,32 @@ function openTerminal() {
     .catch((e) => showToast('打开终端失败：' + e.message, 'err', 6000));
 }
 $('codeClose').onclick = () => closeCodePanel();
+if ($('cwUse4B')) {
+  $('cwUse4B').onclick = async () => {
+    if (cwReviewBusy) return;
+    try {
+      const st = await apiJson('/api/state');
+      const list = Array.isArray(st && st.models) ? st.models.slice() : [];
+      if (!list.length) { showToast('模型列表为空', 'warn', 3000); return; }
+      const pick = list.find((m) => /4B/i.test(m.file)) || list.sort((a, b) => (a.sizeGB || 0) - (b.sizeGB || 0))[0];
+      if (!pick) { showToast('没有可用的 4B 模型', 'warn', 3000); return; }
+      if (cwReviewModelEl) {
+        if (![...cwReviewModelEl.options].some((o) => o.value === pick.file)) {
+          const o = document.createElement('option');
+          o.value = pick.file;
+          o.textContent = pick.file;
+          cwReviewModelEl.appendChild(o);
+        }
+        cwReviewModelEl.value = pick.file;
+      }
+      showToast('已切换审查模型：' + pick.file, 'ok', 3200);
+      cwReviewCode();
+    } catch (e) {
+      showToast('切换 4B 审查失败：' + (e && e.message ? e.message : e), 'err', 5000);
+    }
+  };
+}
+cwInitCodeWindow();
 codeModal.addEventListener('click', (e) => { if (e.target === codeModal) closeCodePanel(); });
 $('cwRefresh').onclick = () => { cwLoadList().catch((e) => cwSetStatus('刷新失败：' + e.message, 'err')); };
 $('cwNew').onclick = () => cwNewFile();
@@ -7732,14 +8324,28 @@ function applyHeroMode(mode, silent) {
   }
   toolChk.checked = agent;
   thinkChk.checked = agent ? false : true;
+  modeOneShot = true; // 本轮有效：发完自动恢复，工具/思考不再被这个按钮持久化
   try { renderWebState(); } catch {}
-  try { saveSettings(); } catch {}
+  updateModeChip();
   for (const b of document.querySelectorAll('#hero .modeBtn')) b.classList.toggle('sel', b.dataset.mode === mode);
   const hint = document.getElementById('heroHint');
   if (hint) hint.textContent = agent
     ? 'Agent 模式：可以调用工具（时间/计算/读文件/联网/跑代码）'
     : '推理模式：先输出思考过程，再给结论（更慢、更耗 token）';
   if (!silent) setStatus('', agent ? 'Agent 模式' : '推理模式');
+}
+
+/** 输入区上方一行：明确告诉用户本轮要付多少「首字税」（工具 +5s、思考 +13s） */
+function updateModeChip() {
+  const chip = $('genModeChip');
+  if (!chip) return;
+  const tools = toolChk.checked;
+  const thinking = thinkChk.checked;
+  if (!tools && !thinking) { chip.hidden = true; chip.textContent = ''; return; }
+  const est = tools && thinking ? '约 15s+' : thinking ? '约 15s' : '约 7s';
+  chip.hidden = false;
+  chip.textContent = '本轮：' + (tools ? '工具开' : '工具关') + ' · ' + (thinking ? '思考开' : '思考关') +
+    ' → 正文首字' + est + '（都关掉约 1.5s）';
 }
 
 function clearMessages(text) {
@@ -9158,18 +9764,20 @@ stopBtn.hidden = false;
   let usage = null;
   let metrics = null;
   const toolList = [];
-  const scroll = () => { msgsEl.scrollTop = msgsEl.scrollHeight; };
-
-  // 流式渲染节流：KaTeX 每次全量重排比较重，80ms 合并一次，收尾时再强制补一帧
-  let renderTimer = null;
-  const paint = () => {
-    if (renderTimer) { clearTimeout(renderTimer); renderTimer = null; }
-    renderAssistant(out, acc);
-    scroll();
+  // 滚动也合并到下一帧：以前每个 delta 都写 scrollTop，强制同步 layout
+  let scrollRaf = 0;
+  const scroll = () => {
+    if (scrollRaf) return;
+    scrollRaf = requestAnimationFrame(() => { scrollRaf = 0; msgsEl.scrollTop = msgsEl.scrollHeight; });
   };
+
+  // 流式渲染：块级增量（已完成的块只渲染一次）+ rAF 合帧；不再每帧全量重建 + 全量 KaTeX
+  const view = createStreamView(out);
+  let rafId = 0;
+  const paint = () => { view.finish(acc); scroll(); };
   const schedulePaint = () => {
-    if (renderTimer) return;
-    renderTimer = setTimeout(() => { renderTimer = null; paint(); }, 80);
+    if (rafId) return;
+    rafId = requestAnimationFrame(() => { rafId = 0; view.update(acc); scroll(); });
   };
 
   try {
@@ -9314,6 +9922,13 @@ stopBtn.hidden = false;
       }
       try { await refresh(); } catch {}
     }
+    if (modeOneShot) {
+      modeOneShot = false;
+      toolChk.checked = toolEnabled;
+      thinkChk.checked = false;
+      try { renderWebState(); } catch {}
+      updateModeChip();
+    }
     input.focus();
     scroll();
   }
@@ -9322,7 +9937,7 @@ stopBtn.hidden = false;
 
 // ---------------------------------------------------------------- 设置 / 停止 / 重生成 / 导出
 const stopBtn = $('stopBtn'), settingsBtn = $('settingsBtn'), settingsModal = $('settingsModal');
-const setMaxTokens = $('setMaxTokens'), setTemp = $('setTemp'), setTempVal = $('setTempVal');
+const setMaxTokens = $('setMaxTokens'), setTemp = $('setTemp'), setTempVal = $('setTempVal'), setStreamLite = $('setStreamLite');
 const setAutoRead = $('setAutoRead'), setCodeRun = $('setCodeRun'), setCodeCapture = $('setCodeCapture'), setCodeOutWs = $('setCodeOutWs'), exportBtn = $('exportBtn'), exportHint = $('exportHint');
 
 let genAC = null;          // 当前生成的中止器
@@ -9330,6 +9945,8 @@ let latestEntry = null;    // 刚写入 transcript 的那条助手消息
 let autoRead = false;      // 生成完自动朗读（默认关，只有用户显式打开才生效）
 let genMaxTokens = 1024;
 let genTemp = 0.7;
+let streamLite = false;    // 极简流式：生成中只追加纯文本（设置 → 生成）
+let modeOneShot = false;   // Agent/推理模式是一次性的：发完恢复默认，不持久化
 let genTtsVoice = '';      // 默认朗读音色
 let genTtsSpeed = 1;       // 默认朗读语速
 let stopRequested = false; // 本轮是否被用户点过停止（停止后不再追着征询第二意见）
@@ -9356,6 +9973,7 @@ function loadSettings() {
     const s = JSON.parse(localStorage.getItem('localai.settings') || '{}');
     if (s.maxTokens) genMaxTokens = s.maxTokens;
     if (typeof s.temp === 'number') genTemp = s.temp;
+    streamLite = s.streamLite === true;
     autoRead = s.v === SETTINGS_VERSION ? !!s.autoRead : false;
     if (typeof s.ttsVoice === 'string') genTtsVoice = s.ttsVoice;
     if (typeof s.ttsSpeed === 'number') genTtsSpeed = Math.max(0.7, Math.min(1.5, s.ttsSpeed));
@@ -9397,6 +10015,7 @@ function saveSettings() {
       v: SETTINGS_VERSION,
       maxTokens: genMaxTokens,
       temp: genTemp,
+      streamLite,
       autoRead,
       ttsVoice: genTtsVoice,
       ttsSpeed: genTtsSpeed,
@@ -10076,6 +10695,7 @@ settingsBtn.onclick = () => {
   cloudLoadConfig().catch(() => {}); // 云端复审配置：每次打开设置都如实回填
   renderAppearanceControls();
   setMaxTokens.value = genMaxTokens;
+  setStreamLite.checked = streamLite;
   setTemp.value = genTemp;
   setTempVal.textContent = Number(genTemp).toFixed(1);
   setAutoRead.checked = autoRead;
@@ -10103,6 +10723,7 @@ setTemp.oninput = () => { setTempVal.textContent = Number(setTemp.value).toFixed
 $('settingsSave').onclick = () => {
   genMaxTokens = Math.max(64, Math.min(4096, Number(setMaxTokens.value) || 1024));
   genTemp = Math.max(0, Math.min(1.5, Number(setTemp.value) || 0));
+  streamLite = setStreamLite.checked;
   autoRead = setAutoRead.checked;
   codeRunOn = setCodeRun.checked;
   codeCaptureOn = setCodeCapture.checked;
@@ -10573,7 +11194,9 @@ toolChk.addEventListener('change', () => {
   }
   saveSettings(); // 工具开关也要记住，否则刷新后联网开着却发不出 web 标记
   renderWebState();
+  updateModeChip();
 });
+thinkChk.addEventListener('change', updateModeChip);
 // ---------------------------------------------------------------- 工具卡片渲染
 /**
  * 联网调用必须让人一眼看出来「搜了什么 / 读了哪一页」——这是用户在开启弹窗里
@@ -11274,6 +11897,7 @@ initTts().catch(() => {});
 refreshPreloadState().catch(() => {});
 toolChk.checked = toolEnabled;
 renderWebState();
+updateModeChip();
 // 首次使用问一次「要不要嗅探本机模型」：标记存在服务端，换机器/重装才会再问
 (async () => {
   try {

@@ -44,7 +44,7 @@ const DEBUG_UI = path.join(HERE, "debug.html");
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 
 /** 版本号：发版只改这一处；server\package.json 的 version 必须与它一致（probe-version 会查） */
-const APP_VERSION = "1.10.0";
+const APP_VERSION = "1.11.0";
 /** 产品正式名（2026-11-01 起）：QingYaoTP AILauncher；QingYaoTP = QingYaoTestifypred */
 const APP_NAME = "QingYaoTP AILauncher";
 const APP_SUB = "本地 AI";
@@ -1973,7 +1973,10 @@ async function loadModel(file, contextSize) {
     if (extras.has(file)) await disposeExtra(file);
     const full = path.join(MODEL_DIR, file);
     log(`加载 ${file} (context ${contextSize}) ...`);
-    state.model = await llama.loadModel({ modelPath: full });
+    // useMmap:false 是性能/内存的关键：Windows 上 Vulkan 的 gpuSupportsMmap=false，
+    // 走 mmap 时权重会同时留在文件映射里 + 再拷一份到核显共享内存（实测 12GB 模型吃 24GB、
+    // 加载 48.6s、可用内存归零）；显式关 mmap 后只保留 GPU 一份（加载 8–11s、可用内存还剩 ~9GB）。
+    state.model = await llama.loadModel({ modelPath: full, useMmap: false });
     const mainCtx = await createMainContext(state.model, contextSize);
     state.context = mainCtx.context;
     state.kvQuant = mainCtx.kvQuant;
@@ -2000,7 +2003,7 @@ async function loadModel(file, contextSize) {
           : "默认关闭（未设置 DRAFT_MODEL）：本机实测草稿模型更慢";
       } else {
         log(`加载草稿模型 ${cand.file} ...`);
-        const dm = await llama.loadModel({ modelPath: cand.path });
+        const dm = await llama.loadModel({ modelPath: cand.path, useMmap: false });
         const compat = tokenizersCompatible(state.model, dm);
         if (!compat.ok) {
           state.draftDisabledReason = `词表不兼容：${compat.reason}`;
@@ -3333,7 +3336,9 @@ const CODE_REVIEW_CONTEXT_SIZES = [8192, 4096, 2048];
  * 偶尔会卡在生成里不返回，界面就永远「审查中…」；有超时至少能给出明确错误。
  * 注意：如果原生层彻底卡住（事件循环都不转），JS 定时器本身也发不出去，那种情况只能重启进程。
  */
-const CODE_JOB_TIMEOUT_MS = Math.max(60000, Math.min(900000, Number(process.env.CODE_JOB_TIMEOUT_MS) || 300000));
+const CODE_JOB_TIMEOUT_MS = Math.max(60000, Math.min(900000, Number(process.env.CODE_JOB_TIMEOUT_MS) || 600000));
+/** 生成「停滞」看门狗：超过这么久没有任何 delta 就掐掉（原生层卡死的兜底）；探针会把阈值降到 1s */
+const CODE_JOB_IDLE_TIMEOUT_MS = Math.max(1000, Math.min(300000, Number(process.env.CODE_JOB_IDLE_TIMEOUT_MS) || 120000));
 /** 代码审查的 system prompt（契约第三节 3.2 逐字）：四节固定标题，先结论后问题 */
 const CODE_REVIEW_SYSTEM =
   "你是严格的代码审查员。结合用户给出的意图，判断这段代码的实现是否合理：先给结论，再列主要问题（按严重度排序，指出具体位置或片段），再给可执行的改进建议，最后说明风险与边界。用中文、Markdown，四节标题固定为：## 结论 / ## 主要问题 / ## 改进建议 / ## 风险与边界。不要复述整段代码，不要客套。";
@@ -3613,6 +3618,22 @@ function codeJobPrompt({ code, lang, file, intent, lineCount }) {
   ].join("\n");
 }
 
+/** 分段审查提示词：告诉模型本段在全文中的行号范围；回答里的行号用「本段相对行号」 */
+function codeChunkPrompt({ code, lang, file, intent, from, to, lineCount }) {
+  return [
+    "【用户意图】" + (String(intent ?? "").trim() || "（未提供，按代码本身判断）"),
+    "【文件】" + (String(file ?? "").trim() || "未命名"),
+    "【语言】" + (String(lang ?? "").trim() || "未知"),
+    "【全文行数】" + lineCount + "；本次只审查第 " + (from + 1) + "–" + to + " 行（本段共 " + (to - from) + " 行）",
+    "【行号规则】下面片段从第 1 行开始编号；回答里的行号请用本段相对行号（1 起），不要用全文行号。",
+    "",
+    "代码（第 " + (from + 1) + "–" + to + " 行）：",
+    FENCE + String(lang ?? "").trim(),
+    code,
+    FENCE,
+  ].join("\n");
+}
+
 /** 从自由文本里抠出最后一个 JSON 对象（按括号配对，忽略字符串里的括号）；抠不到返回 null */
 function extractJsonObject(text) {
   const src = String(text ?? "");
@@ -3809,6 +3830,8 @@ async function handleCodeReviewStream(req, res) {
   const lineCount = code.split("\n").length;
   const rawMax = Number(body?.max_tokens);
   const maxTokens = Math.max(128, Math.min(2000, Number.isFinite(rawMax) && rawMax > 0 ? Math.round(rawMax) : 1200));
+  const rawJsonMax = Number(body?.json_max_tokens);
+  const jsonMaxTokens = Math.max(200, Math.min(1200, Number.isFinite(rawJsonMax) && rawJsonMax > 0 ? Math.round(rawJsonMax) : 700));
   const lang = String(body?.lang ?? "").trim().slice(0, 40);
   const file = String(body?.file ?? "").trim().slice(0, 120);
   const intent = String(body?.intent ?? "").trim().slice(0, 500);
@@ -3828,7 +3851,7 @@ async function handleCodeReviewStream(req, res) {
     let send = null;
     try {
       const pick = await pickCodeJobModel(body?.model);
-      const { ctx, size } = await openReviewContext();
+      let { ctx, size } = await openReviewContext();
       try {
         if (clientGone) {
           log("代码审查(流式) " + (file || "未命名") + " 客户端已断开，跳过生成");
@@ -3844,8 +3867,16 @@ async function handleCodeReviewStream(req, res) {
         });
         // 第一阶段：只流式输出「审查思路」（小模型一次要两样经常给不出合法 JSON，所以拆成两轮）
         let thinkText = "";
+        const idleSec = Math.round(CODE_JOB_IDLE_TIMEOUT_MS / 1000);
         ac = new AbortController();
         const watchdog = setTimeout(() => ac.abort(codeJobError(504, "审查超时（" + Math.round(CODE_JOB_TIMEOUT_MS / 1000) + "s 没有跑完）：换个模型或分段审查")), CODE_JOB_TIMEOUT_MS);
+        // F2 生成停滞看门狗：进入生成即开始计时，每个 chunk 重置；原生层卡死（长时间零输出）时掐掉，释放 codeJob 锁
+        const onIdle = () => {
+          log("代码审查(流式) " + (file || "未命名") + " 停滞 " + idleSec + "s 无输出，已中止");
+          try { ac.abort(codeJobError(504, "审查生成 " + idleSec + " 秒没有任何输出（本地模型可能卡死）：请重启启动器后重试，或改用云端复审")); } catch {}
+        };
+        let idleWatchdog = setTimeout(onIdle, CODE_JOB_IDLE_TIMEOUT_MS);
+        const armIdle = () => { clearTimeout(idleWatchdog); idleWatchdog = setTimeout(onIdle, CODE_JOB_IDLE_TIMEOUT_MS); };
         let meta;
         try {
           meta = await session.promptWithMeta(codeJobPrompt({ code, lang, file, intent, lineCount }), {
@@ -3853,6 +3884,7 @@ async function handleCodeReviewStream(req, res) {
             temperature: 0.2,
             signal: ac.signal,
             onResponseChunk: (c) => {
+              armIdle();
               if (c && c.text) {
                 thinkText += c.text;
                 send({ type: "delta", text: c.text });
@@ -3861,6 +3893,7 @@ async function handleCodeReviewStream(req, res) {
           });
         } finally {
           clearTimeout(watchdog);
+          clearTimeout(idleWatchdog);
         }
         const thinking = String(meta?.responseText ?? "") || thinkText;
         if (clientGone) throw codeJobError(499, "客户端已断开（已停止）");
@@ -3875,12 +3908,26 @@ async function handleCodeReviewStream(req, res) {
           String(thinking).slice(-2000),
         ].join("\n");
         ac = new AbortController();
-        const watchdog2 = setTimeout(() => ac.abort(codeJobError(504, "审查结论整理超时")), Math.min(120000, CODE_JOB_TIMEOUT_MS));
+        // 2026-11-22：9B 在长代码上「整理 JSON」经常超过 120s，放宽到 240s（仍受总超时约束）
+        const watchdog2 = setTimeout(() => ac.abort(codeJobError(504, "审查结论整理超时")), Math.min(240000, CODE_JOB_TIMEOUT_MS));
+        // F2 整理阶段停滞看门狗：onResponseChunk 只重置不转发；与第一阶段同阈值
+        const onJsonIdle = () => {
+          log("代码审查(流式) " + (file || "未命名") + " 停滞 " + idleSec + "s 无输出，已中止（整理结论阶段）");
+          try { ac.abort(codeJobError(504, "审查结论整理 " + idleSec + " 秒没有任何输出（本地模型可能卡死）")); } catch {}
+        };
+        let jsonIdleWatchdog = setTimeout(onJsonIdle, CODE_JOB_IDLE_TIMEOUT_MS);
+        const armJsonIdle = () => { clearTimeout(jsonIdleWatchdog); jsonIdleWatchdog = setTimeout(onJsonIdle, CODE_JOB_IDLE_TIMEOUT_MS); };
         let jm;
         try {
-          jm = await session.promptWithMeta(jsonPrompt, { maxTokens: 700, temperature: 0.1, signal: ac.signal });
+          jm = await session.promptWithMeta(jsonPrompt, {
+            maxTokens: jsonMaxTokens,
+            temperature: 0.1,
+            signal: ac.signal,
+            onResponseChunk: () => { armJsonIdle(); },
+          });
         } finally {
           clearTimeout(watchdog2);
+          clearTimeout(jsonIdleWatchdog);
         }
         const findings = parseFindingsFromText(String(jm?.responseText ?? ""), lineCount);
         // v1.7.1：模型常把问题标到空行/注释行，落高亮前先吸到最近的真代码行
@@ -3893,7 +3940,8 @@ async function handleCodeReviewStream(req, res) {
         try { if (!res.writableEnded) res.end(); } catch {}
         log("代码审查(流式) " + (file || "未命名") + " 上下文 " + size + " 问题 " + findings.issues.length + " " + seconds + "s" + (pick.switched ? "（切换模型）" : ""));
       } finally {
-        await ctx.dispose().catch(() => {});
+        if (ctx) await ctx.dispose().catch(() => {});
+        ctx = null;
       }
     } catch (e) {
       if (clientGone) {
@@ -6278,7 +6326,7 @@ function buildToolRegistry(journal, onCall, options = {}) {
   const defs = [
     {
       name: "get_current_time",
-      description: "获取当前本地日期与时间。凡是问「现在几点」「今天几号」「今天星期几」都必须调用，不要凭记忆回答。",
+      description: "获取当前本地日期、时间、星期。问时间/日期/星期必须调用，不要凭记忆回答。",
       params: { type: "object", properties: {} },
       run: () =>
         record("get_current_time", {}, () => {
@@ -6292,7 +6340,7 @@ function buildToolRegistry(journal, onCall, options = {}) {
     },
     {
       name: "calculate",
-      description: "精确计算一个数学表达式，支持 + - * / % ** 和括号。涉及具体数值计算时必须调用，不要心算。",
+      description: "精确计算数学表达式（+ - * / % ** 括号）。涉及数值计算必须调用，不要心算。",
       params: {
         type: "object",
         properties: { expression: { type: "string", description: "要计算的数学表达式，例如 (1234*56)+78" } },
@@ -6315,7 +6363,7 @@ function buildToolRegistry(journal, onCall, options = {}) {
     },
     {
       name: "read_workspace_file",
-      description: "只读取、不修改：读取 workspace 根目录下一个文本文件的内容（只接受文件名，不要带目录）。要看文件内容就用它，绝不要用 write_workspace_file。",
+      description: "只读：读取 workspace 根目录下的文本文件（只接受文件名，不带目录）。查看内容用它，不要用 write_workspace_file。",
       params: {
         type: "object",
         properties: {
@@ -6341,7 +6389,7 @@ function buildToolRegistry(journal, onCall, options = {}) {
     },
     {
       name: "list_workspace_files",
-      description: "列出工作目录 workspace 下的文件与子目录（相对路径），用于查看有哪些资料可读。",
+      description: "列出 workspace 下的文件与子目录（相对路径）。",
       params: { type: "object", properties: { dir: { type: "string", description: "子目录，留空列根目录" } }, required: [] },
       run: (args) =>
         record("list_workspace_files", { dir: String(args?.dir ?? "") }, async () => {
@@ -6351,7 +6399,7 @@ function buildToolRegistry(journal, onCall, options = {}) {
     },
     {
       name: "write_workspace_file",
-      description: "新建或覆盖一个文本文件（相对路径，最大 256KB），只在需要把结果保存成文件时用。它会写入/覆盖同名文件；只是要看内容请用 read_workspace_file。content 要精简，不要重复行，单次不超过 200 行。",
+      description: "新建或覆盖 workspace 下的文本文件（相对路径，最大 256KB）。只在需要保存结果时用；查看内容用 read_workspace_file。",
       params: {
         type: "object",
         properties: { path: { type: "string", description: "相对路径，例如 notes/todo.md" }, content: { type: "string" } },
@@ -6366,7 +6414,7 @@ function buildToolRegistry(journal, onCall, options = {}) {
     },
     {
       name: "run_code",
-      description: "在本机运行一段代码（javascript/python/c/cpp/java/go/rust），返回 stdout、stderr 与退出码；10 秒超时、输出上限 64KB。适合写完文件后立刻验证。",
+      description: "在本机运行代码（javascript/python/c/cpp/java/go/rust），返回 stdout/stderr 与退出码；10 秒超时、64KB 输出上限。",
       params: {
         type: "object",
         properties: {
@@ -6395,7 +6443,7 @@ function buildToolRegistry(journal, onCall, options = {}) {
     {
       name: "search_documents",
       description:
-        "检索本机 workspace 里的文档（md / txt / log / csv / Word 的 docx / PDF），按相关度返回片段与出处文件。问「我的资料里怎么说」「文档/笔记里有没有提到」时先调用它；拿到 file 之后可以用 read_workspace_file 读全文。",
+        "检索 workspace 文档（md/txt/log/csv/docx/pdf），按相关度返回片段与出处；问「资料里怎么说」时先调用它，拿到文件名可用 read_workspace_file 读全文。",
       params: {
         type: "object",
         properties: {
@@ -6429,7 +6477,7 @@ function buildToolRegistry(journal, onCall, options = {}) {
       {
         name: "web_search",
         description:
-          "联网搜索网页（中文查询优先百度，被反爬拦截时自动改用 Bing）。适合查时效性信息、新闻、文档入口。返回标题、地址与摘要。",
+          "联网搜索网页（中文优先百度，被拦自动回落 Bing），返回标题、地址与摘要。",
         params: {
           type: "object",
           properties: {
@@ -6447,7 +6495,7 @@ function buildToolRegistry(journal, onCall, options = {}) {
       {
         name: "fetch_url",
         description:
-          "读取一个网页的正文（已去标签）。只支持 http/https，拒绝本机与内网地址。适合在搜索之后打开具体页面看细节。",
+          "读取网页正文（已去标签）。只支持 http/https，拒绝本机与内网地址。",
         params: {
           type: "object",
           properties: { url: { type: "string", description: "完整网址，必须以 http:// 或 https:// 开头" } },
@@ -6511,15 +6559,15 @@ const TOOL_ROUND_LIMIT = Math.max(1, Number(process.env.TOOL_ROUNDS ?? 4));
 function buildToolInstructions(registry) {
   // 这段每轮都进系统提示、都要预填充。保持「格式 + 硬规则」够用即可，别写成长文。
   return [
-    "你可以调用本机工具来获取自己不知道、或需要精确计算的信息。可用工具：",
+    "需要未知信息或精确计算时调用本机工具。可用工具：",
     registry.describe(),
     "",
-    "调用格式（严格遵守）：需要工具时只输出调用块，前面不要写解释；不需要就直接回答，绝对不要输出调用块。",
+    "需要时只输出一个调用块，前面不要解释：",
     "<tool_call>",
-    '{"name": "工具名", "arguments": {"参数名": "参数值"}}',
+    '{"name":"工具名","arguments":{}}',
     "</tool_call>",
-    "我会用 <tool_response> 回结果；拿到后正常回答，不要复述 JSON、不要编造结果。",
-    "时间、日期、星期、具体数值计算、本机文件与模型列表一律用工具；读文件用 read_workspace_file（write_workspace_file 只在要求保存时用）。",
+    "我用 <tool_response> 回结果；拿到后直接回答，不要复述 JSON、不要编造。",
+    "时间/日期/数值计算/文件与模型列表一律用工具；读文件用 read_workspace_file，只在要保存时用 write_workspace_file。",
   ].join("\n");
 }
 
@@ -8070,7 +8118,7 @@ async function preloadModel(file) {
   if (!llama) throw new Error("推理引擎尚未初始化");
 
   const t0 = Date.now();
-  const model = await llama.loadModel({ modelPath: full });
+  const model = await llama.loadModel({ modelPath: full, useMmap: false });
   let context = null;
   try {
     const pre = await createMainContext(model, PRELOAD_CONTEXT);

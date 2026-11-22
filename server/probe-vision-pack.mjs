@@ -5,7 +5,7 @@
  *
  * 为什么自带实例：安装 / 卸载会真的动「视觉组件目录」，绝不能拿 dev 的 app\llama（更别说仓库的
  * tools\llama.cpp）当试验田——万一撞上路径穿越的缺陷，删的是真资产。所以：
- *   spawn(process.execPath, ['app.mjs'], {env: PORT=8199, MODEL_DIR=<temp>\vp-model,
+ *   spawn(process.execPath, ['app.mjs'], {env: PORT=8299, MODEL_DIR=<temp>\vp-model,
  *          LOCALAI_LLAMA_DIR=<temp>\llama, LOCALAI_VISION_PACK_DIR=<temp>\packs})，
  * 轮询 /api/state 就绪（<=30s），结束后 finally 杀进程树 + 删临时目录，仓库里一个文件都不留。
  *
@@ -44,8 +44,8 @@ import { fileURLToPath } from "node:url";
 import { zipStore } from "./diag-zip.mjs";
 
 const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
-/** 临时服务端口：固定 8199（界面探针 probe-ui-vision-pack 也用这个，两个探针串行跑） */
-const PORT = 8199;
+/** 临时服务端口：固定 8299（界面探针 probe-ui-vision-pack 也用这个，两个探针串行跑） */
+const PORT = 8299;
 const BASE = "http://127.0.0.1:" + PORT;
 /** run-full 会传一个 base（8099）；本探针自带实例，不用它，只打印出来便于对数 */
 const PASSED_BASE = process.argv[2] || "";
@@ -501,7 +501,7 @@ try {
   // ---------- 13. 开发目录（source=tools）不可卸：409，仓库资产一个字节都不动 ----------
   console.log("\n== M. 开发目录 source=tools：uninstall -> 409，仓库资产不动 ==");
   await killServer();
-  ok("第一个临时实例已停止（腾出 8199）", await portClosed(8000));
+  ok("第一个临时实例已停止（腾出 8299）", await portClosed(8000));
   const repoLlama = path.join(SERVER_DIR, "llama");
   const repoLlamaExe = path.join(repoLlama, "llama-server.exe");
   const toolsDir = path.normalize(path.join(SERVER_DIR, "..", "tools", "llama.cpp"));
@@ -533,7 +533,7 @@ try {
       ok("server\\llama 仍不存在（409 没写任何东西）", !existsSync(repoLlama));
       ok("409 响应里 installed 不是 false（没有误报卸载成功）", !(unTools.data && unTools.data.installed === false));
       await killServer();
-      ok("第二个临时实例已停止（8199 释放）", await portClosed(8000));
+      ok("第二个临时实例已停止（8299 释放）", await portClosed(8000));
     }
   }
 

@@ -119,6 +119,7 @@ $probes=@(
   @{n='probe-code-workspace'; a=@($base); t=180},
   # v1.7.0：代码审查流式（真模型：审查 + 修正 + 指定模型，收尾切回 4B）
   @{n='probe-code-review-stream'; a=@($base); t=480},
+  @{n='probe-review-watchdog'; a=@($cdp,$base); t=240},
   # v1.7.0：代码面板 v2 UI（需要 4B 已加载；审查/纠正都走真模型）
   @{n='probe-code-panel-v2'; a=@($base,$cdp,$shots); t=720},
   # v1.7.0：终端 TUI（--hint-test 补全 + --plain 管道跑 /tools、/tool）
@@ -155,6 +156,12 @@ $probes=@(
   @{n='probe-hero-modes'; a=@($cdp); t=150},
   @{n='probe-input-extras'; a=@($cdp); t=150},
   @{n='probe-formula-panel'; a=@($cdp); t=150},
+# 2026-11-22：主页面流式增量渲染 / 首字税 chip（CDP 页面内渲染基准）
+@{n='probe-stream-render'; a=@($cdp,$base); t=180},
+# 2026-11-22：代码审查面板「审查中不能上滚」回归（DOM + 滚动位置）
+@{n='probe-review-scroll'; a=@($cdp,$base); t=120},
+# 2026-11-22：代码工作区窗口/结果标签（可拖拽/最大化/分隔条/标签切换，纯 DOM）
+@{n='probe-code-window-ui'; a=@($cdp,$base); t=120},
   @{n='probe-formula-find'; a=@($cdp); t=150},
   @{n='probe-timestamps'; a=@($base,$cdp); t=180},
   @{n='probe-small-features'; a=@($cdp); t=220},

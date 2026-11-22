@@ -8,6 +8,8 @@
  *  B) --hint-test "/tool "     -> /tool 的提示条列出可用工具（来自 GET /api/tools，含 get_current_time）；
  *  C) --hint-test "/"          -> 至少 11 条命令（/help /clear /new /model /state /tools /tool /run /web /think /exit）；
  *  D) --plain 管道喂 /tools、/tool get_current_time、/exit -> 打印工具名 + 调用结果（含时间），不出现「未知命令」。
+ *  E) v2.0.0 终端升级：--version（自身 + 主程序版本）、--faces（原创颜文字）、--selftest、
+ *     --snapshot（线框输入框 / 光标 / Markdown 降级 / 能力面板 / 等待动画）、--bench（渲染耗时）。
  *
  * 前置：服务在跑。没加载模型时探针先加载 4B（否则 TUI 的 ensureModel 会自己挑最小的，把后续探针环境搞乱）。
  * 不写任何文件，纯读接口。
@@ -125,6 +127,74 @@ try {
   ok("/tool 调用结果里有时间（年份/带时间的 JSON）", /20\d{2}[-\/年]|"time"|:\s*"[^"]*\d{2}:\d{2}/.test(plainOut), plainOut.replace(/\s+/g, " ").slice(0, 160));
   ok("没有出现「未知命令」", !/未知命令/.test(plainOut), (plainOut.match(/未知命令[^\n]*/) || [""])[0]);
   ok("没有 HTTP 错误 / 异常堆栈", !/HTTP 4\d\d|HTTP 5\d\d|Error:|throw /.test(plainOut + String(plain.err || "")), (plainOut + String(plain.err || "")).replace(/\s+/g, " ").slice(0, 120));
+
+  // ---------- E. v2.0.0：终端升级 ==========
+  console.log("\n== E. --version / --faces / --selftest / --snapshot / --bench ==");
+
+  /** 终端显示宽度（CJK 与 emoji 按 2 列），用来断言线框不歪 */
+  const cw = (ch) => {
+    const cp = ch.codePointAt(0);
+    return (cp >= 0x1100 && cp <= 0x115f) || (cp >= 0x2e80 && cp <= 0xa4cf) || (cp >= 0xac00 && cp <= 0xd7a3) ||
+      (cp >= 0xf900 && cp <= 0xfaff) || (cp >= 0xfe30 && cp <= 0xfe6f) || (cp >= 0xff00 && cp <= 0xff60) ||
+      (cp >= 0x1f300 && cp <= 0x1f9ff) ? 2 : 1;
+  };
+  const dispWidth = (s) => [...String(s)].reduce((n, ch) => n + cw(ch), 0);
+
+  const ver = await runTui(["--version"], null, 30000);
+  const verOut = String(ver.out || "");
+  ok("--version 退出码 0", ver.code === 0 && !ver.timedOut, "code=" + ver.code + " " + String(ver.err || "").slice(0, 60));
+  ok("--version 打出终端自身版本 localai tui 2.0.0", verOut.includes("localai tui 2.0.0"), verOut.replace(/\s+/g, " ").slice(0, 80));
+  ok("--version 附带主程序版本（v + 数字）", /主程序\s+v\d+\.\d+\.\d+/.test(verOut), (verOut.match(/主程序[^\n]*/) || [""])[0]);
+  ok("--version 带 Node 与服务地址", /Node\s+v\d/.test(verOut) && verOut.includes(BASE), (verOut.match(/Node[^\n]*/) || [""])[0]);
+
+  const faces = await runTui(["--faces"], null, 20000);
+  const faceLines = String(faces.out || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  ok("--faces 退出码 0", faces.code === 0 && !faces.timedOut, "code=" + faces.code);
+  ok("--faces 至少 12 个颜文字", faceLines.length >= 12, "n=" + faceLines.length);
+  ok("--faces 没有重复", new Set(faceLines).size === faceLines.length, "unique=" + new Set(faceLines).size);
+  ok("--faces 形如括号颜文字（含 ( 与 )）", faceLines.every((f) => f.includes("(") && f.includes(")")), JSON.stringify(faceLines.slice(0, 3)));
+
+  const st2 = await runTui(["--selftest"], null, 60000);
+  const stOut = String(st2.out || "");
+  ok("--selftest 退出码 0", st2.code === 0 && !st2.timedOut, "code=" + st2.code + " " + String(st2.err || "").slice(0, 80));
+  ok("--selftest 全部通过", /SELFTEST 通过/.test(stOut), stOut.replace(/\s+/g, " ").slice(0, 100));
+  const stN = Number((/通过（(\d+) 项）/.exec(stOut) || [])[1] || 0);
+  ok("--selftest 覆盖 ≥ 50 项（v2.0.0 新增 Markdown/LaTeX/线框/光标/面板）", stN >= 50, "n=" + stN);
+
+  const snap = await runTui(["--snapshot", "--no-color", "--cols", "96", "--rows", "26", "--main-ver", "1.11.0"], null, 30000);
+  const snapOut = String(snap.out || "");
+  const snapLines = snapOut.split(/\r?\n/).filter((l) => l.startsWith("|") && l.endsWith("|"));
+  ok("--snapshot 退出码 0", snap.code === 0 && !snap.timedOut, "code=" + snap.code);
+  ok("--snapshot 有输入框线框（╭ ╮ ╰ ╯）", ["╭", "╮", "╰", "╯"].every((c) => snapOut.includes(c)));
+  ok("--snapshot 输入框标题是「输入」", snapOut.includes("输入"));
+  ok("--snapshot 头部同时有终端与主程序版本", snapOut.includes("tui 2.0.0") && snapOut.includes("主程序 v1.11.0"), (snapOut.match(/主程序[^\n|]*/) || [""])[0]);
+  ok("--snapshot 显示输入光标（NO_COLOR 下是 ▏）", snapOut.includes("▏"));
+  ok("--snapshot Markdown 标记已降级（不出现 **）", !snapOut.includes("**"));
+  ok("--snapshot 有标题/列表符号（▌ 或 •）", snapOut.includes("▌") || snapOut.includes("•"));
+  const innerLines = snapLines.map((l) => l.slice(1, -1));
+  ok("--snapshot 每一帧内容宽度都等于 96", innerLines.length >= 20 && innerLines.every((l) => dispWidth(l) === 96), "n=" + innerLines.length + " bad=" + JSON.stringify(innerLines.filter((l) => dispWidth(l) !== 96).slice(0, 2)));
+
+  const snapMenu = await runTui(["--snapshot", "--no-color", "--cols", "96", "--rows", "30", "--menu", "--main-ver", "1.11.0"], null, 30000);
+  const menuOut = String(snapMenu.out || "");
+  ok("--snapshot --menu 退出码 0", snapMenu.code === 0 && !snapMenu.timedOut, "code=" + snapMenu.code);
+  ok("能力面板有线框与标题", menuOut.includes("能力面板") && menuOut.includes("╭"));
+  ok("能力面板列出 /tool 与 /version", menuOut.includes("/tool") && menuOut.includes("/version"));
+  ok("能力面板有选中标记与快捷键说明", menuOut.includes("▸") && /↑↓|Tab/.test(menuOut));
+
+  const snapGen = await runTui(["--snapshot", "--no-color", "--cols", "96", "--rows", "22", "--gen"], null, 30000);
+  const genOut = String(snapGen.out || "");
+  ok("--snapshot --gen 显示等待动画", snapGen.code === 0 && genOut.includes("生成中"), "code=" + snapGen.code);
+  ok("等待动画是旋转斜杠 + 颜文字", /[\/\\\-|] \(∫_∫\)/.test(genOut), (genOut.split(/\r?\n/).find((l) => l.includes("∫_∫")) || "").trim());
+  ok("等待动画带已用时间（3.2s）", /3\.\d s|3\.\ds/.test(genOut) || genOut.includes("3.2s"));
+
+  const bench = await runTui(["--bench"], null, 120000);
+  const benchOut = String(bench.out || "");
+  const frameLine = benchOut.split(/\r?\n/).find((l) => l.trim().startsWith("frame ")) || "";
+  const frameMs = Number((/每次 ([\d.]+)ms/.exec(frameLine) || [])[1] || 9999);
+  ok("--bench 退出码 0", bench.code === 0 && !bench.timedOut, "code=" + bench.code);
+  ok("--bench 同时报告 Markdown 解析与整帧渲染", benchOut.includes("md ") && benchOut.includes("frame "));
+  ok("整帧渲染 < 5ms（终端比界面快的基础）", frameMs < 5, "frame=" + frameMs + "ms");
+
 } catch (e) {
   fail += 1;
   console.log("  FAIL 探针异常中断: " + String((e && e.message) || e));

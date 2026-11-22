@@ -1,0 +1,7 @@
+﻿13:16:44 | before       | free= 22.4 | commit= 17.4 | standby= 11.8 | gpuShared=  1.6 | nodeWS=  0.1 | nodePriv=  0.2
+13:16:48 | loading      | free= 22.3 | commit= 17.5 | standby= 11.8 | gpuShared=  1.6 | nodeWS=  0.2 | nodePriv=  0.3
+13:16:51 | loading      | free= 20.6 | commit= 18.8 | standby= 13.2 | gpuShared=  4.1 | nodeWS=  0.3 | nodePriv=  0.4
+13:16:54 | loading      | free= 16.4 | commit= 21.3 | standby= 11.8 | gpuShared=  4.9 | nodeWS=  6.1 | nodePriv=  4.1
+13:16:58 | loaded       | free= 16.4 | commit= 21.3 | standby= 11.8 | gpuShared=  4.9 | nodeWS=  6.1 | nodePriv=  4.1
+13:17:02 | unloaded+2s  | free= 22.4 | commit= 17.4 | standby= 14.4 | gpuShared=  1.6 | nodeWS=  0.1 | nodePriv=  0.2
+13:17:12 | unloaded+10s | free= 22.0 | commit= 17.6 | standby= 14.5 | gpuShared=  1.6 | nodeWS=  0.1 | nodePriv=  0.2

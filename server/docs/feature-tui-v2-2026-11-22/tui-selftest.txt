@@ -1,0 +1,18 @@
+﻿· localai tui 2.0.0 · 主程序 v?（详情 /version）
+
+命令（输入 / 开头可出现命令提示；Tab 补全、→ 接受、Esc 收起）：
+  /help                                         命令与用法总览
+  /clear                                        清屏（保留上下文）
+  /new                                          清空上下文（不删会话文件）
+  /model <文件>                                 换模型（不给参数列出候选）
+  /state                                        打印服务状态
+  /version                                      终端版本 + 主程序版本
+  /tools [on|off]                               列出软件工具；on|off 切换工具调用
+  /tool <name> [key=value …] [--json '<json>']  调用软件工具（名称 + 参数）
+  /run <语言> <代码>                            直接跑代码（python/js/c/cpp…）
+  /web on|off                                   联网开关（打开时隐含工具开）
+  /think on|off                                 深度思考开关
+  /exit                                         退出
+
+工具：/tools 看清单 · /tool <name> key=value … · /tool <name> --json '{"k":"v"}'
+SELFTEST 通过（61 项）

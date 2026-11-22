@@ -9,7 +9,7 @@
  *
  * 为什么要临时服务：界面要验「未安装 -> 一键安装 -> 已安装 -> 卸载 -> 未安装」全链路，
  * 而 dev 的 8099 用的是仓库 tools\llama.cpp（不能卸、也不该被探针改）。所以探针自己拉起
- * PORT=8199 的实例：MODEL_DIR / LOCALAI_LLAMA_DIR / LOCALAI_VISION_PACK_DIR 全指向临时目录，
+ * PORT=8299 的实例：MODEL_DIR / LOCALAI_LLAMA_DIR / LOCALAI_VISION_PACK_DIR 全指向临时目录，
  * 并预置一个合法小包（diag-zip 的 zipStore：vision-pack.json + llama\ 8 个 required），
  * 让 #vpDetected 里出现「一键安装」。临时实例的 MODEL_DIR 里还放一对假的 Qwen3.5-9B 模型 + mmproj，
  * 这样装好后「启动」键才有「可用组合」而恢复可点（否则它天生因无 pair 而禁用，断言会假红）。
@@ -36,8 +36,8 @@ const SERVER_DIR = path.dirname(fileURLToPath(import.meta.url));
 const CDP = process.argv[2] || "http://127.0.0.1:9333";
 const APP = (process.argv[3] || "http://127.0.0.1:8099").replace(/\/+$/, "");
 const OUT = process.argv[4] || path.join(SERVER_DIR, "docs", "feature-vision-pack-2026-11-15");
-/** 临时服务端口：固定 8199（probe-vision-pack 也用这个；两个探针串行跑） */
-const PORT = 8199;
+/** 临时服务端口：固定 8299（probe-vision-pack 也用这个；两个探针串行跑） */
+const PORT = 8299;
 const TEMP = "http://127.0.0.1:" + PORT;
 
 const REQUIRED = [

@@ -69,3 +69,6 @@ __pycache__/
 # 运行期配置（v1.8.0 云端复审）：data\cloud-review.json 里可能有 API Key，绝不入库
 # 发布包里的 data\ 由 make-zip.ps1 整目录排除，并由它断言不出现 data/cloud-review*
 data/
+
+# 开发态视觉增强包安装目标（source=pack 时会生成，不入库）
+server/llama/

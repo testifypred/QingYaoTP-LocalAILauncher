@@ -1,0 +1,15 @@
+﻿ready=true
+{
+  "hasChip": true,
+  "hasLite": true,
+  "chipHiddenIdle": true,
+  "chipTextToolsOn": "本轮：工具开 · 思考关 → 正文首字约 7s（都关掉约 1.5s）",
+  "chipHiddenAfter": true,
+  "firstTextMs": 1566,
+  "samples": 71,
+  "growths": 51,
+  "finalLen": 84,
+  "hasMarkup": true,
+  "streamingClass": false
+}
+exceptions=[]

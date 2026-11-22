@@ -1,0 +1,9 @@
+﻿ready=true errors=[]
+{
+  "newUpdateMs": 0.43,
+  "headChildren": 250,
+  "tailLen": 0,
+  "oldFullMs": 16.82,
+  "finalKatex": 100,
+  "finalChildren": 250
+}
