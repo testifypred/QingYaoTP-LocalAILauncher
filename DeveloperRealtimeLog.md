@@ -3869,5 +3869,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 
 - 提交：本轮全部代码 + 文档 + 证据目录（含 `RELEASE-v1.11.0.md`）；tag **v1.11.0**；推送 `main`（SSH over 443）。
 - 推送：`main` + tag `v1.11.0` 已推到 origin（SSH over 443）；commit **e5a1b52**，tag 对象 `eddc7d8`。
-- GitHub Release v1.11.0：正文 `.github/RELEASE-v1.11.0.md`，附件应为 主包 zip（127,961,662B / SHA256 `18B83B29…7932`）+ 视觉增强包 zip（38,408,198B，未重打）。**Release 创建需要一次 Contents: Read/Write 的 PAT——本轮先推 tag，待用户提供 token 后创建并补记。**
+- **GitHub Release v1.11.0 已创建**：https://github.com/testifypred/QingYaoTP-LocalAILauncher/releases/tag/v1.11.0 ；正文 `.github/RELEASE-v1.11.0.md`；附件 **主包 zip 127,961,662B（SHA256 `18B83B29…7932`）+ 视觉增强包 zip 38,408,198B**（API 201 uploaded，与本地文件字节一致）。
 - **未做**：About topics（细粒度 PAT 无 Administration 权限，需网页手动补或换 token）；视觉增强包未重打（沿用 v1.6.0 那份）。
