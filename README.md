@@ -22,6 +22,7 @@
 12. [版本与更新](#十二版本与更新)
 13. [第三方组件与许可](#十三第三方组件与许可)
 14. [出品与致谢](#十四出品与致谢)
+15. [许可证（Apache-2.0）](#十五许可证apache-20)
 
 ---
 
@@ -209,6 +210,8 @@ QingYaoTP AILauncher 是**一台 Windows 电脑上的纯本地 AI 工作台**：
 
 模型权重不随本软件分发，其许可（Qwen / Llama / Phi / DeepSeek / gpt-oss 等）由使用者自行遵守。
 
+更完整的版权与许可文本见仓库根目录的 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 与 [NOTICE](NOTICE)；`node_modules` 内各包自带 LICENSE 随包保留。
+
 ## 十四、出品与致谢
 
 - **出品**：**卿峣Testifypred**（QingYaoTP = QingYaoTestifypred）
@@ -216,7 +219,14 @@ QingYaoTP AILauncher 是**一台 Windows 电脑上的纯本地 AI 工作台**：
 - **图标**：本体是「不定积分 ∫ + AI」，调试工具是「∂ + AI + ?」。
 - 感谢 llama.cpp / node-llama-cpp、KaTeX / MathLive / CodeMirror 等开源项目。
 
-[![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
+## 十五、许可证（Apache-2.0）
+
+- 本项目（源码与发行包）采用 **Apache License 2.0**：见 [LICENSE](LICENSE)。
+- 版权：**Copyright 2026 QingyaoTestifypred（卿峣Testifypred）**。
+- 第三方组件：清单与许可全文见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)；版权与归属声明见 [NOTICE](NOTICE)。
+- **AI 辅助开发说明**：本项目在需求、设计、编码、测试与文档过程中大量使用 AI 编程工具（DeepSeek Harness 智能体团队）辅助。作者对项目的整体设计、选择、集成、修改与质量负责，并在法律允许范围内主张整体著作权；个别由 AI 直接生成的片段在部分法域可能不单独构成可保护作品，这不影响 Apache-2.0 对整体项目的授权。
+
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](LICENSE) [![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
 
 ---
 

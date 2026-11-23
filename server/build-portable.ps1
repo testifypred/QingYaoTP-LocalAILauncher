@@ -86,6 +86,10 @@ foreach ($need in @(
     (Join-Path $Server 'app.html'),
     # 首启「使用说明」弹窗读它（打包进 app\README.md）；漏了首启只能看到「没找到 README.md」
     (Join-Path $Repo 'README.md'),
+    # 许可证与第三方声明：随包分发（Apache-2.0 + 依赖许可清单）
+    (Join-Path $Repo 'LICENSE'),
+    (Join-Path $Repo 'NOTICE'),
+    (Join-Path $Repo 'THIRD_PARTY_NOTICES.md'),
     # app.mjs 里 import 了它（docx/pdf 抽文本）；漏了整包起不来
     (Join-Path $Server 'doc-extract.mjs'),
     # app.mjs 里 import 了它（首启配置推荐）；漏了整包起不来
@@ -187,6 +191,10 @@ Copy-Item (Join-Path $Server 'debug.ico') $AppDir -Force
 
 # 使用说明：首启弹窗与「设置 → 关于 → 使用说明」都读 app\README.md
 Copy-Item (Join-Path $Repo 'README.md') $AppDir -Force
+# 许可证与第三方许可声明：随包分发（Apache-2.0 + 依赖 MIT 等；视觉增强包的 llama.cpp 也在此覆盖）
+Copy-Item (Join-Path $Repo 'LICENSE') $AppDir -Force
+Copy-Item (Join-Path $Repo 'NOTICE') $AppDir -Force
+Copy-Item (Join-Path $Repo 'THIRD_PARTY_NOTICES.md') $AppDir -Force
 
 # VC++ 运行库：全新 Windows 必缺，缺了模型根本加载不了，随包带一份让启动器直接装
 $vcRedist = Join-Path $Server 'vendor\vc_redist.x64.exe'

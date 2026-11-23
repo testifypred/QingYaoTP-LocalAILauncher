@@ -53,3 +53,10 @@
 - 发布包冒烟：version 14/14、debug 54/54、readme 21/21、window-ui 10/10、panel-v2 44/44、stream 45/45（跳 3：Phi 切换）、watchdog 56/56 → failed=0。
 - 8099 已切回发布包实例 v1.11.0（dist\app；4B ctx=16384；视觉增强包 source=pack / 53 文件）。
 - tag `v1.11.0` 与 `main`（e5a1b52）已推；**GitHub Release 已创建**：https://github.com/testifypred/QingYaoTP-LocalAILauncher/releases/tag/v1.11.0 （正文 `.github/RELEASE-v1.11.0.md`，附件主包 127,961,662B + 视觉增强包 38,408,198B）。
+
+
+## 七、2026-11-23 补充：许可证 + 交接
+
+- **Apache-2.0 许可证落地**：根目录 LICENSE / NOTICE / THIRD_PARTY_NOTICES.md；package.json license；README 许可小节；CI 许可证检查；build-portable 随包清单。**v1.11.0 zip 不含许可文件**，下次打包随包。
+- AI 辅助开发声明在 NOTICE（人类作者主张整体著作权；个别 AI 直出片段在部分法域可能不单独构成作品，不影响 Apache-2.0 授权）。
+- 新短版交接：server\docs\handover-2026-11-23.md；日志第八十三节。

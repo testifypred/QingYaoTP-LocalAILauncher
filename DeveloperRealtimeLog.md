@@ -3871,3 +3871,40 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 - 推送：`main` + tag `v1.11.0` 已推到 origin（SSH over 443）；commit **e5a1b52**，tag 对象 `eddc7d8`。
 - **GitHub Release v1.11.0 已创建**：https://github.com/testifypred/QingYaoTP-LocalAILauncher/releases/tag/v1.11.0 ；正文 `.github/RELEASE-v1.11.0.md`；附件 **主包 zip 127,961,662B（SHA256 `18B83B29…7932`）+ 视觉增强包 zip 38,408,198B**（API 201 uploaded，与本地文件字节一致）。
 - **未做**：About topics（细粒度 PAT 无 Administration 权限，需网页手动补或换 token）；视觉增强包未重打（沿用 v1.6.0 那份）。
+
+
+## 第八十三节（2026-11-23 深夜）许可证落地：Apache-2.0 + AI 生成代码权属口径 + 交接准备
+
+> 用户问「全 AI 生成的软件版权是否属于我、许可证用哪个」→ 结论：选 **Apache-2.0**；权属靠「署名 + 人类设计/选择/集成记录 + 软著登记」主张；许可照常授予，不影响。本节记录落地与口径。
+
+### 一、为什么选 Apache-2.0（而不是 MIT / GPL）
+
+- 显式**专利授权** + **商标条款**（保护「QingYaoTP」名称），企业/商业用户更放心；与全部依赖（MIT）兼容。
+- MIT 也可用，但少了专利/商标两层；GPL/AGPL 不适合「桌面本地应用 + 二进制分发」的形态（会带来源码提供义务）。
+- 版权署名：**Copyright 2026 QingyaoTestifypred（卿峣Testifypred）**（与仓库提交身份一致）。
+
+### 二、新增/修改的文件
+
+- 新增 **`LICENSE`**：Apache-2.0 官方全文（appendix 版权行已填）。
+- 新增 **`NOTICE`**：版权 + **AI 辅助开发声明**（人类作者主导需求/架构/选择/集成/测试/修改，在法律允许范围内主张整体著作权；个别 AI 直出片段在部分法域可能不单独构成作品，但不影响 Apache-2.0 授权）。
+- 新增 **`THIRD_PARTY_NOTICES.md`**：第三方组件清单与许可（node-llama-cpp / llama.cpp / ws / msedge-tts / KaTeX + 字体 / mhchem / MathLive / CodeMirror / Node.js / WebView2 / VC++），含 MIT 全文；明确「视觉增强包内含 llama.cpp 二进制，重新分发需保留本文件」。
+- `server/package.json`：加 `"license": "Apache-2.0"`。
+- `README.md`：目录 + 第三方表补「完整许可见 THIRD_PARTY_NOTICES/NOTICE」+ 新增 **十五、许可证（Apache-2.0）**（含 AI 辅助开发说明）+ License badge。
+- `README-技术版.md`：新增「许可证（Apache-2.0）」小节；CI 检查项说明补「许可证文件」。
+- `.github/workflows/ci.yml`：新增 pwsh 步骤，检查 `LICENSE` / `NOTICE` / `THIRD_PARTY_NOTICES.md` 存在、`LICENSE` 含 Apache 文本、`server/package.json` 的 license 是 Apache-2.0。
+- `server/build-portable.ps1`：`$need` 与 Copy-Item 两处补三个许可文件 → **下次打包起 app\\ 目录随包带 LICENSE/NOTICE/THIRD_PARTY_NOTICES**（视觉增强包的 llama.cpp 许可也在该文件覆盖）。
+- 本机 `dist\QingYaoTP AILauncher\app\` 已手工补上三个文件（不影响已发布的 v1.11.0 zip）。
+
+### 三、验证
+
+- PS 5.1 Parser 解析 `build-portable.ps1`：**0 错**（编辑后 BOM 丢失已恢复：PS 5.1 会把无 BOM 的 UTF-8 当 ANSI，中文全炸）。
+- `server/package.json` JSON 可解析、license=Apache-2.0、version=1.11.0。
+- 三方许可信息核对来源：node_modules 内各包 LICENSE（node-llama-cpp 3.22.1 / ws 8.22.0 / msedge-tts 2.1.0）、KaTeX/CodeMirror/MathLive/llama.cpp 官方 LICENSE（web_fetch 取回版权行）。
+
+### 四、边界与待办
+
+- **已发布的 v1.11.0 zip 不含许可文件**（当时还没做）；下次打包（v1.11.1 或下一版）会随包带。若在意，可重新打包并更新 Release 资产（会影响 zip SHA256）。
+- 现行 copyright 行用仓库提交身份 QingyaoTestifypred；如需以个人真实姓名/公司主体署名，改 LICENSE/NOTICE/README 三处即可。
+- 建议（非必须）：中国版权保护中心「计算机软件著作权登记」，用 v1.11.0 源码 + 文档申请，作为权属初步证据；保留开发日志/契约/探针记录作为「人类实质投入」证据。
+- About topics 仍需网页手动补（细粒度 PAT 缺 Administration 权限）。
+- 交接文档：新增 `server\docs\handover-2026-11-23.md`（短版），本页与 `新会话启动词.md` / `交接文档.md` 已同步。

@@ -40,6 +40,18 @@ jobs:
             throw "版本号不一致：app.mjs=$app package.json=$pkg localai.mjs=$cli"
           }
 
+      - name: 许可证文件（LICENSE / NOTICE / THIRD_PARTY_NOTICES + package.json license）
+        shell: pwsh
+        run: |
+          foreach ($f in @('LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md')) {
+            if (-not (Test-Path $f)) { throw ("missing " + $f) }
+          }
+          $pkg = Get-Content server/package.json -Raw | ConvertFrom-Json
+          if ($pkg.license -ne 'Apache-2.0') { throw ("server/package.json license must be Apache-2.0, got " + $pkg.license) }
+          $lic = Get-Content LICENSE -Raw
+          if ($lic -notmatch 'Apache License') { throw "LICENSE does not contain Apache License text" }
+          Write-Host "OK: LICENSE / NOTICE / THIRD_PARTY_NOTICES present; package.json license=Apache-2.0"
+
       # 注意：shell: powershell 的步骤脚本是 UTF-8 无 BOM，PS 5.1 会按 ANSI 解码，
       # 所以本步骤里绝不能出现中文（否则报 "Unexpected token" / 字符串未闭合）。
       - name: PowerShell 5.1 syntax check (build scripts)

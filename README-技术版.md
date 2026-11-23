@@ -231,11 +231,18 @@ workspace\                 会话、代码工作区、RAG 索引等用户数据
 - 版本号只有一处来源：`server\app.mjs` 的 `APP_VERSION`（`package.json` 必须一致，探针会对账）。
 - 现状与下一步：`交接文档.md`；时间流水与设计取舍：`DeveloperRealtimeLog.md`；技术专题：`technique\`。
 - 回归靠 **91 个探针**（`server\probe-*.mjs`），全量驱动 `server\docs\run-full.ps1`（**70 条** / 断言口径 **1524**）——**真回归仍靠这套本地探针**；GitHub 上的 CI 只做确定性检查（语法 / 版本 / 仓库卫生 / README），不跑模型。
+## 许可证（Apache-2.0）
+
+- 本项目采用 **Apache License 2.0**（根目录 [LICENSE](LICENSE)）；版权 **Copyright 2026 QingyaoTestifypred（卿峣Testifypred）**。
+- 第三方组件清单与许可全文：[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)；版权归属声明：[NOTICE](NOTICE)。
+- **AI 辅助开发说明**：本项目大量使用 AI 编程工具（DeepSeek Harness 智能体团队）辅助需求、设计、编码、测试与文档；作者对整体设计、选择、集成与质量负责，并在法律允许范围内主张整体著作权。个别 AI 直接生成的片段在部分法域可能不单独构成可保护作品，不影响 Apache-2.0 对整体项目的授权。
+- 发行包（v1.11.0 起）会随 `app\` 目录带上 `LICENSE` / `NOTICE` / `THIRD_PARTY_NOTICES.md`；视觉增强包内含 llama.cpp 二进制，重新分发时请保留本文件。
+
 ## 发布到 GitHub（2026-11-17）
 
 - 仓库：https://github.com/testifypred/QingYaoTP-LocalAILauncher （public / main）。首页 README 是**客户端版**（`README.md`），本文是技术版。
 - **推送走 SSH over 443**（本机 Watt Toolkit 把 `github.com` 等写进 hosts 指向 `127.0.0.1`，HTTPS push 会 403）：`~/.ssh/config` 里 `Host github.com → ssh.github.com:443`，remote 用 `git@github.com:testifypred/...`；`ssh -T git@github.com` 应回 `Hi testifypred!`。细节见 `technique/07-坑与约定.md` 第十节。
-- **CI**：`.github/workflows/ci.yml`（JS/PS5.1 语法、版本三处一致、仓库卫生、README 同源）。**注意**：`shell: powershell` 的步骤脚本必须纯 ASCII（PS 5.1 会把无 BOM 的 UTF-8 当 ANSI 解码，中文会炸）。
+- **CI**：`.github/workflows/ci.yml`（JS/PS5.1 语法、版本三处一致、许可证文件、仓库卫生、README 同源）。**注意**：`shell: powershell` 的步骤脚本必须纯 ASCII（PS 5.1 会把无 BOM 的 UTF-8 当 ANSI 解码，中文会炸）。
 - **发版流程**：`build-portable.ps1` → `make-zip.ps1` → 在 GitHub Releases 建 tag（如 `v1.11.0`）、正文用 `.github/RELEASE-v1.11.0.md`、附件上传 `dist\*.zip`（**zip 不进 git**）。
 - **提交身份**：本仓库仓库级 `QingyaoTestifypred <testifypred@users.noreply.github.com>`；历史早期提交作者是另一个账号（不改写）。
 
