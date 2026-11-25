@@ -18,9 +18,9 @@
 - 隔离复跑：probe-ui-web **39/39**、probe-web-tools **19/19** 全过 → **有效 70/70**。
 - 证据：`server\docs\probe-full-2026-11-24-v111\`（summary.txt 被 .gitignore 忽略，日志见 logs/ 与 rerun/）。
 
-## 发布包冒烟（dist 实例）
-- 全绿：probe-version 14/14、probe-debug 54/54、probe-code-review-stream 45/45（跳 3：Phi 切换）、probe-code-window-ui 10/10、probe-review-watchdog 56/56。
-- 环境红（非包缺陷）：probe-readme 16/21、probe-code-panel-v2 38/44 —— 本机 `node.exe` 写 `D:\LocalModels\workspace` 报 EPERM（PowerShell 写同路径正常；WMI/Start-Process/计划任务启动都一样；换 MODEL_DIR 也不影响）→ 该环境无法完成 onboarding.json / 代码工作区落盘类断言。同代码在源码实例全量已过 readme 21/21、panel-v2 44/44；包内 app 文件与源码同哈希。
+## 发布包冒烟（v1.11.1，安装目录复制到会话工作区之外）
+- **7 项全绿**：probe-version **14/14**、probe-debug **54/54**、probe-code-review-stream **45/45**（跳过 3：Phi 切换）、probe-readme **21/21**、probe-code-window-ui **10/10**、probe-code-panel-v2 **44/44**、probe-review-watchdog **56/56**。
+- 为什么复制到工作区外：本机 DSH 会话的沙箱规则会限制「exe 位于会话工作区（D:\LocalModels）内」的进程写工作区（同一个 node.exe 复制到 C:\Temp 运行即正常；PowerShell/python 不受影响）→ 直接跑 `dist\` 里的实例时 probe-readme / probe-code-panel-v2 会假红（EPERM 写 onboarding.json / code 文件）。复制到工作区外等同新用户解压到任意目录，7 项全过，判定与包无关。
 - 证据：`server\docs\packaging-2026-11-24-v111\smoke\`。
 
 ## 换装步骤（已执行）

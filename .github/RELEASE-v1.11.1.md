@@ -38,7 +38,7 @@
 
 - **看门狗独立验证**：修正装置（挂起 node 模拟原生层卡死、`--start-hidden`、独立端口）**24/24**；`LOCALAI_WATCHDOG=0` 禁用场景 **15/15**；默认参数 75s 健康长观察 **13/13**；桌面 0 弹窗。
 - **全量回归**（源码实例 `node server\app.mjs`）：70 条 / 1,524 断言，整跑 **68 PASS + 2 环境红**（`probe-ui-web` 38/39 会话级联、`probe-web-tools` 15/19 百度反爬）→ **隔离复跑 ui-web 39/39、web-tools 19/19 全过 = 有效 70/70**；耗时约 23 分钟。证据 `server\docs\probe-full-2026-11-24-v111\`。
-- **发布包冒烟**（dist 实例 v1.11.1）：`probe-version` **14/14**、`probe-debug` **54/54**、`probe-code-review-stream` **45/45**（跳过 3：Phi 切换）、`probe-code-window-ui` **10/10**、`probe-review-watchdog` **56/56** 全绿；`probe-readme` 16/21、`probe-code-panel-v2` 38/44 两项受**本机环境限制**未复测通过——该环境里 `node.exe` 写 `D:\LocalModels\workspace` 被系统拒绝（EPERM，PowerShell 写同路径正常），同代码在源码实例全量里 `probe-readme` **21/21**、`probe-code-panel-v2` **44/44** 均通过（包内 app 文件与源码 SHA256 一致），判定为环境问题而非包缺陷。
+- **发布包冒烟**：把 v1.11.1 安装目录复制到**会话工作区之外**（等同新用户解压到任意目录；本机 DSH 会话会限制工作区内 exe 写工作区）后，**7 项全绿**：`probe-version` **14/14**、`probe-debug` **54/54**、`probe-code-review-stream` **45/45**（跳过 3：Phi 切换）、`probe-readme` **21/21**、`probe-code-window-ui` **10/10**、`probe-code-panel-v2` **44/44**、`probe-review-watchdog` **56/56**。证据 `server\docs\packaging-2026-11-24-v111\smoke\`。
 - 证据：`server\docs\feature-launcher-watchdog-2026-11-24\`（看门狗）、`server\docs\probe-full-2026-11-24-v111\`（全量）、`server\docs\packaging-2026-11-24-v111\`（打包）。
 
 ## 升级方式

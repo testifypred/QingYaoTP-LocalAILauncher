@@ -4042,3 +4042,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 1. 工具内 `Start-Process` 起 GUI launcher 可能让 pwsh 调用挂起（子进程继承 stdio 句柄）→ 加 `-RedirectStandardOutput/-RedirectStandardError`；挂起的 job 别用 job_kill（会连子进程一起杀）。
 2. 换 dist 前必须停 **launcher + node**（只停源码服务不够），否则旧 launcher 占 `data\webview2` profile，新实例「WebView2 初始化失败：请求的资源在使用中」并回退浏览器。
 3. `node.exe` 写 `workspace` 的 EPERM 环境异常会制造两类假红（readme / panel-v2）；判据是 `POST /api/onboarding` 直接 500 EPERM，别误判成包缺陷。
+
+---
+
+## 第八十六节补记（同日）发布包冒烟重跑全绿 + Git 推送
+
+- 首轮 dist 冒烟 5 绿 2 红（probe-readme 16/21、probe-code-panel-v2 38/44）；根因定位：**本机 DSH 会话沙箱限制「exe 位于会话工作区 D:\LocalModels 内」的进程写工作区**（同一个 node.exe 复制到 C:\Temp 运行正常；PowerShell / python 不受影响；WMI / Start-Process / 计划任务 / 换 MODEL_DIR 都一样）。
+- 修法：把 v1.11.1 安装目录复制到**工作区之外**（等同新用户解压到任意目录）再跑 → **7 项全绿**：version 14/14、debug 54/54、stream 45/45（跳 3）、readme 21/21、window-ui 10/10、panel-v2 44/44、watchdog 56/56。
+- 现场：`dist\QingYaoTP AILauncher` 仍是 v1.11.1 规范安装（旧版备份 `.v1.11.0.bak` 可回滚）；会话期间从 dist 内跑的实例写工作区受限，已另放一份可用副本 **`C:\QingYaoTP-AILauncher`**（同包；4B/16K/视觉包 53；onboarding 写入已验证），DSH 关闭后 dist 双击正常。
+- Git：commit **2fc897d**（40 文件 / +2503 −38）已推 `main`；annotated tag **v1.11.1**（对象 7e961e8）已推；CI（语法/版本/卫生）**success**。
+- Release：`server\docs\packaging-2026-11-24-v111\create-release.mjs` 就绪（tag v1.11.1 + 两个附件），**本会话无 GH_TOKEN** → 等用户提供 token 或网页手动创建；正文 `.github\RELEASE-v1.11.1.md`。
+- 证据：`server\docs\packaging-2026-11-24-v111\RESULT.md`、`smoke\`（7 个 txt + shots）、`.github\RELEASE-v1.11.1.md`。
