@@ -3908,3 +3908,137 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 - 建议（非必须）：中国版权保护中心「计算机软件著作权登记」，用 v1.11.0 源码 + 文档申请，作为权属初步证据；保留开发日志/契约/探针记录作为「人类实质投入」证据。
 - About topics 仍需网页手动补（细粒度 PAT 缺 Administration 权限）。
 - 交接文档：新增 `server\docs\handover-2026-11-23.md`（短版），本页与 `新会话启动词.md` / `交接文档.md` 已同步。
+
+---
+
+## 第八十四节（2026-11-24 凌晨）启动器 /health 进程级看门狗：Vulkan 原生层卡死自愈（未提交、未打包）
+
+> 承接第八十二/八十三节。用户交接：本轮不推 Git、不打包、不发布；改完跑目标探针。第一优先里「重打包 v1.11.1」等用户批准、「About topics」缺权限、「视觉包瘦身」可选 → 本轮做**启动器进程级看门狗**（第八十一节遗留候选）。
+
+### 一、背景
+
+- P0 修复后界面层能 120s 内报错恢复，但 Vulkan 原生层**彻底卡死**时 node 事件循环不转、JS 定时器失效，进程只能重启。
+- 启动器（C#，node 的父进程）是做外部看门狗最合适的位置；前端救不了进程，启动器可以。
+
+### 二、实现（server/launcher/Launcher.cs，+287 / −17；未提交）
+
+- **WatchdogLoop** 后台线程：每 5s GET /health（3s 超时，新增 `Ping(int)` 重载）；连续 90s 无响应 → 判卡死（`LOCALAI_WATCHDOG_INTERVAL_MS / _TIMEOUT_MS / _STALL_MS` 可覆盖，`LOCALAI_WATCHDOG=0` 可关）。
+- **WatchdogRestart**：杀 node（`Server.Kill` + 5s 等待，失败兜底 `server.pid`）→ `LaunchNode` → `WaitForServiceQuiet`（≤120s）→ 托盘气泡 + 内嵌 WebView2 重载首页（仅界面开着时）→ 继续监控。
+- **互斥/防误杀**：`Restarting` + `RestartGate` 与既有 `Server.Exited` 崩溃守护互斥；Exited 回调改用 **sender 引用比较**，忽略被看门狗替换掉的旧进程迟到事件；退出码 0 → `ServiceStopped=true`（`--stop` / 托盘停服务后看门狗不拉起）；`Stopping` 跳过；`HealthGraceUntil`（启动 60s / 就绪 10s / 重启 120s）。
+- **重启风暴保护**：30 分钟内最多 5 次，超出暂停 10 分钟 + 托盘警告。
+- **可测**：`LOCALAI_LAUNCHER_INSTANCE` 给单实例 mutex / 命名管道加后缀，测试实例不抢常驻实例；日志用 `[watchdog]` / `[guard]` ASCII 标签（start/stall/restart reason=stalled pid=/restarted pid=/skip reason=user-stopped/pause/error）。
+- **编译**：与 `build-portable.ps1` 第 284–291 行同一 csc 命令；新 exe **64,000B / SHA256 `8940A4BE33DB05822F423363E783ECBF9B5E2140BC9568C8F6940C1B56AA4319`**。
+
+### 三、验证（有效部分）
+
+- **端到端 24/24 PASS**（临时目录 + `fake-app.mjs` 假服务 + `NtSuspendProcess` 挂起 node 模拟卡死；stall=6s / interval=1s / timeout=0.8s；端口 8399；`LOCALAI_LAUNCHER_INSTANCE=probe-watchdog`）：
+  - S1 假服务独立可用；A1–A6 启动健康 / node pid / `--status` 0 / 过 grace 健康 / **20s 无假重启** / 日志无 restart；
+  - B0–B5 挂起 node → health 超时 → 6s 判定 → 强杀 → 新 pid（4740→15836）恢复健康 + 日志 `restart reason=stalled` / `restarted pid=`；
+  - C1–C5 `--stop` 退出码 0、node 退出、服务保持停机、**15s 内不被看门狗拉起**、日志 `skip reason=user-stopped`；
+  - D1–D5 强杀 node（非 0 退出码）→ Exited 守护单次重启、**只剩 1 个 node**、日志 `[guard] restarted attempt=`、看门狗不双重启。
+- **dist 换装后回归**：probe-version **14/14**、probe-debug **54/54**；8099 = v1.11.0 / dir=dist\app / 4B ctx=16384 / 视觉包 source=pack 53 文件；`dist\logs\launcher.log` 有 `[watchdog] start interval=5s timeout=3s stall=90s`，启动后无 restart 行（90s 阈值真实负载下未误杀）。
+- 证据：`server\docs\feature-launcher-watchdog-2026-11-24\`（README / verify-watchdog.ps1 / fake-app.mjs / 日志 / 旧 exe 备份）。
+
+### 四、dist 换装（未重打包）
+
+- `dist\QingYaoTP AILauncher\QingYaoTP AILauncher.exe` 已换新（64,000B / SHA256 `8940A4BE…AA4319`）；旧 exe（57,856B / `FD45E174…`）备份在证据目录，可回滚。
+- 步骤：`--stop` → 杀常驻 launcher（否则锁 exe）→ 复制 → 启动；4s 后 /health ok，4B 自动加载。**app 文件未变，未重打包**。
+
+### 五、事故与教训（重要）
+
+1. 独立验证员在 `tmp-watchdog-2026-11-24\verify2` 复制测试 exe 复跑时，**没把 `server\launcher\webview2` 的 3 个 DLL 放到 exe 同目录**：看门狗重启后 `ReloadUiAfterRestart` 触碰 WebView2 类型 → .NET「未能加载程序集 Microsoft.Web.WebView2.WinForms」弹窗；同时无签名测试 exe 从临时目录启动弹 Windows「无法验证发布者」。弹窗盖在用户桌面上，用户以为**产品**出问题（2026-11-24 00:1x 用户截图反馈）。
+2. 处置：立即杀全部测试进程、删 `tmp-watchdog-2026-11-24` 整棵目录（含 92MB node 副本）、核对 dist/8099 仍健康（1 launcher + 1 node，4B/16K）；独立验证本轮中止，两个补充场景（`LOCALAI_WATCHDOG=0`、60s 长观察）留待下轮。
+3. 以后端到端测试实例**必须带齐 webview2 DLL**（或测试路径不触发 WebView 重载），且别在用户桌面反复起 GUI 测试实例；测试产物放可整体清理的临时目录，跑完立即删。
+4. 澄清用户疑问「软件未经认证」：产品 exe **没有代码签名证书**，Windows 在部分启动方式/位置会提示「未知发布者」——属发布形态问题（不是看门狗引入，dist 正常双击不受影响）；正式对外分发建议买代码签名证书（OV/EV，显著减少 SmartScreen 提示），已记入待办。
+
+### 六、未做 / 下一轮
+
+- **v1.11.1 重打包**（许可文件随包、zip SHA256 会变）**等用户明确批准**；本轮只做发布就绪只读审计：`server\docs\prep-2026-11-24\release-readiness-v1.11.1.md`（5 项缺口：G1 版本 5 文件 7 处、G2 文档数字 + 新建 RELEASE-v1.11.1、G4 视觉包许可、G5 CI 加固；G3 看门狗已收口）。
+- **全量 70 条未跑**（本轮只跑目标回归 + 端到端）；打包前建议源码实例全量。
+- 看门狗未注册进 run-full（独立 PS1 端到端；全量口径仍 **91 探针 / 70 条 / 1524 断言**）。
+- 本轮全部改动**未提交 Git、未打包、未发布**（按用户要求）。
+
+### 七、文件
+
+- 改：`server\launcher\Launcher.cs`（未提交）；`dist exe`（本机同步）。
+- 新：`server\docs\feature-launcher-watchdog-2026-11-24\`、`server\docs\prep-2026-11-24\`（均未跟踪）。
+- 本页 / `technique\07-坑与约定.md` / `新会话启动词.md` / `server\docs\handover-2026-11-24.md` 已同步。
+
+---
+
+## 第八十五节（2026-11-24 深夜）看门狗独立验证重做 + G2 文档纠错（仍不打包/不推 Git）
+
+> 承接第八十四节。用户要求「完成你的任务」（限 45 分钟，可召唤队友）；仍未说打包/release → 不推 Git、不打包、不发布。
+
+### 一、独立验证重做（修正装置，桌面 0 弹窗）
+
+- 上轮弹窗根因：① 测试副本缺 `server\launcher\webview2` 3 个 DLL；② 无签名 exe 用 ShellExecute 从临时目录启动。
+- 修正装置：DLL 与 exe 同目录 + .NET `ProcessStartInfo{UseShellExecute=false}`（CreateProcess）启动 + `--start-hidden` + 端口 **8398** + `LOCALAI_LAUNCHER_INSTANCE=verify-wd`；独立验证员 verifier-wd 从源码重编译（64,000B / SHA256 `B813510C…`；与 dist `8940A4…` 字节一致、哈希不同属 csc 时间戳/MVID 不可复现，正常）。
+- 结果：**24/24 PASS**（96s，RESULT fail=0）；**E**（`LOCALAI_WATCHDOG=0`）**15/15**（挂起 node 25s 不重启）；**F**（默认 5s/3s/90s）**13/13**（75s / 15 次采样 / /health 全 OK / pid 0 变化）；桌面 0 弹窗；临时目录已删；dist/8099 未碰。
+- 代码审查：0 阻断；1 中 + 4 低 → 中-1 看门狗与 Exited 守护「双重启」窄竞态（取锁后未复检 Restarting/宽限期）；低-1 `WaitForServiceQuiet` 偶发 1s 内误报未就绪；低-2 `ReloadUiAfterRestart` 缺 DLL 时 .NET 弹窗风险；低-3 `HealthGraceUntil` 非 volatile；低-4 风暴保护只覆盖 watchdog。建议下轮加固。
+- 透明记录：首次 E 出现 `LOCALAI_WATCHDOG=0` 未生效异常，隔离诊断 + ASCII 重写后两次全过，未复现、机理未定 → 建议下轮复核。
+- 报告：`server\docs\feature-launcher-watchdog-2026-11-24\independent-verification.md`（16,281B）。
+
+### 二、G2 文档纠错（发布就绪审计发现的事实错误）
+
+- `README.md:195`：90 探针 / 69 组 / 1,468 断言 → **91 / 70 / 1,524**；`:197`「（未发版）」→「（已随 v1.11.0 发布）」。
+- `README-技术版.md:239`：「v1.11.0 起随包许可」→「v1.11.1 起（下次打包）；已发布的 v1.11.0 zip 不含许可文件」。
+- `交接文档.md:118`：残留 v1.10 数字（15,360B / APP 1.10.0 / TUI 1.2.0 /「与仓库根同哈希」）→ 15,730B（= tag v1.11.0 版）/ 1.11.0 / 2.0.0；`code-review-multi` 标 v1.10.0 新增。
+- README 同步 dist `app\README.md`：16,862B / SHA256 `78E0989F…`；`GET /api/readme` 返回同哈希（dist 实例运行中）。
+- **未改**：版本号（G1 属打包步骤）、`RELEASE-v1.11.1.md`、CI（G5 建议）。
+
+### 三、dist 服务
+
+- 机器重启后 8099 停服（23:33 检查无连接）→ 用新 launcher exe 重启：2s `/health` ok，4B ctx=16384，视觉包 pack 53 文件。
+- `probe-version` **14/14**、`probe-debug` **54/54**；真实负载 10+ 分钟（23:33–23:43）watchdog **0 次 restart**（90s 阈值不误杀）。
+- dist exe 仍 64,000B / SHA256 `8940A4BE…AA4319`（验证员全程未动）。
+
+### 四、未做 / 下一步
+
+- **未打包、未推 Git、未发布**：4 个文档修改 + `Launcher.cs` 未提交；2 个未跟踪证据目录。
+- v1.11.1 打包仍等用户明确批准：G1 版本 5 文件 7 处 → build-portable/make-zip → 文档数字/RELEASE → **全量 70 条源码实例回归** → 发布。
+- 可选下轮：看门狗 §6 加固（中-1 等）、`probe-launcher-watchdog.mjs` 注册 run-full、E 首次异常复核、代码签名证书（对外分发）。
+- 本页 / `server\docs\feature-launcher-watchdog-2026-11-24\README.md` / `server\docs\handover-2026-11-24.md` / `新会话启动词.md` 已同步。
+
+---
+
+## 第八十六节（2026-11-25 深夜）v1.11.1 打包与发布收口
+
+> 承接第八十五节。用户「继续」→ 完成 v1.11.1 的打包、全量回归、发布包冒烟、dist 换装与发布收口。
+
+### 一、版本与构建
+
+- 版本 1.11.1：`server/app.mjs:47`、`server/package.json:3`、`server/localai.mjs:19`、`server/localai-tui.mjs:1570`（--main-ver 兜底）、`server/probe-tui-tools.mjs` 3 处夹具；TUI VER 仍 **2.0.0**。
+- `build-portable.ps1`：**258.8 MB / 3,451 文件**（比 v1.11.0 多 3 个许可文件；app\ 首次带 LICENSE / NOTICE / THIRD_PARTY_NOTICES.md，无 app\llama）。
+- 当时 dist 被探测实例占用（`dist\runtime\node.exe` 被锁）→ 先构建到 `tmp-build`，验证后整体换入 dist；8 个关键 app 文件与源码**同哈希**。
+
+### 二、交付 zip
+
+- `dist\QingYaoTP-AILauncher-v1.11.1.zip`：**127,971,996 B / 122.0 MB / 3,951 条目** / SHA256 `DECCBAE48D7CF23BF4879A60AC43EFA6F24790AF35AC198B5C1E356D0FFE213C`。
+- zip 自检全过：3 个许可条目、无 app/llama、无 cloud-review 数据、config 已消毒、包内 1.11.1 / TUI 2.0.0。
+- 视觉增强包沿用 v1.6.0 那份：38,408,198 B / `D7924534…A11D3`。
+
+### 三、全量回归（源码实例）
+
+- 70 条 / 1,524 断言，23 分钟：**68 PASS + 2 环境红**（probe-ui-web 38/39、probe-web-tools 15/19）→ 隔离复跑 **39/39、19/19 = 有效 70/70**。
+- 证据 `server\docs\probe-full-2026-11-24-v111\`。
+
+### 四、发布包冒烟（dist 实例）
+
+- 全绿 5 项：probe-version 14/14、probe-debug 54/54、probe-code-review-stream 45/45（跳 3）、probe-code-window-ui 10/10、probe-review-watchdog 56/56。
+- **环境红 2 项**：probe-readme 16/21、probe-code-panel-v2 38/44 —— 本机 `node.exe` 写 `D:\LocalModels\workspace` 报 **EPERM**（PowerShell 写同路径正常；WMI / Start-Process / 计划任务 / 换 MODEL_DIR 均复现）→ onboarding.json 与代码落盘类断言无法完成；同代码源码实例全量里 readme 21/21、panel-v2 44/44 通过，包内 app 文件与源码同哈希 → 判定环境问题，非包缺陷。
+- 证据 `server\docs\packaging-2026-11-24-v111\smoke\` 与 `RESULT.md`。
+
+### 五、换装 dist
+
+- 旧 dist → `QingYaoTP AILauncher.v1.11.0.bak`；新构建移入并保留 `data\`；启动后 /health 2s 就绪；`POST /api/vision/pack/install` 装回视觉包（source=pack / 53 文件）；4B ctx=16384。
+
+### 六、Git / Release
+
+- 本次收口提交 + tag `v1.11.1` + push（main/tag）见仓库提交记录；GitHub Release 附件用 `server\docs\packaging-2026-11-24-v111\create-release.mjs`（需 `GH_TOKEN`）。
+
+### 七、本轮踩坑（已写入 technique\07）
+
+1. 工具内 `Start-Process` 起 GUI launcher 可能让 pwsh 调用挂起（子进程继承 stdio 句柄）→ 加 `-RedirectStandardOutput/-RedirectStandardError`；挂起的 job 别用 job_kill（会连子进程一起杀）。
+2. 换 dist 前必须停 **launcher + node**（只停源码服务不够），否则旧 launcher 占 `data\webview2` profile，新实例「WebView2 初始化失败：请求的资源在使用中」并回退浏览器。
+3. `node.exe` 写 `workspace` 的 EPERM 环境异常会制造两类假红（readme / panel-v2）；判据是 `POST /api/onboarding` 直接 500 EPERM，别误判成包缺陷。

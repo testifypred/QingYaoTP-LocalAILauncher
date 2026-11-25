@@ -7,6 +7,9 @@
 //   4. 停止服务走 /api/state 取本地令牌再 POST /api/shutdown —— 优雅退出，
 //      而不是像 .bat 那样只能强杀进程
 //   5. 单实例：再次双击交给已在运行的实例开窗（命名管道），不会起第二个窗口/第二个服务
+//   6. 健康看门狗：/health 连续 90s 无响应（Vulkan 原生层偶发彻底卡死：事件循环不转、
+//      接口全超时但进程还在、CPU 持续涨）→ 强杀 node 并自动重启，日志 + 托盘提示，
+//      内嵌界面自动重新加载；用户主动停服务/正常退出不会触发
 //
 // 编译：
 //   csc /target:winexe /win32icon:localai.ico /r:System.Windows.Forms.dll /r:System.Drawing.dll
@@ -38,8 +41,11 @@ static class Launcher
     internal const string BrandName = "QingYaoTP AILauncher";
     internal const string SubName = "本地 AI";
     internal const string AppName = BrandName + "（" + SubName + "）";
-    const string MutexName = "QingYaoTP.AILauncher.Portable.Launcher";
-    const string PipeName = "QingYaoTP.AILauncher.Portable.OpenUi";
+    const string BaseMutexName = "QingYaoTP.AILauncher.Portable.Launcher";
+    const string BasePipeName = "QingYaoTP.AILauncher.Portable.OpenUi";
+    // 探针/多实例测试用 LOCALAI_LAUNCHER_INSTANCE 加后缀，避免和常驻实例抢单实例互斥
+    static string MutexName = BaseMutexName;
+    static string PipeName = BasePipeName;
 
     static string Root;      // exe 所在目录
     static string AppDir;    // Root\app
@@ -68,6 +74,24 @@ static class Launcher
     static volatile bool StartFailed;
     static string StartError = "";
 
+    // ---------------------------------------------------------------- 健康看门狗（进程级自愈）
+    // Vulkan 原生层偶发彻底卡死时 node 事件循环不转：/api/state、/health 全超时，前端能在
+    // 120s 内报错恢复界面，但进程只能重启。这里由启动器（独立进程）做外部看门狗：
+    // 连续 WatchdogStallMs 收不到 /health 就判卡死 → 强杀 node → 重新拉起 → 等就绪。
+    static int WatchdogIntervalMs = 5000;     // 轮询间隔
+    static int WatchdogTimeoutMs = 3000;      // 单次 /health 超时
+    static int WatchdogStallMs = 90000;       // 连续无响应多久判定卡死
+    static volatile bool WatchdogDisabled;    // LOCALAI_WATCHDOG=0 可关（调试/排障）
+    static volatile bool WatchdogStopFlag;    // 启动器退出时置位
+    static volatile bool Restarting;          // 正在重启 node（看门狗与 Exited 守护互斥）
+    static volatile bool ServiceStopped;      // 服务被用户主动停掉（退出码 0），看门狗不许拉起
+    static readonly object RestartGate = new object();
+    static DateTime HealthGraceUntil = DateTime.MinValue; // 启动/重启后的宽限期，防误杀
+    static int WatchdogRestarts;
+    static DateTime WatchdogWindowStart = DateTime.MinValue;
+    const int WatchdogMaxRestarts = 5;
+    static readonly TimeSpan WatchdogRestartWindow = TimeSpan.FromMinutes(30);
+
     [STAThread]
     static int Main(string[] args)
     {
@@ -80,6 +104,18 @@ static class Launcher
         ConfigPath = Path.Combine(Root, "config.ini");
         LoadConfig();
         Directory.CreateDirectory(LogDir);
+
+        // 看门狗参数可被环境变量覆盖（探针把 90s 缩短成几秒来测；正常用户不用管）
+        WatchdogIntervalMs = EnvInt("LOCALAI_WATCHDOG_INTERVAL_MS", 5000, 500);
+        WatchdogTimeoutMs = EnvInt("LOCALAI_WATCHDOG_TIMEOUT_MS", 3000, 300);
+        WatchdogStallMs = EnvInt("LOCALAI_WATCHDOG_STALL_MS", 90000, 2000);
+        WatchdogDisabled = Environment.GetEnvironmentVariable("LOCALAI_WATCHDOG") == "0";
+        var inst = Environment.GetEnvironmentVariable("LOCALAI_LAUNCHER_INSTANCE");
+        if (!string.IsNullOrEmpty(inst))
+        {
+            MutexName = BaseMutexName + "." + inst;
+            PipeName = BasePipeName + "." + inst;
+        }
 
         // 取系统缩放比例。清单已声明 DPI 感知，这里按比例把界面尺寸折算成真实像素，
         // 否则在 175% 屏上窗口要么被系统拉伸（糊），要么显得特别小。
@@ -121,6 +157,7 @@ static class Launcher
                 if (!CheckRuntime()) return 3;
                 if (!LaunchNode()) return 1;
                 if (!WaitForService()) return 1;
+                HealthGraceUntil = DateTime.Now.AddSeconds(10); // 刚就绪的 10s 内不判卡死
             }
 
             UiMarshal = new Control();
@@ -128,8 +165,10 @@ static class Launcher
             StartOpenPipe();
 
             SetupTray();
+            StartWatchdog(); // 服务已就绪，开始进程级健康监控
             if (mode != "--start-hidden") OpenUi();
             Application.Run(); // 托盘消息循环（关掉界面窗口不会退出）
+            WatchdogStopFlag = true;
             CloseUi();
             HideTray();
             return 0;
@@ -348,16 +387,22 @@ static class Launcher
             return false;
         }
 
+        ServiceStopped = false;                            // 新服务：看门狗恢复监控
+        HealthGraceUntil = DateTime.Now.AddSeconds(60);    // 启动/重启宽限期
+        Log("node 已拉起（pid " + (Server != null ? SafePid() : -1) + "）");
+
         // 守护：node 进程意外退出（比如 Vulkan 设备丢失后主动退出重启）就拉起来
         Server.EnableRaisingEvents = true;
-        Server.Exited += delegate(object s, EventArgs e)
+        var spawned = Server;   // 认准「哪个进程」退出了：看门狗重启后旧进程的迟到事件不能算数
+        spawned.Exited += delegate(object s, EventArgs e)
         {
-            if (Stopping) return;
+            if (Stopping || Restarting) return;
+            if (!object.ReferenceEquals(s, Server)) return;   // 已被看门狗替换掉的旧进程，忽略
             int code = 0;
-            try { code = Server.ExitCode; } catch { }
+            try { code = spawned.ExitCode; } catch { }
             // 退出码 0 = 正常停机（--stop / 托盘「停止服务」/ 界面「退出服务」），不要再拉起来
-            if (code == 0) return;
-            Log("服务进程异常退出（退出码 " + code + "），准备重启");
+            if (code == 0) { ServiceStopped = true; return; }
+            Log("[guard] node-exit code=" + code + "（服务进程异常退出，准备重启）");
             if (DateTime.Now - LastRestartAt < TimeSpan.FromSeconds(5)) return; // 防抖
             LastRestartAt = DateTime.Now;
             if (++RestartCount > 10)
@@ -366,16 +411,23 @@ static class Launcher
                 return;
             }
             Thread.Sleep(400);
-            try
+            lock (RestartGate)
             {
-                if (Stopping) return;
-                if (!LaunchNode()) return;
-                WaitForServiceQuiet();
-                Log("服务已自动重启（第 " + RestartCount + " 次）");
-            }
-            catch (Exception ex)
-            {
-                Log("自动重启失败：" + ex.Message);
+                if (Stopping || Restarting || ServiceStopped) return;
+                Restarting = true;
+                try
+                {
+                    HealthGraceUntil = DateTime.Now.AddSeconds(120);
+                    if (!LaunchNode()) return;
+                    WaitForServiceQuiet();
+                    HealthGraceUntil = DateTime.Now.AddSeconds(10);
+                    Log("[guard] restarted attempt=" + RestartCount + "（服务已自动重启）");
+                }
+                catch (Exception ex)
+                {
+                    Log("自动重启失败：" + ex.Message);
+                }
+                finally { Restarting = false; }
             }
         };
 
@@ -770,10 +822,228 @@ static class Launcher
         Tray = null;
     }
 
+    // ---------------------------------------------------------------- 健康看门狗
+    static string Secs(int ms) { return (ms / 1000.0).ToString("0.#"); }
+
+    static int EnvInt(string name, int def, int min)
+    {
+        try
+        {
+            var raw = Environment.GetEnvironmentVariable(name);
+            if (string.IsNullOrEmpty(raw)) return def;
+            int n;
+            if (int.TryParse(raw.Trim(), out n) && n >= min) return n;
+        }
+        catch { }
+        return def;
+    }
+
+    static int SafePid()
+    {
+        try { return Server != null ? Server.Id : -1; } catch { return -1; }
+    }
+
+    static void StartWatchdog()
+    {
+        if (WatchdogDisabled)
+        {
+            Log("[watchdog] disabled env LOCALAI_WATCHDOG=0");
+            return;
+        }
+        var t = new Thread(WatchdogLoop);
+        t.IsBackground = true;
+        t.Name = "health-watchdog";
+        t.Start();
+        Log("[watchdog] start interval=" + Secs(WatchdogIntervalMs) + "s timeout=" + Secs(WatchdogTimeoutMs) +
+            "s stall=" + Secs(WatchdogStallMs) + "s（/health 连续无响应即强杀并重启）");
+    }
+
+    /// <summary>独立线程：持续探 /health，连续无响应超过阈值就重启 node（Vulkan 原生层卡死的进程级自愈）</summary>
+    static void WatchdogLoop()
+    {
+        DateTime stalledSince = DateTime.MinValue;
+        DateTime lastLogAt = DateTime.MinValue;
+        int misses = 0;
+        while (!WatchdogStopFlag)
+        {
+            Thread.Sleep(WatchdogIntervalMs);
+            if (WatchdogStopFlag) break;
+            try
+            {
+                if (Stopping || Restarting)
+                {
+                    stalledSince = DateTime.MinValue; misses = 0; continue;
+                }
+                if (ServiceStopped)
+                {
+                    stalledSince = DateTime.MinValue; misses = 0;
+                    if (lastLogAt == DateTime.MinValue || (DateTime.Now - lastLogAt).TotalSeconds >= 60)
+                    {
+                        lastLogAt = DateTime.Now;
+                        Log("[watchdog] skip reason=user-stopped（服务已按用户请求停止，不自动拉起）");
+                    }
+                    continue;
+                }
+                if (DateTime.Now < HealthGraceUntil) { stalledSince = DateTime.MinValue; misses = 0; continue; }
+                if (Ping(WatchdogTimeoutMs))
+                {
+                    if (misses > 0) Log("[watchdog] recovered after=" + misses + " misses（/health 已恢复响应）");
+                    misses = 0; stalledSince = DateTime.MinValue; continue;
+                }
+                misses++;
+                if (stalledSince == DateTime.MinValue) stalledSince = DateTime.Now;
+                double stallSec = (DateTime.Now - stalledSince).TotalSeconds;
+                if (misses == 1 || (DateTime.Now - lastLogAt).TotalSeconds >= 30)
+                {
+                    lastLogAt = DateTime.Now;
+                    Log("[watchdog] stall miss=" + misses + " elapsed=" + (int)stallSec + "s threshold=" + Secs(WatchdogStallMs) + "s");
+                }
+                if (stallSec * 1000 < WatchdogStallMs) continue;
+
+                stalledSince = DateTime.MinValue; misses = 0;
+                if (Server == null)
+                {
+                    Log("[watchdog] skip reason=not-owner（服务无响应，但不是本启动器拉起的 node）");
+                    TrayBalloon("服务无响应", "服务不是本启动器拉起的，无法自动重启，请手动重启。", ToolTipIcon.Warning);
+                    Thread.Sleep(60000);
+                    continue;
+                }
+                if (!WatchdogCanRestart()) continue;
+                WatchdogRestart();
+            }
+            catch (Exception ex) { Log("[watchdog] error " + ex.Message); }
+        }
+    }
+
+    /// <summary>30 分钟内最多自动重启 5 次；超过就暂停 10 分钟，避免反复卡死时无限重启拖垮机器</summary>
+    static bool WatchdogCanRestart()
+    {
+        if (WatchdogWindowStart == DateTime.MinValue || DateTime.Now - WatchdogWindowStart > WatchdogRestartWindow)
+        {
+            WatchdogWindowStart = DateTime.Now; WatchdogRestarts = 0;
+        }
+        if (WatchdogRestarts < WatchdogMaxRestarts) return true;
+        Log("[watchdog] pause restarts=" + WatchdogRestarts + "（30 分钟内重启过多，暂停自动重启 10 分钟）");
+        TrayBalloon("服务反复无响应", "已暂停自动重启 10 分钟；建议换 4B 模型或重启启动器。", ToolTipIcon.Error);
+        Thread.Sleep(600000);
+        WatchdogWindowStart = DateTime.MinValue; WatchdogRestarts = 0;
+        return false;
+    }
+
+    /// <summary>杀 node → 重新拉起 → 等就绪 → 托盘提示 + 重载界面。整个过程与 Exited 守护互斥。</summary>
+    static void WatchdogRestart()
+    {
+        lock (RestartGate)
+        {
+            if (Stopping || WatchdogStopFlag || ServiceStopped || Server == null) return;
+            Restarting = true;
+            WatchdogRestarts++;
+            int oldPid = SafePid();
+            try
+            {
+                Log("[watchdog] restart reason=stalled pid=" + oldPid + " attempt=" + WatchdogRestarts +
+                    "（/health 连续 " + Secs(WatchdogStallMs) + "s 无响应，判定卡死）");
+                KillServerProcess();
+                Thread.Sleep(500);
+                if (Stopping || WatchdogStopFlag) return;
+                HealthGraceUntil = DateTime.Now.AddSeconds(120);
+                if (!LaunchNode())
+                {
+                    Log("[watchdog] restart-failed（node 没能拉起）");
+                    TrayBalloon("自动重启失败", "服务没能重启，请手动重启启动器。", ToolTipIcon.Error);
+                    return;
+                }
+                int newPid = SafePid();
+                if (!WaitForServiceQuiet())
+                {
+                    Log("[watchdog] restarted-not-ready pid=" + newPid + "（120s 内未就绪）");
+                    TrayBalloon("自动重启后未就绪", "服务已重启但 120s 内没有响应，请检查日志。", ToolTipIcon.Warning);
+                    return;
+                }
+                HealthGraceUntil = DateTime.Now.AddSeconds(10);
+                LastRestartAt = DateTime.Now;
+                Log("[watchdog] restarted pid=" + newPid + "（服务已重启并就绪，继续监控）");
+                ReloadUiAfterRestart();
+                TrayBalloon("服务已自动恢复", "检测到服务无响应，已自动重启（第 " + WatchdogRestarts + " 次），界面已重新加载。", ToolTipIcon.Info);
+            }
+            catch (Exception ex) { Log("[watchdog] error restart " + ex.Message); }
+            finally { Restarting = false; }
+        }
+    }
+
+    static void KillServerProcess()
+    {
+        try
+        {
+            if (Server != null)
+            {
+                try { if (!Server.HasExited) Server.Kill(); } catch { }
+                try { Server.WaitForExit(5000); } catch { }
+                bool alive = false;
+                try { alive = !Server.HasExited; } catch { }
+                if (!alive) return; // 已经杀掉
+            }
+        }
+        catch { }
+        // 兜底：Server 对象拿不到/杀不掉时按 server.pid 强杀
+        try
+        {
+            var pidFile = Path.Combine(AppDir, "server.pid");
+            if (!File.Exists(pidFile)) return;
+            int pid;
+            if (!int.TryParse(File.ReadAllText(pidFile).Trim(), out pid)) return;
+            var p = Process.GetProcessById(pid);
+            p.Kill();
+            p.WaitForExit(3000);
+        }
+        catch { }
+    }
+
+    /// <summary>重启成功后把内嵌窗口导航回首页（用户看到「服务已恢复」，而不是刚才的超时错误页）</summary>
+    static void ReloadUiAfterRestart()
+    {
+        try
+        {
+            var target = UiMarshal;
+            if (target == null) return;
+            target.BeginInvoke(new Action(delegate
+            {
+                // 只在界面本来就开着时重载；--start-hidden / 本来没开窗就别突然弹一个窗口
+                try
+                {
+                    if (WebView != null && WebView.CoreWebView2 != null) WebView.CoreWebView2.Navigate(BaseUrl + "/");
+                }
+                catch { }
+            }));
+        }
+        catch { }
+    }
+
+    static void TrayBalloon(string title, string text, ToolTipIcon icon)
+    {
+        Action show = delegate
+        {
+            try { if (Tray != null) Tray.ShowBalloonTip(4000, AppName + " · " + title, text, icon); } catch { }
+        };
+        try
+        {
+            var target = UiMarshal;
+            if (target != null && target.IsHandleCreated) { target.BeginInvoke(show); return; }
+        }
+        catch { }
+        try { show(); } catch { }
+    }
+
     // ---------------------------------------------------------------- HTTP
     static bool Ping()
     {
-        var body = HttpGetSafe(BaseUrl + "/health", 800);
+        return Ping(800);
+    }
+
+    /// <summary>/health 是否 ok。看门狗用较短的超时：原生层卡死时连接会一直挂着，不能等太久。</summary>
+    static bool Ping(int timeoutMs)
+    {
+        var body = HttpGetSafe(BaseUrl + "/health", timeoutMs);
         return body != null && body.IndexOf("\"ok\"", StringComparison.Ordinal) >= 0;
     }
 

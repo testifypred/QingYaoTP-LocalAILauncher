@@ -1,0 +1,89 @@
+﻿=== probe-review-watchdog ===
+[edge] pid=33288 cdp up
+[edge] page ready url=http://127.0.0.1:8099/
+
+== 目标 CDP http://127.0.0.1:9333 · 页面 http://127.0.0.1:8099（B 段自起临时实例）==
+
+== A. 前端 SSE 空闲看门狗（页面 stub 挂死流，不调模型）==
+  ok   前置：找到 http://127.0.0.1:8099 的页面目标  [http://127.0.0.1:8099/]
+  ok   A 前置：F1 已落地（CW_SSE_IDLE_TIMEOUT_MS 是顶层可变变量）  [{"idle":"number","review":"function","sse":"function","busy":false}]
+  ok   A 前置：页面空闲（cwReviewBusy === false）且 cwReviewCode / cwStreamSSE 存在  [{"idle":"number","review":"function","sse":"function","busy":false}]
+  ok   打开 #codeModal / 审查面板，CodeMirror setValue 填入 22 行 python  ["codemirror"]
+  ok   cwReviewBusy 可读写（写 true 读到 true，已还原）  [busyBefore=false]
+  ok   CW_SSE_IDLE_TIMEOUT_MS 覆盖为 2500  [idleNow=2500]
+  ok   页面 fetch 已被 stub 接管（不调真模型）
+  用时 2514ms · busy=false · 按钮="模型审查" · stub={"hits":1,"aborted":1,"fallback":0}
+  状态行: 审查失败：审查流 3 秒没有任何响应（本地模型可能卡死）：可改用云端复审；若其它本地功能也无响应，请重启启动器
+  ok   A1 全程 < 12s（实际 2514ms）
+  ok   A2 cwReviewCode() 自己结束（未被 Promise.race 兜超时，也没向外抛）  [completed=true]
+  ok   A3 空闲超时后 cwReviewBusy 已释放（false）  [busy=false]
+  ok   A4 #cwReview 恢复：可点 + 文案「模型审查」  [disabled=false text="模型审查"]
+  ok   A5 #cwReviewState 含「没有任何响应」（F1 明确报错）  [state=审查失败：审查流 3 秒没有任何响应（本地模型可能卡死）：可改用云端复审；若其它本地功能也无响应，请重启启动器]
+  ok   A6 页面 stub 被用到（hits=1，没发真请求）
+  ok   A7 全程无 JS 异常  [[]]
+  ok   A8 收尾恢复 fetch / 超时变量 / 面板与弹窗，busy=false  [{"ok":true,"forced":false,"fetchRestored":true,"idleRestored":true,"maxRestored":true,"modalRestored":true,"busy":false}]
+
+== C. 单次审查总时长闸（steady 事件流，不调模型）==
+  ok   前置：找到 http://127.0.0.1:8099 的页面目标  [http://127.0.0.1:8099/]
+  ok   C 前置：总时长闸已落地（CW_REVIEW_MAX_MS 是顶层可变变量，默认 300000）  [{"idle":"number","max":300000,"review":"function","sse":"function","busy":false}]
+  ok   C 前置：页面空闲（cwReviewBusy === false）且 cwReviewCode / cwStreamSSE 存在  [{"idle":"number","max":300000,"review":"function","sse":"function","busy":false}]
+  ok   打开 #codeModal / 审查面板，CodeMirror setValue 填入 22 行 python  ["codemirror"]
+  ok   CW_REVIEW_MAX_MS 覆盖为 3000（空闲阈值仍 2500，但 steady 流每 150ms 重置）  [{"idleNow":2500,"maxNow":3000}]
+  ok   页面 fetch 已被 steady stub 接管（持续 delta，不调真模型）
+  用时 3007ms · busy=false · 按钮="模型审查" · stub={"hits":1,"aborted":0,"fallback":0}
+  状态行: 审查失败：审查超过 3 秒还没完成（本地模型太慢或卡死）：已自动中止，可重试或改用云端复审
+  ok   C1 全程 < 12s（实际 3007ms）
+  ok   C2 cwReviewCode() 自己结束（未被 Promise.race 兜超时，也没向外抛）  [completed=true]
+  ok   C3 总时长闸触发后 cwReviewBusy 已释放（false）  [busy=false]
+  ok   C4 #cwReviewState 含「超过」且含「还没完成」（总时长闸文案）  [state=审查失败：审查超过 3 秒还没完成（本地模型太慢或卡死）：已自动中止，可重试或改用云端复审]
+  ok   C5 #cwReview 恢复可用（可点 + 文案「模型审查」）  [disabled=false text="模型审查"]
+  ok   C6 本段无 JS 异常  [[]]
+  ok   C7 收尾恢复 fetch / CW_REVIEW_MAX_MS=300000 / 面板与弹窗，busy=false  [{"ok":true,"forced":false,"fetchRestored":true,"idleRestored":true,"maxRestored":true,"modalRestored":true,"busy":false}]
+
+== D. 兜底保险丝（busy 卡死但无 SSE 在跑 -> 未处理拒绝自动收尾）==
+  ok   前置：找到 http://127.0.0.1:8099 的页面目标  [http://127.0.0.1:8099/]
+  ok   D 前置：兜底保险丝已落地（cwSseActive / cwReleaseOrphanBusy 存在，页面空闲且无 SSE 在读）  [{"busy":false,"active":0,"fn":"function","end":"function"}]
+  模拟残根: busy=true · 按钮 disabled=true · cwSseActive=0
+  等 706ms 后: busy=false · 按钮="模型审查" · 状态行=审查失败：流程异常（probe-orphan-busy）
+  ok   D1 未处理拒绝触发兜底后 cwReviewBusy 已释放（false）  [busy=false]
+  ok   D2 #cwReviewState 含「流程异常」（cwReleaseOrphanBusy 的收尾文案）  [state=审查失败：流程异常（probe-orphan-busy）]
+  ok   D3 #cwReview 恢复可用（可点 + 文案「模型审查」）  [disabled=false text="模型审查"]
+  ok   D4 收尾复位（cwEndJob + 清状态行：busy=false、按钮可用、状态行空）  [{"ok":true,"busy":false,"disabled":false,"text":"模型审查","stateText":""}]
+  D 段新人未处理异常 1 条：["Error: probe-orphan-busy\n    at <anonymous>:11:43"]
+
+== B. 后端生成空闲看门狗（独立实例 · 硬链接 4B · 阈值 1s）==
+  ok   B 前置：真实 4B 模型存在（只读硬链接，不复制不删除）  [2.52 GB]
+  ok   临时模型目录里是硬链接（同盘同文件，不占额外空间）  [size=2.52GB ino=4222124650671349/4222124650671349]
+  临时目录: D:\LocalModels\server\docs\feature-review-watchdog-2026-11-22\watchdog-tmp-BggMX0
+  ok   在 8198–8205 里找到空闲端口  [PORT=8198]
+  ok   临时实例 /api/state 在 40s 内就绪（MODEL_DIR=临时目录）  [pid=26632]
+  ok   拿到临时实例的本机令牌（/api/state.localToken）  [len=36]
+  ok   临时实例模型库里只有硬链接进来的 4B  [["qwen3-5-4B-Q4_K_M.gguf"]]
+  ok   MODEL_DIR 环境变量生效  [modelDir=D:\LocalModels\server\docs\feature-review-watchdog-2026-11-22\watchdog-tmp-BggMX0\model]
+  加载 4B（独立进程，Vulkan 约 10–30s）…
+  ok   POST /api/load（4B）-> 200  [HTTP 200 {"ok":true,"seconds":12.6,"context":16384,"layers":33}]
+  ok   4B 已加载完成（/api/state.loaded）  [loaded=qwen3-5-4B-Q4_K_M.gguf]
+  POST /api/code/review/stream（22 行 python，等 F2 空闲看门狗触发）…
+  事件序列: meta -> error（5.4s）
+  ok   POST /api/code/review/stream -> 200 且 Content-Type 是 text/event-stream  [HTTP 200 ct=text/event-stream; charset=utf-8 data: {"type":"meta","model":"qwen3-5-4B-Q4_K_M.gguf","modelFile":"qwen3-5-4B-Q4_K_M.gguf","contextSize":8192,"switchedModel":false,"startedAt":1795619096411}
+
+]
+  ok   第一个事件是 meta  [meta,error]
+  ok   收到 error 事件（不是正常 findings/done）  [meta,error]
+  ok   error 消息含「没有任何输出」（F2 生成停滞看门狗）  [审查生成 1 秒没有任何输出（本地模型可能卡死）：请重启启动器后重试，或改用云端复审]
+  ok   全程 < 60s（实际 5.4s）
+  ok   没有 findings 事件（模型没跑完，不该有结论）  [meta,error]
+  ok   没有 done 事件  [meta,error]
+  ok   审查结束后 POST /api/load 返回 200（codeJob 锁已释放，不是 409）  [HTTP 200（第 1 次） {"ok":true,"seconds":11.2,"context":16384,"layers":33}]
+  F2 日志行: 有（15:04:59 代码审查(流式) python-210407-1.py 停滞 1s 无输出，已中止）
+
+== C. 收尾：杀临时实例 / 恢复 server.pid / 删临时目录 ==
+  ok   临时实例已退出  [已收到 exit 事件]
+  ok   端口 8198 已释放  [干净]
+  ok   server.pid 已恢复（没删掉 8099 的 pid 文件）
+  ok   临时目录（含 4B 硬链接）已删除  [D:\LocalModels\server\docs\feature-review-watchdog-2026-11-22\watchdog-tmp-BggMX0]
+  ok   真实 4B 模型还在、大小未变（硬链接没动源文件）  [D:\LocalModels\qwen3-5-4B-Q4_K_M.gguf]
+
+== 结果: 56 通过 / 0 失败 ==
+
+[probe] exit=0

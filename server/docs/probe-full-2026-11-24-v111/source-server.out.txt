@@ -1,0 +1,201 @@
+15:55:49 初始化 llama.cpp（偏好 auto）...
+15:55:51 Vulkan 设备：0=Intel(R) Arc(TM) Graphics
+15:55:51 QingYaoTP AILauncher v1.11.1 (e3aef0b) 已启动（本地 AI）
+15:55:51 界面 http://127.0.0.1:8099/   API http://127.0.0.1:8099/v1
+15:55:51 插件：0 个可用（D:\LocalModels\plugins）
+16:01:45 加载 qwen3-5-4B-Q4_K_M.gguf (context 16384) ...
+16:01:53 就绪: qwen3-5-4B-Q4_K_M.gguf | context 16384 | layers 33 | KV q8_0 | 思考能力支持 | 8.6s
+16:01:54 新建会话 mwuvucpt-03b12e0f
+16:01:54 删除会话 mwuvucpt-03b12e0f
+16:01:57 运行代码 python exit=0 310ms
+16:01:57 运行代码 javascript exit=0 237ms
+16:02:03 运行代码 cpp exit=0 6455ms
+16:02:14 运行代码 python exit=1 10800ms
+16:02:21 加载 qwen3-5-4B-Q4_K_M.gguf (context 16384) ...
+16:02:28 就绪: qwen3-5-4B-Q4_K_M.gguf | context 16384 | layers 33 | KV q8_0 | 思考能力支持 | 8.0s
+16:02:29 新建会话 mwuvv3im-ecc8777b
+16:02:29 删除会话 mwuvv3im-ecc8777b
+16:02:30 运行代码 python exit=0 147ms
+16:02:31 运行代码 javascript exit=0 225ms
+16:02:36 运行代码 cpp exit=0 5644ms
+16:02:47 运行代码 python exit=1 10490ms
+16:02:47 运行代码 python exit=0 121ms
+16:02:47 代码收录 2 个 → code/：ws-probe-mwuvvhww.py、ws-probe-mwuvvhww.js
+16:02:47 代码收录 1 个 → code/：evil-mwuvvhww.js
+16:03:24 代码审查(流式) probe-review.js 上下文 8192 问题 2 36.2s
+16:03:36 代码修正 probe-review.js 范围 all 改 4 行/删 2 行 11s
+16:04:58 代码审查(流式) probe-rev-mwuvxk4y.js 上下文 8192 问题 1 28.6s
+16:05:04 代码修正 probe-rev-mwuvxk4y.js 范围 all 改 1 行/删 2 行 5.7s
+16:05:13 代码修正 probe-rev-mwuvxk4y.js 范围 single 改 1 行/删 0 行 8s
+16:05:19 云端复审配置：未启用 host=api.deepseek.com 模型=deepseek-flash 无 Key
+16:05:31 代码质询 probe-challenge.js 第 1 轮 上下文 8192 回答 246 字 12.4s
+16:05:46 代码质询 probe-challenge.js 第 3 轮 上下文 8192 回答 312 字 14.6s
+16:06:25 他人复审 probe-cross.js 上下文 8192 模型 qwen3-5-4B-Q4_K_M.gguf（同模型对抗） 判定 consistent 问题 1 38s
+16:06:26 代码审查：切换到模型 DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf
+16:06:27 加载 DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf (context 16384) ...
+16:06:38 就绪: DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf | context 16384 | layers 37 | KV q8_0 | 思考能力不支持 | 12.2s
+16:06:40 云端复审配置：已启用 host=127.0.0.1:8288 模型=probe-stub 已存 Key
+16:06:40 云端复审配置：已启用 host=127.0.0.1:8288 模型=probe-stub 无 Key
+16:06:40 云端复审配置：已启用 host=127.0.0.1:8288 模型=probe-stub 已存 Key
+16:06:42 他人复审 probe-cross-auto.js 已停止（客户端断开）
+16:06:42 云端复审 127.0.0.1:8288 模型 probe-stub 发出 329 字符 / 脱敏 5 处 0.1s / attempts 1
+16:06:42 云端复审配置：已启用 host=127.0.0.1:8288 模型=probe-stub 已存 Key
+16:06:42 云端复审配置：已启用 host=127.0.0.1:8288 模型=probe-stub 已存 Key
+16:06:45 云端复审 127.0.0.1:8288 模型 probe-stub 发出 300 字符 / 脱敏 0 处 3s / attempts 1
+16:06:45 云端复审配置：已启用 host=127.0.0.1:8288 模型=probe-stub 已存 Key
+16:06:45 云端复审 127.0.0.1:8288 正文空但推理非空，放大 max_tokens=3600 重发（attempts 2）
+16:06:45 云端复审 127.0.0.1:8288 模型 probe-stub 发出 315 字符 / 脱敏 0 处 0.1s / attempts 2
+16:06:45 云端复审配置：未启用 host=127.0.0.1:8288 模型=probe-stub 无 Key
+16:06:45 云端复审配置：已启用 host=127.0.0.1:8288 模型=probe-stub 已存 Key
+16:06:45 云端复审 127.0.0.1:8288 上游不认 thinking 参数，去掉后重发（attempts 2）
+16:06:45 云端复审 127.0.0.1:8288 模型 probe-stub 发出 315 字符 / 脱敏 0 处 0.1s / attempts 2
+16:06:45 云端复审配置：未启用 host=127.0.0.1:8288 模型=probe-stub 无 Key
+16:06:45 云端复审配置：已启用 host=127.0.0.1:8288 模型=probe-stub 已存 Key
+16:06:45 云端复审 127.0.0.1:8288 正文空但推理非空，放大 max_tokens=3600 重发（attempts 2）
+16:06:45 云端复审 127.0.0.1:8288 正文仍空，改用推理内容当答案（attempts 2）
+16:06:45 云端复审 127.0.0.1:8288 模型 probe-stub 发出 315 字符 / 脱敏 0 处 0.1s / attempts 2（推理兜底）
+16:06:45 云端复审配置：未启用 host=127.0.0.1:8288 模型=probe-stub 无 Key
+16:06:45 云端复审配置：已启用 host=127.0.0.1:8288 模型=probe-stub 已存 Key
+16:06:45 云端复审配置：未启用 host=127.0.0.1:8288 模型=probe-stub 无 Key
+16:06:45 云端复审配置：已启用 host=127.0.0.1:8288 模型=probe-stub 已存 Key
+16:06:45 云端复审配置：已启用 host=127.0.0.1:8288 模型=probe-stub 已存 Key
+16:06:53 云端复审 127.0.0.1:8288 模型 probe-stub 发出 348 字符 / 脱敏 5 处 0.1s / attempts 1
+16:06:53 云端复审配置：未启用 host=api.deepseek.com 模型=deepseek-flash 无 Key
+16:06:55 加载 qwen3-5-4B-Q4_K_M.gguf (context 16384) ...
+16:07:01 就绪: qwen3-5-4B-Q4_K_M.gguf | context 16384 | layers 33 | KV q8_0 | 思考能力支持 | 6.8s
+16:07:06 新建会话 mwuw11jr-c4040af4
+16:07:10 删除会话 mwuw11jr-c4040af4
+16:07:10 代码审查(多文件) 计划 4 个 → 可审 1 跳过 3
+16:07:10 代码审查(多文件) 计划 1 个 → 可审 0 跳过 1
+16:07:10 代码审查(多文件) 计划 40 个 → 可审 0 跳过 40
+16:07:10 代码审查(多文件) 计划 9 个 → 可审 8 跳过 1
+16:08:35 代码审查(多文件) 跨文件总览 问题 0 个（丢弃 0）
+16:08:36 代码审查(多文件) 2 个文件 问题 5 跳过 0 上下文 8192 85.8s
+16:09:45 代码审查(多文件) 跨文件总览 问题 1 个（丢弃 0）
+16:09:45 代码审查(多文件) 2 个文件 问题 2 跳过 0 上下文 8192 65.5s
+16:09:47 云端复审配置：已启用 host=127.0.0.1:14848 模型=probe-stream 已存 Key
+16:09:47 云端复审 127.0.0.1:14848 模型 probe-stream 发出 272 字符 / 脱敏 0 处 0.6s / attempts 1
+16:09:47 云端复审配置：已启用 host=127.0.0.1:14848 模型=probe-stream 已存 Key
+16:09:48 云端复审 127.0.0.1:14848 正文空但推理非空，放大 max_tokens=3600 重发（attempts 2）
+16:09:48 云端复审 127.0.0.1:14848 模型 probe-stream 发出 254 字符 / 脱敏 0 处 0.4s / attempts 2
+16:09:48 云端复审配置：已启用 host=127.0.0.1:14848 模型=probe-stream 已存 Key
+16:09:48 云端复审 127.0.0.1:14848 模型 probe-stream 发出 265 字符 / 脱敏 0 处 0.1s / attempts 1
+16:09:48 云端复审配置：已启用 host=127.0.0.1:14848 模型=probe-stream 已存 Key
+16:09:48 云端复审配置：未启用 host=127.0.0.1:14848 模型=probe-stream 无 Key
+16:10:08 会话备份设置：开 → C:\Users\lenovo\AppData\Local\Temp\qytp-probe-backup-target
+16:10:08 新建会话 mwuw4y80-64b4cbd1
+16:10:11 会话备份 manual：2 个会话 / 复制 4 个文件 / 历史版本 1194 份（新增 1194）/ 1 KB → C:\Users\lenovo\AppData\Local\Temp\qytp-probe-backup-target
+16:10:12 会话备份 manual：2 个会话 / 复制 0 个文件 / 历史版本 1194 份（新增 0）/ 0 KB → C:\Users\lenovo\AppData\Local\Temp\qytp-probe-backup-target
+16:10:12 会话备份 manual：2 个会话 / 复制 1 个文件 / 历史版本 1195 份（新增 1）/ 0 KB → C:\Users\lenovo\AppData\Local\Temp\qytp-probe-backup-target
+16:10:12 清理过期会话备份 2020-01-01
+16:10:12 会话备份 manual：2 个会话 / 复制 0 个文件 / 历史版本 1195 份（新增 0）/ 0 KB → C:\Users\lenovo\AppData\Local\Temp\qytp-probe-backup-target
+16:10:12 新建会话 mwuw50xh-d28a23f2
+16:10:23 会话备份 write：3 个会话 / 复制 2 个文件 / 历史版本 1195 份（新增 0）/ 0 KB → C:\Users\lenovo\AppData\Local\Temp\qytp-probe-backup-target
+16:10:24 删除会话 mwuw50xh-d28a23f2
+16:10:24 从备份恢复会话 mwuw4y80-64b4cbd1 ← C:\Users\lenovo\AppData\Local\Temp\qytp-probe-backup-target
+16:10:24 会话备份设置：关 → （未设置）
+16:10:24 删除会话 mwuw4y80-64b4cbd1
+16:10:25 会话备份设置：关 → （未设置）
+16:10:25 文档索引重建：7 个文件 / 15 段
+16:10:25 文档索引重建：7 个文件 / 15 段
+16:10:25 文档索引重建：9 个文件 / 17 段
+16:10:25 文档索引重建：8 个文件 / 16 段
+16:10:25 文档索引重建：5 个文件 / 13 段
+16:10:26 插件：1 个可用（D:\LocalModels\plugins）
+16:10:26 插件：0 个可用，1 个已禁用（D:\LocalModels\plugins）
+16:10:26 插件禁用 probe_tmp_plugin.mjs
+16:10:26 插件：1 个可用（D:\LocalModels\plugins）
+16:10:26 插件启用 probe_tmp_plugin.mjs
+16:10:26 插件：0 个可用（D:\LocalModels\plugins）
+16:10:26 插件：0 个可用（D:\LocalModels\plugins）
+16:10:27 调试面板：导出诊断包 qy-diagnostics-20261125-001027.zip（38324 字节 / 8 个文件）
+16:10:29 调试面板：清理崩溃记录 成功
+16:10:30 调试面板：导出诊断包 qy-diagnostics-20261125-001030.zip（38322 字节 / 8 个文件）
+16:10:54 客户端断开，中止生成
+16:11:07 会话备份设置：关 → （未设置）
+16:11:29 新建会话 mwuw6o44-22f13c64
+16:11:31 删除会话 mwuw6o44-22f13c64
+16:11:41 删除模型 probe-del-single.gguf（0.00 GB，已移入回收站）
+16:11:42 删除模型 probe-del-shard-00001-of-00002.gguf, probe-del-shard-00002-of-00002.gguf（0.00 GB，已移入回收站）
+16:11:48 删除模型 probe-del-ui.gguf（0.00 GB，已移入回收站）
+16:12:02 代码收录 2 个 → code/：probe-py-mwuw7b9n.py、probe-js-mwuw7b9n.js
+16:12:04 运行代码 python exit=0 103ms
+16:12:22 新建会话 mwuw7tij-80e82b21
+16:12:28 删除会话 mwuw7tij-80e82b21
+16:12:29 新建会话 mwuw7ydr-9fefd857
+16:12:36 删除会话 mwuw7ydr-9fefd857
+16:12:46 会话备份设置：关 → （未设置）
+16:12:46 会话备份设置：关 → （未设置）
+16:12:55 新建会话 mwuw8ixa-e20ef214
+16:13:01 删除会话 mwuw8ixa-e20ef214
+16:13:10 新建会话 mwuw8ug2-6928850f
+16:13:17 删除会话 mwuw8ug2-6928850f
+16:13:17 新建会话 mwuw8zqk-11a88c30
+16:13:17 新建会话 mwuw8zqy-1f713347
+16:13:25 删除会话 mwuw8zqk-11a88c30
+16:13:25 删除会话 mwuw8zqy-1f713347
+16:13:25 删除会话 mwuw8zqk-11a88c30
+16:13:25 新建会话 mwuw95vi-2cc3f753
+16:13:25 新建会话 mwuw95vs-f679f477
+16:13:30 删除会话 mwuw95vi-2cc3f753
+16:13:30 删除会话 mwuw95vs-f679f477
+16:13:39 新建会话 mwuw9ggn-4e789d54
+16:13:43 删除会话 mwuw9ggn-4e789d54
+16:13:47 运行代码 python exit=0 81ms
+16:13:53 新建会话 mwuw9rny-0953b967
+16:14:24 新建会话 mwuwafm5-7564888d
+16:14:56 文档索引重建：5 个文件 / 13 段
+16:15:06 嗅探完成：1 个候选，遍历 26782 个文件，677ms
+16:15:36 会话备份设置：开 → D:\LocalModels\tmp-probe-backup-ui-target
+16:15:38 会话备份 manual：3 个会话 / 复制 6 个文件 / 历史版本 1222 份（新增 1222）/ 3 KB → D:\LocalModels\tmp-probe-backup-ui-target
+16:15:38 会话备份设置：开 → D:\LocalModels\tmp-probe-backup-ui-target
+16:15:40 会话备份设置：关 → （未设置）
+16:15:41 会话备份设置：关 → （未设置）
+16:15:42 新建会话 mwuwc3m7-cd8258d9
+16:15:42 新建会话 mwuwc3mn-250a693d
+16:15:51 删除会话 mwuwc3m7-cd8258d9
+16:15:51 删除会话 mwuwc3mn-250a693d
+16:15:56 新建会话 mwuwceqn-e0766c03
+16:16:16 自动标题 mwuwceqn-e0766c03 → 一句话解释 KV 缓存
+16:16:17 删除会话 mwuwceqn-e0766c03
+16:16:18 删除会话 mwuwafm5-7564888d
+16:16:18 删除会话 mwuw9rny-0953b967
+16:16:18 删除会话 mwrxo38z-cdc60ba7
+16:16:18 新建会话 mwuwcv8b-5a1a555a
+16:16:21 新建会话 mwuwcxhl-6c5df714
+16:16:25 删除会话 mwuwcxhl-6c5df714
+16:16:31 TTS edge edge:zh-CN-XiaoxiaoNeural 1.3x 7 字 → 11 KB / 12ms
+16:17:09 加载 qwen3-5-4B-Q4_K_M.gguf (context 8192) ...
+16:17:14 就绪: qwen3-5-4B-Q4_K_M.gguf | context 8192 | layers 33 | KV q8_0 | 思考能力支持 | 6.3s
+16:18:49 加载 qwen3-5-4B-Q4_K_M.gguf (context 8192) ...
+16:18:54 就绪: qwen3-5-4B-Q4_K_M.gguf | context 8192 | layers 33 | KV q8_0 | 思考能力支持 | 6.2s
+16:21:29 加载 Phi-4-mini-instruct-Q4_K_M.gguf (context 16384) ...
+16:21:38 就绪: Phi-4-mini-instruct-Q4_K_M.gguf | context 16384 | layers 33 | KV q8_0 | 思考能力不支持 | 9.9s
+16:21:41 加载 qwen3-5-4B-Q4_K_M.gguf (context 16384) ...
+16:21:47 就绪: qwen3-5-4B-Q4_K_M.gguf | context 16384 | layers 33 | KV q8_0 | 思考能力支持 | 7.4s
+16:22:11 预加载 Phi-4-mini-instruct-Q4_K_M.gguf（context 4096，8.9s）
+16:22:11 释放预加载 Phi-4-mini-instruct-Q4_K_M.gguf
+16:22:18 加载 qwen3-5-4B-Q4_K_M.gguf (context 4096) ...
+16:22:25 就绪: qwen3-5-4B-Q4_K_M.gguf | context 4096 | layers 33 | KV q8_0 | 思考能力支持 | 7.7s
+16:22:32 预加载 Phi-4-mini-instruct-Q4_K_M.gguf（context 4096，6.6s）
+16:22:45 释放预加载 Phi-4-mini-instruct-Q4_K_M.gguf
+16:22:46 加载 qwen3-5-4B-Q4_K_M.gguf (context 8192) ...
+16:22:52 就绪: qwen3-5-4B-Q4_K_M.gguf | context 8192 | layers 33 | KV q8_0 | 思考能力支持 | 6.4s
+16:22:58 加载 Phi-4-mini-instruct-Q4_K_M.gguf (context 8192) ...
+16:23:05 就绪: Phi-4-mini-instruct-Q4_K_M.gguf | context 8192 | layers 33 | KV q8_0 | 思考能力不支持 | 8.5s
+16:23:14 加载 qwen3-5-4B-Q4_K_M.gguf (context 8192) ...
+16:23:21 就绪: qwen3-5-4B-Q4_K_M.gguf | context 8192 | layers 33 | KV q8_0 | 思考能力支持 | 7.3s
+16:24:38 视觉：先卸载文本模型（内存互斥；看完图 15s 后自动装回 qwen3-5-4B-Q4_K_M.gguf）
+16:24:38 视觉：启动 Qwen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf（-ngl 0 CPU，pid 23040），等待 /health ...
+16:24:58 视觉 sidecar 就绪（Qwen3.5-9B-Q4_K_M.gguf + Qwen3.5-9B-mmproj-F16.gguf，ctx 32768 / 线程自动 / mmproj none，20.0s，pid 23040）
+16:25:06 视觉请求 1 张图 json 200 7702ms
+16:25:06 视觉：停止 sidecar（pid 23040）
+16:25:08 视觉 sidecar 退出（code=1）
+16:25:21 视觉：闲置 15s，自动装回文本模型 qwen3-5-4B-Q4_K_M.gguf
+16:25:21 加载 qwen3-5-4B-Q4_K_M.gguf (context 8192) ...
+16:25:27 就绪: qwen3-5-4B-Q4_K_M.gguf | context 8192 | layers 33 | KV q8_0 | 思考能力支持 | 5.6s
+16:25:27 视觉：文本模型已自动装回 qwen3-5-4B-Q4_K_M.gguf
+16:27:47 加载 qwen3-5-4B-Q4_K_M.gguf (context 8192) ...
+16:27:53 就绪: qwen3-5-4B-Q4_K_M.gguf | context 8192 | layers 33 | KV q8_0 | 思考能力支持 | 6.2s
+16:29:28 新建会话 mwuwtt0j-c13f838d
+16:30:09 收到退出指令，正在关闭 ...

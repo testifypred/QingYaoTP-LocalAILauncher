@@ -24,6 +24,7 @@
 | 代码工作区：模型回答里的代码直接落 `workspace\code\`，可运行、可让模型审查；**v1.7.0 审查升级**：流式思维链 / 问题行高亮 / 一键纠正 / 改动行高亮 / 发回对话 / 高亮色自定义 | 顶栏「代码」 |
 | **二次验证（v1.8.0）**：**质询**（拿你的质疑让模型反驳/自证）/ **他人复审**（换一个模型独立再审，并列两栏并判定一致·仅一方·矛盾）/ **云端复审**（可选 OpenAI 兼容 API，脱敏外发、每次确认） | 代码工作区 → 审查面板 |
 | **多文件 / 整工作区审查（v1.10.0）**：文件列表勾选（或直接「审查工作区」）→ 逐文件出结论 + **跨文件总览**（找文件之间的不一致）→ 点问题直接跳到对应文件对应行 → 导出 `.multi.review.md` | 代码工作区 → 文件列表勾选 /「审查选中」「审查工作区」 |
+| **v1.11.1 稳定性**：启动器 `/health` 进程级看门狗（90s 无响应强杀 node 并自动重启、用户主动停服务不复活、30 分钟限 5 次、可 `LOCALAI_WATCHDOG=0` 关闭）；发行包开始随 `app\` 带 `LICENSE` / `NOTICE` / `THIRD_PARTY_NOTICES.md` | 见下 |
 | **v1.11.0 体验与稳定性**：终端 TUI 2.0（流式 Markdown/LaTeX、`/` 能力面板、线框光标）；主页面增量渲染（6000 字单帧 14ms→0.4ms）+ 首字税 chip；20B `useMmap:false`（加载 48.6s→14s、可用内存 0→8.1GB）；代码工作区窗口可拖拽/最大化/分隔条/结果标签；**审查卡死 P0 修复**（根因 + 前端空闲/总时长/异常兜底 + 后端生成停滞闸） | 见各列入口 |
 | 图片输入：粘贴 / 拖拽 / 选择，独立进程看图（CPU 编码，不占显存）；需装可选「视觉增强包」 | 输入区 Σ / 设置 → 视觉 |
 | 公式（LaTeX / 化学式） | 顶栏「公式」 |
@@ -118,6 +119,13 @@
 - **跨文件总览**：两个及以上文件时，会拿各文件摘要与问题标题再做一轮，找「调用与实现不匹配 / 重复定义 / 约定不一致」这类跨文件问题，**不重复各文件内部已列的问题**。
 - **结果交互**：每文件一张卡（点卡片头打开该文件并高亮该文件的问题）；问题卡点一条 = 打开文件 + 跳到该行；跨文件问题同样可跳。
 - **导出**：`POST /api/code/review/export` 的 `kind:"multi"` → `<slug>-YYYYMMDD-HHmm.multi.review.md`（总览 / 逐文件结论 / 跨文件问题 / 跳过清单，只含结论不含代码正文）。
+
+### v1.11.1：稳定性 / 许可随包（2026-11-24）
+
+- **启动器进程级看门狗**（`server/launcher/Launcher.cs`）：每 5s 探 `/health`（3s 超时），连续 90s 无响应（Vulkan 原生层彻底卡死：事件循环不转、接口全超时、CPU 持续涨）→ 强杀 node → 自动重启 → 等就绪（≤120s）→ 托盘提示 + 内嵌界面自动重载。
+- 安全边界：用户主动停服务（退出码 0）不会被拉起；启动/重启有宽限期；与崩溃守护互斥（`Restarting` + `RestartGate` + sender 引用比较）；30 分钟内最多 5 次，超出暂停 10 分钟；`LOCALAI_WATCHDOG=0` 可关闭，`LOCALAI_WATCHDOG_INTERVAL_MS/_TIMEOUT_MS/_STALL_MS` 可调。
+- 验证：独立验证装置（挂起 node 模拟原生层卡死）24/24；`LOCALAI_WATCHDOG=0` 15/15；默认参数 75s 健康长观察 13/13；发布包实例 `probe-review-watchdog` 56/56。全量口径仍 91 探针 / 70 条 / 1,524 断言。
+- 发行包首次随 `app\` 带 `LICENSE` / `NOTICE` / `THIRD_PARTY_NOTICES.md`（Apache-2.0 + 第三方许可清单）。
 
 ### v1.11.0：体验与稳定性（2026-11-22）
 
@@ -236,13 +244,13 @@ workspace\                 会话、代码工作区、RAG 索引等用户数据
 - 本项目采用 **Apache License 2.0**（根目录 [LICENSE](LICENSE)）；版权 **Copyright 2026 QingyaoTestifypred（卿峣Testifypred）**。
 - 第三方组件清单与许可全文：[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)；版权归属声明：[NOTICE](NOTICE)。
 - **AI 辅助开发说明**：本项目大量使用 AI 编程工具（DeepSeek Harness 智能体团队）辅助需求、设计、编码、测试与文档；作者对整体设计、选择、集成与质量负责，并在法律允许范围内主张整体著作权。个别 AI 直接生成的片段在部分法域可能不单独构成可保护作品，不影响 Apache-2.0 对整体项目的授权。
-- 发行包（v1.11.0 起）会随 `app\` 目录带上 `LICENSE` / `NOTICE` / `THIRD_PARTY_NOTICES.md`；视觉增强包内含 llama.cpp 二进制，重新分发时请保留本文件。
+- 发行包（v1.11.1 起，即下次打包；已发布的 v1.11.0 zip 不含许可文件）会随 `app\` 目录带上 `LICENSE` / `NOTICE` / `THIRD_PARTY_NOTICES.md`；视觉增强包内含 llama.cpp 二进制，重新分发时请保留本文件。
 
 ## 发布到 GitHub（2026-11-17）
 
 - 仓库：https://github.com/testifypred/QingYaoTP-LocalAILauncher （public / main）。首页 README 是**客户端版**（`README.md`），本文是技术版。
 - **推送走 SSH over 443**（本机 Watt Toolkit 把 `github.com` 等写进 hosts 指向 `127.0.0.1`，HTTPS push 会 403）：`~/.ssh/config` 里 `Host github.com → ssh.github.com:443`，remote 用 `git@github.com:testifypred/...`；`ssh -T git@github.com` 应回 `Hi testifypred!`。细节见 `technique/07-坑与约定.md` 第十节。
 - **CI**：`.github/workflows/ci.yml`（JS/PS5.1 语法、版本三处一致、许可证文件、仓库卫生、README 同源）。**注意**：`shell: powershell` 的步骤脚本必须纯 ASCII（PS 5.1 会把无 BOM 的 UTF-8 当 ANSI 解码，中文会炸）。
-- **发版流程**：`build-portable.ps1` → `make-zip.ps1` → 在 GitHub Releases 建 tag（如 `v1.11.0`）、正文用 `.github/RELEASE-v1.11.0.md`、附件上传 `dist\*.zip`（**zip 不进 git**）。
+- **发版流程**：`build-portable.ps1` → `make-zip.ps1` → 在 GitHub Releases 建 tag（如 `v1.11.1`）、正文用 `.github/RELEASE-v1.11.1.md`、附件上传 `dist\*.zip`（**zip 不进 git**）。
 - **提交身份**：本仓库仓库级 `QingyaoTestifypred <testifypred@users.noreply.github.com>`；历史早期提交作者是另一个账号（不改写）。
 

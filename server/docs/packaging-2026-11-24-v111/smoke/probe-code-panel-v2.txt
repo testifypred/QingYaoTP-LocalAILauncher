@@ -1,0 +1,83 @@
+﻿=== probe-code-panel-v2 ===
+[edge] pid=24560 cdp up
+[edge] page ready url=http://127.0.0.1:8099/
+
+== 目标 http://127.0.0.1:8099，CDP http://127.0.0.1:9333，模型 qwen3-5-4B-Q4_K_M.gguf ==
+
+== A. 入口与列表 ==
+ok   顶栏有 #codeBtn
+ok   #codeModal 打开
+ok   代码列表已加载（空态或条目）
+
+== B. 语言选择新建文件（python -> 自动补 .py）==
+ok   #cwNewLang 存在  [[{"v":"","t":"按文件名"},{"v":"js","t":"JavaScript（js）"},{"v":"ts","t":"TypeScript（ts）"},{"v":"py","t":"Python（py）"},{"v":"c","t":"C（c）"}]]
+ok   语言选项 >= 10 个  [n=16]
+ok   能选到 python 语言项  [ok:py]
+ok   #cwNewName placeholder 跟着语言走（含 .py）  [main.py（回车新建）]
+FAIL 新建不带扩展名的文件 -> 自动补 .py 并落盘  path=code/probe-lang-mww94ofn.py HTTP 400
+FAIL 列表条目 +1  4 -> 4
+
+== C. 新建 js 文件并放入有 bug 的代码 ==
+ok   能选到 javascript 语言项  [ok:js]
+FAIL 新建 js 文件落盘  path=code/probe-rev-mww94ofn.js HTTP 400
+FAIL CodeMirror 载入探针代码  current=code/code-135301-1.txt len=85
+
+== D. 审查（流式思考块）==
+ok   审查中 #cwThink 思考块出现  [#cwThink={"has":true,"tag":"DETAILS","len":1}]
+ok   #cwThinkText 有内容且在增长（流式）  [len 1 -> 4]
+ok   #cwReviewState「审查完成」  [审查完成 · 1 个问题 · 67.0s]
+ok   问题卡片 >= 1 张  [n=1 [{"line":"3","sev":"error"}]]
+ok   问题卡片带 data-line / data-severity  [["3:error"]]
+ok   卡片头是「行 N · 严重度 · 标题」  [行 3 · 错误 · 逻辑错误]
+ok   卡片有 detail 与 fix  [detail=39 fix=36]
+ok   每条问题都有一键更改按钮  [n=1]
+ok   报告行号在代码范围内  [line=3 / 共 6 行]
+ok   CodeMirror 行出现错误/警告高亮 class  [{"err":1,"warn":0,"info":0}]
+ok   高亮 class 与首条 issue 的严重度一致（.cwLineErr）  [{"err":1,"warn":0,"info":0}]
+ok   点问题卡片跳到对应行  [cursor=3 issue=3]
+    截图: D:\LocalModels\server\docs\packaging-2026-11-24-v111\smoke\shots\probe-code-panel-v2-review.png
+
+== E. 一键纠正 ==
+ok   一键纠正 -> 状态行「已修改」  [已修改 1 处（新增 1 / 删除 2）· 正在写回文件…]
+ok   编辑器代码被改写（不再等于原稿）  [len 85 -> 63]
+ok   改动行出现 .cwLineChanged  [n=1]
+ok   状态行带新增 / 删除数字  [已修改 1 处（新增 1 / 删除 2）· 正在写回文件…]
+FAIL 一键纠正的改动自动写回文件（状态行「已写回文件」）  state=已修改 1 处（新增 1 / 删除 2）· 正在写回文件… fileLen=0 editorLen=63
+ok   「保存并运行」按钮存在且可用（v1.9.2）
+ok   勾/取消「调用工具」同步 toolEnabled（v1.9.2 老账）  [{"on":true,"off":false,"restored":false}]
+ok   单条「一键更改」（scope=single）真模型跑通（v1.9.2 补跑）  [state=已修改 1 处（新增 1 / 删除 1）· 正在写回文件…]
+
+== F. 发回对话 ==
+ok   #cwSendChat 把代码围栏写进聊天输入框 #q  [len=131]
+FAIL 填入内容带文件名  这是修正后的版本：code-135301-1.txt（txt）
+改动行：第 2 行（新增 1 / 删除 1）
+
+```txt
+function add(a, b
+ok   填入内容注明「修正后的版本」  [这是修正后的版本：code-135301-1.txt（txt）
+改动行：第 2 行（新增 1 / 删除 1）
+
+```txt
+function add(a, b) {
+  return a - b;
+}
+
+console.log(add(1]
+
+== G. 高亮颜色设置（设置 -> 代码）==
+ok   设置里有「代码」页签  [ok]
+ok   #paneCode 可见
+ok   4 个颜色输入框都存在且 type=color  [["color","color","color","color"]]
+ok   改 #cwColorErr -> localStorage localai.cwColors.err  [err=#12345666 raw={"err":"#12345666","warn":"#78350f66","info":"#164e6366","changed":"#14532d66"}]
+ok   CSS 变量 --cw-err-bg 跟着变  [before=#7f1d1d66 after=#12345666]
+ok   #cwColorReset 恢复默认（localStorage 回到默认或清空）  [err=#7f1d1d66 raw={"err":"#7f1d1d66","warn":"#78350f66","info":"#164e6366","ch]
+ok   恢复默认后 CSS 变量也回去（不再是 #123456）  [#7f1d1d66]
+    截图: D:\LocalModels\server\docs\packaging-2026-11-24-v111\smoke\shots\probe-code-panel-v2-colors.png
+
+== H. 自复位 ==
+ok   探针创建的文件已全部删除  [clean]
+ok   收尾：代码面板/设置已关、聊天输入框 #q 已清  [{"codeModal":false,"settings":false,"input":""}]
+
+== 结果: 38 通过 / 6 失败 ==
+
+[probe] exit=1
