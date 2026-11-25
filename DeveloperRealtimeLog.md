@@ -4053,3 +4053,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 - Git：commit **2fc897d**（40 文件 / +2503 −38）已推 `main`；annotated tag **v1.11.1**（对象 7e961e8）已推；CI（语法/版本/卫生）**success**。
 - Release：`server\docs\packaging-2026-11-24-v111\create-release.mjs` 就绪（tag v1.11.1 + 两个附件），**本会话无 GH_TOKEN** → 等用户提供 token 或网页手动创建；正文 `.github\RELEASE-v1.11.1.md`。
 - 证据：`server\docs\packaging-2026-11-24-v111\RESULT.md`、`smoke\`（7 个 txt + shots）、`.github\RELEASE-v1.11.1.md`。
+
+---
+
+## 第八十六节补记 2（同日）v1.11.1 GitHub Release 已发布
+
+- Release：https://github.com/testifypred/QingYaoTP-LocalAILauncher/releases/tag/v1.11.1
+- 附件（GitHub 返回 digest 与本地一致）：`QingYaoTP-AILauncher-v1.11.1.zip` 127,971,996B / sha256 `deccbae4…ffe213c`；`QingYaoTP-AILauncher-v1.6.0-vision-pack.zip` 38,408,198B / sha256 `d7924534…699a11d3`。
+- About topics 已补（8 个）：local-ai / llama-cpp / windows / offline-first / deepseek-harness / rag / code-review / ai-desktop。
+- 发布页 HTTP 200；Git tag v1.11.1（对象 7e961e8 → commit 2fc897d）；CI success。

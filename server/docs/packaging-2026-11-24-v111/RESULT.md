@@ -29,4 +29,5 @@
 3. 启动 exe → /health 2s 就绪；`POST /api/vision/pack/install` 装回视觉增强包（source=pack / 53 文件）。
 
 ## 发布状态
-- zip + 视觉包已就绪；Git tag v1.11.1 / GitHub Release 资产待推（**需要 GH_TOKEN**，本会话无 token）。脚本：`create-release.mjs`。
+- **已发布**：https://github.com/testifypred/QingYaoTP-LocalAILauncher/releases/tag/v1.11.1
+- 附件：`QingYaoTP-AILauncher-v1.11.1.zip` 127,971,996B（sha256 `DECCBAE48D7CF23BF4879A60AC43EFA6F24790AF35AC198B5C1E356D0FFE213C`）、`QingYaoTP-AILauncher-v1.6.0-vision-pack.zip` 38,408,198B（sha256 `D7924534B30143F3791D26C143B95656306AE1FFA08D52557EE25D56699A11D3`），GitHub 返回 digest 与本地一致；About topics 已设置 8 个。

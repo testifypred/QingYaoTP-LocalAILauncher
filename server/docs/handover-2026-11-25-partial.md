@@ -32,5 +32,5 @@
 
 - 全量 70 条已跑（有效 70/70，2 条环境红隔离复跑全过）。
 - 发布包冒烟已跑：5 项全绿；readme/panel-v2 因本机 node 写 workspace EPERM 未过（环境限制，非包缺陷）。
-- RELEASE-v1.11.1.md 已填好；RESULT.md 在 `server\docs\packaging-2026-11-24-v111\`；Git tag/push 与 GitHub Release 在本轮收口执行（Release 需 GH_TOKEN）。
+- RELEASE-v1.11.1.md 已填好；RESULT.md 在 `server\docs\packaging-2026-11-24-v111\`；Git 已推 main（2fc897d → e7897e8）与 tag v1.11.1；**GitHub Release 已发布**：https://github.com/testifypred/QingYaoTP-LocalAILauncher/releases/tag/v1.11.1（两个附件 SHA256 与本地一致）；About topics 已补。
 
