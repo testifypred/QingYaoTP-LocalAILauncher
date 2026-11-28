@@ -1,0 +1,19 @@
+﻿=== probe-start-screen ===
+[edge] pid=12072 cdp up
+[edge] page ready url=http://127.0.0.1:8099/
+STATE {"hero":true,"greet":"晚上好","sid":null,"msgs":0,"tabs":false,"btn":"Qwen3-5-4B","sendIco":true,"recent":true,"recentTitle":"用 web_search 搜索「Qwen2.5 上下文长度」，告诉我第一条结果标题。"}
+ok   启动进入开场白
+ok   默认新对话（无 sessionId、无消息）  [sid=null]
+ok   问候语按时间  [晚上好]
+ok   顶栏无模型列表
+ok   模型按钮显示已加载模型  [Qwen3-5-4B / 已加载 qwen3-5-4B-Q4_K_M.gguf]
+ok   发送键旁有模型图标
+ok   右下角提示上次对话  [用 web_search 搜索「Qwen2.5 ]
+ok   深度思考/联网在输入框下
+ok   模型菜单能打开
+ok   列出全部模型  [5 / 5]
+ok   标记当前运行模型  [qwen3-5-4B-Q4_K_M.gguf / qwen3-5-4B-Q4_K_M.gguf]
+ok   点空白关闭菜单
+
+RESULT 12/12
+[probe] exit=0

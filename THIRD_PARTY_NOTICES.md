@@ -12,6 +12,7 @@ QingYaoTP AILauncher 发行包内含或依赖以下第三方组件。各组件�
 | ws | 8.22.0（npm） | WebSocket | MIT | Copyright (c) 2011 Einar Otto Stangvik; (c) 2013 Arnout Kazemier and contributors; (c) 2016 Luigi Pinca and contributors |
 | msedge-tts | 2.1.0（npm） | 语音合成 | MIT | Copyright (c) 2023 Migushthe2nd |
 | KaTeX（含字体） | vendor/katex | 公式渲染 | MIT；字体 SIL OFL 1.1 | Copyright (c) 2013-2020 Khan Academy and other contributors |
+| Noto Serif SC（子集） | vendor/fonts/noto-serif-sc（woff2，仅开场白问候语用到的 20 余字形） | 开场白「早上/中午/下午/晚上好 / 今天做点什么？」标题字体 | SIL OFL 1.1 | Copyright 2014-2025 Adobe / Google LLC（Noto CJK） |
 | mhchem（KaTeX 扩展） | vendor/katex/contrib/mhchem | 化学式 | Apache-2.0 | 见文件头版权声明 |
 | MathLive | vendor/mathlive | 公式面板 | MIT | Copyright (c) 2017 - present Arno Gourdol |
 | CodeMirror | vendor/codemirror（v5） | 代码编辑器 | MIT | Copyright (C) 2017 by Marijn Haverbeke and others |
@@ -26,6 +27,9 @@ QingYaoTP AILauncher 发行包内含或依赖以下第三方组件。各组件�
   重新分发增强包时请保留本文件。
 - 本软件**不随包分发模型权重**；用户自行下载的模型（Qwen / DeepSeek / Phi / gpt-oss / Llama 等）
   适用各自模型许可，由使用者自行遵守。
+
+- Noto Serif SC 只内嵌开场白用到的字形子集（`vendor/fonts/noto-serif-sc/noto-serif-sc-subset.woff2`，约 5.7KB）；
+  许可证全文随文件放在同目录的 `OFL.txt`，重新分发时请一并保留。
 
 ## 二、MIT 许可全文（适用于上表标注 MIT 的组件）
 

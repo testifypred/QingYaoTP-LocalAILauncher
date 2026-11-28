@@ -23,7 +23,7 @@ await sleep(3200);
 const state = await (await fetch("http://127.0.0.1:8099/api/state")).json();
 const modelCount = (state.models || []).length;
 
-const st = await ev("({ hero: !!document.getElementById('hero'), greet: document.getElementById('heroGreet')?.textContent, sid: sessionId, msgs: document.querySelectorAll('.row').length, tabs: !!document.querySelector('.modelTabs'), btn: document.getElementById('modelBtnName').textContent, sendIco: !document.getElementById('sendIco').hidden, recent: !document.getElementById('recentWrap').hidden, recentTitle: document.getElementById('recentTitle').textContent })");
+const st = await ev("({ hero: !!document.getElementById('hero'), greet: document.getElementById('heroGreet')?.textContent, sid: sessionId, msgs: document.querySelectorAll('.row').length, tabs: !!document.querySelector('.modelTabs'), btn: document.getElementById('modelBtnName').textContent, sendPlane: !!document.querySelector('#send svg.sendPlane'), sendIcoVisible: (() => { const i = document.getElementById('sendIco'); return !!i && !i.hidden && getComputedStyle(i).display !== 'none'; })(), recent: !document.getElementById('recentWrap').hidden, recentTitle: document.getElementById('recentTitle').textContent })");
 console.log("STATE", JSON.stringify(st));
 check("启动进入开场白", st.hero === true);
 check("默认新对话（无 sessionId、无消息）", st.sid === null && st.msgs === 0, "sid=" + st.sid);
@@ -32,7 +32,7 @@ check("顶栏无模型列表", st.tabs === false);
 // 有模型/没模型都合法：有就显示那个模型名，没有就显示占位文案（别写死成「必须有模型」）
 if (state.loaded) check("模型按钮显示已加载模型", !!st.btn && st.btn !== "选择模型", st.btn + " / 已加载 " + state.loaded);
 else check("没加载模型时按钮是占位文案", !!st.btn && st.btn !== "", st.btn);
-check("发送键旁有模型图标", st.sendIco === true);
+check("发送键是纸飞机、不再显示模型品牌图标（v1.11.2 设计）", st.sendPlane === true && st.sendIcoVisible === false);
 check("右下角提示上次对话", st.recent === true, st.recentTitle.slice(0, 24));
 check("深度思考/联网在输入框下", (await ev("!!document.querySelector('.askBar #thinkChk') && !!document.querySelector('.askBar #webChk') && !!document.querySelector('.askBar #toolChk')")) === true);
 

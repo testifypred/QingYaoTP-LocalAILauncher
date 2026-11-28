@@ -1,0 +1,18 @@
+﻿=== probe-ui-version ===
+[edge] pid=16072 cdp up
+[edge] page ready url=http://127.0.0.1:8099/
+
+== 界面 http://127.0.0.1:8099/ / 服务端 v1.11.1 ==
+
+  ok   设置里有「关于」页  [["生成","显卡","视觉","朗读","工具","代码","外观","关于"]]
+  ok   点开只显示关于页  [{"about":true,"gen":false,"tools":false}]
+  ok   版本行是 v 版本号  [v1.11.1]
+  ok   构建行点明了来源  [打包于 2026-11-24 23:55（发布包里没有 git，取 app.mjs 的修改时间）]
+  ok   运行行有 node 与端口  [Node v24.19.0 · 端口 8099 · 进程 25244 · 启动于 2026-11-26 23:41]
+  ok   目录行填了服务端目录  [C:\QingYaoTP-AILauncher\app]
+  ok   复制按钮给出反馈  [已复制]
+  ok   剪贴板里是版本信息  [QingYaoTP AILauncher v1.11.1 (打包 2026-11-24 23:55) · Node v24.19.0 · 启动 2026-11-26 23:41 ·]
+  ok   切回生成页后关于页收起
+
+RESULT 9/9
+[probe] exit=0

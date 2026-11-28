@@ -1,0 +1,34 @@
+/* 方向 B：Fluent 深色（Win11 原生感） */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg:#1c1c20; --bg-2:#1f1f24;
+  --panel:#26262b; --panel-2:#2b2b31; --panel-3:#303038;
+  --line:rgba(255,255,255,.085); --line-2:rgba(255,255,255,.16);
+  --text:#f2f2f4; --text-2:#c2c3c9; --dim:#8b8d96;
+  --cyan:#4cc2ff; --violet:#7cc7ff;
+  --accent:#4cc2ff; --accent-2:#8ed3ff; --accent-soft:rgba(76,194,255,.12);
+  --bubble:#28282e; --bubble-user:#22303c;
+  --code-bg:#161619; --code-ink:#bfe7ff; --table-head:rgba(255,255,255,.045); --quote:rgba(255,255,255,.16);
+  --shadow:0 8px 26px rgba(0,0,0,.35); --shadow-sm:0 1px 3px rgba(0,0,0,.3);
+  --glow-c:transparent; --glow-v:transparent;
+}
+body { font:15px/1.62 "Segoe UI Variable Text","Segoe UI","Microsoft YaHei",system-ui,sans-serif; background:linear-gradient(180deg,#1e1e23,#19191d); }
+body::before { display:none !important; }
+#sidebar { background:rgba(30,30,35,.92); border-right:1px solid var(--line); }
+header { background:rgba(34,34,40,.85); border-bottom:1px solid var(--line); }
+header::after { display:none !important; }
+.brand .logo { background:linear-gradient(145deg,#4cc2ff,#3d8bfd); box-shadow:none; border:none; border-radius:9px; }
+.tab { border-radius:8px; background:var(--panel-2); border-color:var(--line); }
+.tab::before,.tab::after { display:none !important; }
+.tab.sel { box-shadow:none !important; border-color:var(--accent); background:rgba(76,194,255,.12); }
+.heroGreet { background:none !important; -webkit-text-fill-color:currentColor !important; color:var(--text) !important; font-weight:600; font-size:33px; }
+.modeBtn { border-radius:8px; background:var(--panel-2); }
+.modeBtn.sel { box-shadow:none !important; border-color:var(--accent); background:rgba(76,194,255,.13); }
+.modeBtn.reason { font-family:inherit !important; text-shadow:none !important; color:var(--text) !important; font-weight:600 !important; }
+.heroBox textarea { border-radius:8px; background:var(--panel-2); border-color:var(--line-2); }
+.heroBox textarea:focus { border-color:var(--accent); box-shadow:none; }
+.heroBox button { height:56px; border-radius:8px; }
+.heroHint { font-family:inherit; font-size:12px; }
+.sessionItem { border-radius:6px; }
+.sessionItem.sel { box-shadow:none !important; background:rgba(76,194,255,.10); border-color:transparent; }
+.sideSearch input { border-radius:6px; }

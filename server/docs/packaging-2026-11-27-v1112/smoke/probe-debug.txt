@@ -1,0 +1,62 @@
+﻿=== probe-debug ===
+
+== 目标 http://127.0.0.1:8099 ==
+
+  ok   /debug 页面可访问  [HTTP 200 · 36681 字节]
+  ok   页面自带检查项容器
+  ok   调试页声明了自己的图标
+  ok   调试工具图标可取（png）  [HTTP 200 · image/png]
+  ok   /api/diag 可用  [HTTP 200]
+  ok   检查项足够多（>=12）  [checks=25]
+  ok   每项都有 id/level/title
+  ok   summary 与检查项自洽  [{"error":0,"warn":3,"ok":22}]
+  ok   带版本信息  [{"version":"1.11.2","commit":"","dirty":false,"builtAt":"2026-11-27T15:56:02.000Z"}]
+  ok   带服务与系统信息  [8099 / v24.19.0]
+  ok   带路径（含日志与崩溃记录）  [C:\Temp\qytp-v1112-smoke\QingYaoTP AILauncher-v1.11.2\app\vulkan-crash.log]
+  ok   检查项足够多（>=20，v2 口径）  [checks=25]
+  ok   每项都有合法 group（服务/系统/推理/数据/扩展/发布）  [坏项=]
+  ok   6 个新检查项都在（config/vision/backup/ragfresh/logs/webview2）  [全在]
+  ok   backup 检查项真的出现（守住 backupConfig 未定义的老 bug）  [warn · 未开启（会话只在这台机器上）]
+  ok   每项 since/changedAt/streak 形状合法（ISO + 连续次数 >= 1）
+  ok   /api/diag 带 history 摘要（points/since/changes）  [points=1 · since=2026-11-27T16:34:05.713Z · changes=0]
+  ok   history 摘要里的变化条目形状合法（t/id/title/from/to）  [[]]
+  ok   带 vision/backup/config 对象区  [vision.running=false · backup.enabled=false · config.file=ncher-v1.11.2\config.ini]
+  ok   GET /api/diag/history 可用且形状完整  [HTTP 200 · C:\Temp\qytp-v1112-smoke\QingYaoTP AILauncher-v1.11.2\logs\diag-history.jsonl · total=1 · points=1]
+  ok   历史采样点形状合法（t/e/w/o/l）  [{"t":"2026-11-27T16:34:05.713Z","e":0,"w":3,"o":22,"l":{"server":"o","bind":"o","busy":"o","version":"o","msvcp":"o","node":"o","mem":"o","d]
+  ok   导出诊断包必须带令牌（无令牌 403）  [HTTP 403]
+  ok   带令牌能导出 zip（PK 魔数 + > 2000 字节）  [200 · application/zip · 20504 字节 · magic=504b0304]
+  ok   导出响应头带下载文件名（content-disposition）  [attachment; filename="qy-diagnostics-20261128-003405.zip"]
+  ok   导出 zip 内含 README/REPORT/diag.json/manifest/日志尾  [条目齐全 · 20504 字节]
+  ok   打开目录必须带令牌（无令牌 403）  [HTTP 403]
+  ok   open-path 非法 which → 400（合法 which 探针不真调，避免弹 explorer）  [HTTP 400 · {"error":{"message":"不认识的目录：probe-not-a-real-which；可选 dir / logs / modelDir / sessions / w]
+  ok   日志接口可用  [HTTP 200]
+  ok   日志报出文件与编码  [C:\Temp\qytp-v1112-smoke\QingYaoTP AILauncher-v1.11.2\logs\app.log · utf-8]
+  ok   日志内容不是空字符乱码  [===== 2026-11-28 00:33:59 启动 =====
+16:33]
+  ok   崩溃日志接口结构完整  [HTTP 200]
+  ok   资源接口可用（无令牌 GET）  [HTTP 200]
+  ok   资源字段形状完整（含 ISO 时间）  [cpu/mem/proc/model/now]
+  ok   内存 已用+空闲 ≈ 总量（±0.1 GB）  [15.16 + 16.28 vs 31.43]
+  ok   内存百分比与用量自洽（0–100）  [48%]
+  ok   进程 RSS > 0 且 heap 合理  [RSS 4327 MB · heap 46 MB]
+  ok   磁盘剩余可读（disk 为 null 或 freeGB ≥ 0）  [282.6 / 551.6 GB]
+  ok   第二次采样 CPU 占用是 0–100 的数字  [usagePct=0]
+  ok   第二次采样 now 推进  [2026-11-27T16:34:05.757Z → 2026-11-27T16:34:07.069Z]
+  ok   模型 KV 量化与 /api/state 一致  [q8_0 vs q8_0]
+  ok   KV 量化实际生效类型与配置一致（LlamaContext getter）  [actual=q8_0 · configured=q8_0 · resources=q8_0]
+  ok   清崩溃记录必须带令牌
+  ok   打开调试窗口必须带令牌
+  ok   带令牌能清崩溃记录  [{"ok":true,"removed":false,"exists":false}]
+  ok   清完文件真的没了
+  ok   原本没有崩溃记录，无需还原
+  ok   命令行版能跑（服务在跑时）  [exit=0]
+  ok   命令行版列出检查项
+  ok   --json 输出可解析  [exit=0]
+  ok   --json 里也有 checks  [n=25]
+  ok   --logs 能读日志  [exit=0]
+  ok   CLI --history 能打印历史  [exit=0 · QingYaoTP AILauncher · 诊断历史 —— 最近 24 小时（http://127.0.0.1:8099） / 采样 2 点 · 时间窗 11-28 00:34 → 11-28 00:34 · 历史文件 C:\Temp\qytp-v1112-smoke\QingYaoTP AILauncher-v1.11.2\logs\diag-history.jsonl（共 2 条）]
+  ok   CLI --export 能导出 zip 到指定目录  [exit=0 · qy-diagnostics-20261128-003407.zip · 20673 字节]
+  ok   CLI --watch 1 --cycles 2 能跑完两轮  [exit=0 · QingYaoTP AILauncher · 盯着看 —— http://127.0.0.1:8099 · v1.11.2]
+
+RESULT 54/54
+EXIT=0

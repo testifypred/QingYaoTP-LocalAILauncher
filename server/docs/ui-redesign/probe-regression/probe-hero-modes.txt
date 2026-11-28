@@ -1,0 +1,18 @@
+﻿=== probe-hero-modes ===
+[edge] pid=10200 cdp up
+[edge] page ready url=http://127.0.0.1:8099/
+{"start":true,"heroInput":true,"footer":"none","modes":["∫Agent 模式","推理模式"]}
+ok   开场白带输入框
+ok   开场白隐藏底部输入区  [none]
+ok   两个模式按钮  [["∫Agent 模式","推理模式"]]
+ok   Agent 前有 ∫
+STYLES {"agentStyle":"normal","agentFont":"\"Segoe UI Variable Text\", \"Segoe UI\", \"Microsoft YaHei\", system-ui, sans-serif","agentWeight":"550","reasonFont":"\"Segoe UI Variable Text\", \"Segoe UI\", \"Microsoft YaHei\", system-ui, sans-serif","reasonWeight":"600","reasonColor":"rgb(194, 195, 201)"}
+ok   Agent 用无衬线正常体  [normal "Segoe UI Variable Text", "Segoe UI", "M]
+ok   推理模式无衬线、非霓虹色  ["Segoe UI Variable Text", "Segoe UI", "M rgb(194, 195, 201)]
+ok   推理模式开思考、关工具  [{"think":true,"tools":false,"hint":"推理模式：先输出思考过程，再给结论（更慢、更耗 token）","status":"推理模式"}]
+ok   Agent 模式开工具、关思考  [{"think":false,"tools":true,"hint":"Agent 模式：可以调用工具（时间/计算/读文件/联网/跑代码）"}]
+ok   从开场白发送后进入对话
+ok   回答生成
+
+RESULT 10/10
+[probe] exit=0

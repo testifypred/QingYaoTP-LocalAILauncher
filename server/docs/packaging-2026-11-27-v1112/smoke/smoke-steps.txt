@@ -1,0 +1,42 @@
+﻿=== smoke start 2026-11-28 00:33:50 ===
+PSVersion=5.1.26100.9818
+ZIP size=127986879 entries=3955 sha256=646E6B58D1A3681186A6F4424C89204CB5A732786A84DEEAFE9C3F9846948DB0
+STEP1 extract ok sec=6.6 files=3453 inst=C:\Temp\qytp-v1112-smoke\QingYaoTP AILauncher-v1.11.2
+STEP2 config hasBom=True :: port=8099 | modelDir=D:\LocalModels | autoLoad= | contextSize=16384
+STEP3 launcher started pid=26284
+HEALTH ok after 3.1s body={"status":"ok","model":null,"context":0,"gpu":"vulkan"}
+STATE version=1.11.2 modelDir=D:\LocalModels loaded= contextSize= models=DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf,gpt-oss-20b-MXFP4.gguf,Phi-4-mini-instruct-Q4_K_M.gguf,qwen3-5-4B-Q4_K_M.gguf,Qwen3.5-9B-Q4_K_M.gguf
+LOAD ok=True context=16384 layers=33 sec=3.2
+READY loaded=qwen3-5-4B-Q4_K_M.gguf ctx=
+STEP5 package app.mjs APP_VERSION line: const APP_VERSION = "1.11.2";
+STEP5 package package.json version line: "version": "1.11.2",
+STEP5 package woff2 bytes=5680
+PROBE probe-version EXIT=0
+PROBE probe-debug EXIT=0
+PROBE probe-code-review-stream EXIT=0
+PROBE probe-readme done
+PROBE probe-code-window-ui done
+PROBE probe-code-panel-v2 done
+PROBE probe-review-watchdog done
+=== SUMMARY ===
+probe-code-panel-v2          
+probe-code-review-stream       ok   result.added / removed 是数字  [added=4 removed=2]
+probe-code-window-ui         
+probe-debug                  RESULT 54/54
+probe-readme                 RESULT 21/21
+probe-review-watchdog        
+probe-version                RESULT 14/14
+=== smoke end 2026-11-28 00:36:33 ===
+=== SUMMARY (corrected; PS5.1 inline regex could not match CJK, this block replaces lines above) ===
+probe-version                14/14
+probe-debug                  54/54
+probe-code-review-stream     45/45 (skip 3: Phi switch)
+probe-readme                 21/21
+probe-code-window-ui         10/10
+probe-code-panel-v2          44/44
+probe-review-watchdog        56/56
+TOTAL 244/244 assertions, 0 FAIL
+shots=probe-code-panel-v2-colors.png,probe-code-panel-v2-review.png
+POST-PROBES state: version=1.11.2 loaded=qwen3-5-4B-Q4_K_M.gguf
+RUNNING-FROM-C-TEMP: launcher pid=26284 path=C:\Temp\qytp-v1112-smoke\QingYaoTP AILauncher-v1.11.2\QingYaoTP AILauncher.exe ; node pid=20392 path=C:\Temp\qytp-v1112-smoke\QingYaoTP AILauncher-v1.11.2\runtime\node.exe
+EXTRACTED-BEFORE-PROBES: 3453 files; AFTER-PROBES: 3742 files / 313,929,265 B (probe runs created data/logs)

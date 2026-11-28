@@ -280,14 +280,14 @@ const rowInfo = await ev(rowExpr(
   "var del = row.querySelector('.modelDel');" +
   "var rr = row.getBoundingClientRect();" +
   "var dr = del ? del.getBoundingClientRect() : null;" +
-  "return { rows: rows.length, found: true, hasDel: !!del, delText: del ? (del.textContent || '').trim() : ''," +
+  "return { rows: rows.length, found: true, hasDel: !!del, delText: del ? (del.textContent || '').trim() : '', delSvg: !!(del && del.querySelector('svg'))," +
   " menuOpen: document.getElementById('modelMenu').hidden === false," +
   " rowW: Math.round(rr.width), rowH: Math.round(rr.height)," +
   " delW: dr ? Math.round(dr.width) : -1, delH: dr ? Math.round(dr.height) : -1 };"));
-ok("UI 11 假模型 probe-del-ui.gguf 出现在菜单且行内有 .modelDel 删除键",
+ok("UI 11 假模型 probe-del-ui.gguf 出现在菜单且行内有 .modelDel 删除键（v1.11.2 起为垃圾桶 SVG，无文字）",
   !!rowInfo && rowInfo.found === true && rowInfo.hasDel === true && rowInfo.menuOpen === true &&
-  /删/.test(String(rowInfo.delText)) && rowInfo.delH > 0,
-  rowInfo ? "rows=" + rowInfo.rows + " del=" + JSON.stringify(rowInfo.delText) + " " + rowInfo.delW + "x" + rowInfo.delH + " 菜单开=" + rowInfo.menuOpen : "missing");
+  rowInfo.delSvg === true && rowInfo.delH > 0,
+  rowInfo ? "rows=" + rowInfo.rows + " del=" + JSON.stringify(rowInfo.delText) + " svg=" + rowInfo.delSvg + " " + rowInfo.delW + "x" + rowInfo.delH + " 菜单开=" + rowInfo.menuOpen : "missing");
 
 // 点「删」→ dryRun → 弹窗
 await ev(rowExpr("var d = row ? row.querySelector('.modelDel') : null; if (!d) return { clicked: false }; d.click(); return { clicked: true };"));

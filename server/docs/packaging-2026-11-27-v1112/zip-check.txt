@@ -1,0 +1,23 @@
+zip = D:\LocalModels\dist\QingYaoTP-AILauncher-v1.11.2.zip
+bytes      = 127986742
+sha256     = 216BF9FF31345B390EC291EB234B1AEED50FED460312A4CEF028082A6BE0F88C
+entries    = 3955
+files      = 3453
+dirs       = 502
+noPrefix   = 0
+backslash  = 0
+qytpPrefix = 0
+appLlama   = 0
+cloudData  = 0
+dataFiles  = 0
+logFiles   = 0
+modelFiles = 4   (app/vendor/models/*.png 品牌图标，非运行数据)
+pidLogApp  = 0
+fonts      = app/vendor/fonts/noto-serif-sc/{noto-serif-sc-subset.woff2, OFL.txt}  (5680B / 5701B)
+rootDirs   = app/ data/ logs/ models/ plugins/ runtime/
+package    = app.mjs APP_VERSION=1.11.2 / package.json=1.11.2 / localai-tui VER=2.0.0
+config     = modelDir= autoLoad= vkDevices= visionModel= visionMmproj= ; hasDLocalModels=False
+licenses   = app/LICENSE, app/NOTICE, app/THIRD_PARTY_NOTICES.md  (3/3)
+hashes     = 11/11 SAME (8 source + README + woff2 + OFL)
+exe        = QingYaoTP AILauncher.exe 64000B / DebugTool.exe 42496B
+RESULT: ALL PASS

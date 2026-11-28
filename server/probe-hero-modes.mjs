@@ -22,11 +22,11 @@ check("开场白带输入框", st.heroInput === true);
 check("开场白隐藏底部输入区", st.footer === "none", st.footer);
 check("两个模式按钮", st.modes.length === 2 && st.modes[0].includes("Agent") && st.modes[1].includes("推理"), JSON.stringify(st.modes));
 check("Agent 前有 ∫", st.modes[0].startsWith("∫") || st.modes[0].includes("∫"));
-const styles = await ev("(() => { const a = document.querySelector('#hero .modeBtn.agent'); const r = document.querySelector('#hero .modeBtn.reason'); const ca = getComputedStyle(a), cr = getComputedStyle(r); return { italic: ca.fontStyle, reasonFont: cr.fontFamily, reasonWeight: cr.fontWeight, reasonColor: cr.color }; })()");
+const styles = await ev("(() => { const a = document.querySelector('#hero .modeBtn.agent'); const r = document.querySelector('#hero .modeBtn.reason'); const ca = getComputedStyle(a), cr = getComputedStyle(r); return { agentStyle: ca.fontStyle, agentFont: ca.fontFamily, agentWeight: ca.fontWeight, reasonFont: cr.fontFamily, reasonWeight: cr.fontWeight, reasonColor: cr.color }; })()");
 console.log("STYLES", JSON.stringify(styles));
-check("Agent 斜体", styles.italic === "italic", styles.italic);
-check("推理用宋体", /SimSun|宋体|serif/i.test(styles.reasonFont), styles.reasonFont);
-check("推理粗体 + 科技色", Number(styles.reasonWeight) >= 700 && /34, 211, 238|14, 116, 144/.test(styles.reasonColor), styles.reasonWeight + " " + styles.reasonColor);
+// v1.11.2 设计修订：两个模式按钮统一无衬线、去斜体/去宋体/去霓虹色（保留"正常体 + 中性色"的扁平风格）
+check("Agent 用无衬线正常体", styles.agentStyle === "normal" && !/SimSun|宋体|Songti|Source Han Serif|QYTP Serif/i.test(styles.agentFont), styles.agentStyle + " " + styles.agentFont.slice(0, 40));
+check("推理模式无衬线、非霓虹色", !/SimSun|宋体|Songti|Source Han Serif|QYTP Serif/i.test(styles.reasonFont) && !/34, 211, 238|14, 116, 144/.test(styles.reasonColor), styles.reasonFont.slice(0, 40) + " " + styles.reasonColor);
 
 await ev("document.querySelector('#hero .modeBtn.reason').click(); 1");
 await sleep(200);

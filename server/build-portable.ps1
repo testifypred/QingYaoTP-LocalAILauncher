@@ -84,6 +84,8 @@ Write-Host ("   C# 编译器：$Csc")
 foreach ($need in @(
     (Join-Path $Server 'app.mjs'),
     (Join-Path $Server 'app.html'),
+    # 开场白宋体子集（v1.11.2 UI；vendor 目录整体随包复制，这里做存在性校验）
+    (Join-Path $Server 'vendor\fonts\noto-serif-sc\noto-serif-sc-subset.woff2'),
     # 首启「使用说明」弹窗读它（打包进 app\README.md）；漏了首启只能看到「没找到 README.md」
     (Join-Path $Repo 'README.md'),
     # 许可证与第三方声明：随包分发（Apache-2.0 + 依赖许可清单）
@@ -428,6 +430,13 @@ QingYaoTP AILauncher（本地 AI）便携版
   2. 想换端口：改 config.ini 的 port，然后重启启动器。
   3. 杀不干净：删掉 app\server.pid 后再执行 --stop。
   4. 内嵌窗口白屏：删掉 data\webview2 重试；仍不行就用 --no-webview。
+
+十、首次运行被 Windows SmartScreen 拦截？
+  看到「Windows 已保护你的电脑」是正常现象：本程序的 exe 还没有做代码签名，
+  Windows 对「新文件 + 未知发布者」会先拦一次（不是杀毒报毒）。处理：
+    1) 点「更多信息」→「仍要运行」；
+    2) 或右键 QingYaoTP AILauncher.exe → 属性 → 常规 → 勾「解除锁定」→ 确定（DebugTool.exe 同理）。
+  运行前建议用发布说明里的 SHA256 校验文件；代码签名 / 上架 Microsoft Store 是根治方案，后续版本推进。
 "@
 Set-Content -Path (Join-Path $resolved '使用说明.txt') -Value $readme -Encoding UTF8
 

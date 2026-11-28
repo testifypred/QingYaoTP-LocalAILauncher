@@ -1,0 +1,12 @@
+[
+  {
+    "name": "11-v112-light",
+    "theme": "light",
+    "cssFile": null
+  },
+  {
+    "name": "10-v112-dark",
+    "theme": "dark",
+    "cssFile": null
+  }
+]

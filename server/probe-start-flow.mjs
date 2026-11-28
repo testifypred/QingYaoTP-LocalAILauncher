@@ -34,7 +34,7 @@ check("发送后开场白退场", (await ev("!!document.getElementById('hero')")
 let done = false;
 for (let i = 0; i < 180; i++) { await sleep(500); done = await ev("!document.getElementById('send').disabled && document.querySelectorAll('.row.assistant').length > 0"); if (done) break; }
 check("回答已生成", done === true);
-check("发送键仍带模型图标", (await ev("(() => { const i = document.getElementById('sendIco'); return !i.hidden && !!i.src; })()")) === true);
+check("发送键仍带纸飞机（品牌图标按 v1.11.2 设计不显示）", (await ev("(() => { const i = document.getElementById('sendIco'); const sp = document.querySelector('#send svg.sendPlane'); return !!sp && (!i || i.hidden || getComputedStyle(i).display === 'none'); })()")) === true);
 
 const sid = await ev("localStorage.getItem('localai.lastSession')");
 await ev("newChat()");

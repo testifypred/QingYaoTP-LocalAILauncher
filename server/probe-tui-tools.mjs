@@ -161,20 +161,20 @@ try {
   const stN = Number((/通过（(\d+) 项）/.exec(stOut) || [])[1] || 0);
   ok("--selftest 覆盖 ≥ 50 项（v2.0.0 新增 Markdown/LaTeX/线框/光标/面板）", stN >= 50, "n=" + stN);
 
-  const snap = await runTui(["--snapshot", "--no-color", "--cols", "96", "--rows", "26", "--main-ver", "1.11.1"], null, 30000);
+  const snap = await runTui(["--snapshot", "--no-color", "--cols", "96", "--rows", "26", "--main-ver", "1.11.2"], null, 30000);
   const snapOut = String(snap.out || "");
   const snapLines = snapOut.split(/\r?\n/).filter((l) => l.startsWith("|") && l.endsWith("|"));
   ok("--snapshot 退出码 0", snap.code === 0 && !snap.timedOut, "code=" + snap.code);
   ok("--snapshot 有输入框线框（╭ ╮ ╰ ╯）", ["╭", "╮", "╰", "╯"].every((c) => snapOut.includes(c)));
   ok("--snapshot 输入框标题是「输入」", snapOut.includes("输入"));
-  ok("--snapshot 头部同时有终端与主程序版本", snapOut.includes("tui 2.0.0") && snapOut.includes("主程序 v1.11.1"), (snapOut.match(/主程序[^\n|]*/) || [""])[0]);
+  ok("--snapshot 头部同时有终端与主程序版本", snapOut.includes("tui 2.0.0") && snapOut.includes("主程序 v1.11.2"), (snapOut.match(/主程序[^\n|]*/) || [""])[0]);
   ok("--snapshot 显示输入光标（NO_COLOR 下是 ▏）", snapOut.includes("▏"));
   ok("--snapshot Markdown 标记已降级（不出现 **）", !snapOut.includes("**"));
   ok("--snapshot 有标题/列表符号（▌ 或 •）", snapOut.includes("▌") || snapOut.includes("•"));
   const innerLines = snapLines.map((l) => l.slice(1, -1));
   ok("--snapshot 每一帧内容宽度都等于 96", innerLines.length >= 20 && innerLines.every((l) => dispWidth(l) === 96), "n=" + innerLines.length + " bad=" + JSON.stringify(innerLines.filter((l) => dispWidth(l) !== 96).slice(0, 2)));
 
-  const snapMenu = await runTui(["--snapshot", "--no-color", "--cols", "96", "--rows", "30", "--menu", "--main-ver", "1.11.1"], null, 30000);
+  const snapMenu = await runTui(["--snapshot", "--no-color", "--cols", "96", "--rows", "30", "--menu", "--main-ver", "1.11.2"], null, 30000);
   const menuOut = String(snapMenu.out || "");
   ok("--snapshot --menu 退出码 0", snapMenu.code === 0 && !snapMenu.timedOut, "code=" + snapMenu.code);
   ok("能力面板有线框与标题", menuOut.includes("能力面板") && menuOut.includes("╭"));

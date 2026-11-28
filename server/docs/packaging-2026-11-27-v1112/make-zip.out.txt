@@ -1,0 +1,7 @@
+   版本（取自 app.mjs）：1.11.2
+==> 暂存发布载荷（排除 data / logs 内容）
+==> 压缩（正斜杠条目 + 目录项）
+完成：D:\LocalModels\dist\QingYaoTP-AILauncher-v1.11.2.zip
+  122.1 MB / 3955 条目 / 98.2s
+  自检：无 app/llama 条目（视觉已拆分）
+EXITCODE=0

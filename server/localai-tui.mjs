@@ -1567,7 +1567,7 @@ function selftest() {
 async function snapshot() {
   S.model = "qwen3-5-4B-Q4_K_M.gguf";
   S.ctx = 16384; S.tools = true;
-  if (!MAIN.version) MAIN.version = val("--main-ver", "1.11.1");
+  if (!MAIN.version) MAIN.version = val("--main-ver", "1.11.2");
   S.log = [
     { role: "user", text: "用一句话说明 KV 缓存为什么能加速多轮对话" },
     { role: "tool", text: "get_current_time {} → 2ms" },

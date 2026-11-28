@@ -44,7 +44,7 @@ await sleep(3200);
 
 // ---- 顶栏按钮 ----
 const btn = await ev("(() => { const b = document.getElementById('debugBtn'); if (!b) return null; const r = b.getBoundingClientRect(); return { text: b.textContent.trim(), w: r.width, h: r.height, title: b.title }; })()");
-ok("顶栏有 Debug 按钮", !!btn && /Debug/.test(btn.text), btn ? btn.text : "missing");
+ok("顶栏有「调试」按钮（v1.11.2 起文案由 Debug 改为中文）", !!btn && /调试/.test(btn.text), btn ? btn.text : "missing");
 ok("按钮可点（有尺寸）", !!btn && btn.w > 10 && btn.h > 10, btn ? btn.w + "x" + btn.h : "");
 ok("按钮 tooltip 说明是独立程序", !!btn && /独立程序/.test(btn.title || ""), btn?.title || "");
 

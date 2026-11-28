@@ -41,7 +41,9 @@ const header = await ev("(() => { const s = document.getElementById('status'); c
 console.log("HEADER", JSON.stringify(header));
 check("状态栏在顶栏里", header.inHeader === true);
 // 状态栏文案随模型/上下文变（4B 与 7B 的标签不一样），这里只验证「有宽度、没被压成 0」
-  check("状态栏拿到宽度", header.w >= 100, "w=" + header.w);
+  // v1.11.2 顶栏重排（余量→上下文、导航/按钮收窄）后 #status 实测 93–98px；几何实测 scrollW==clientW、
+// 文本「8K/16K · 可思考」完整无省略号截断 → 阈值从 100 降到 80（断言本意是「别被压成 0」）。
+check("状态栏拿到宽度", header.w >= 80, "w=" + header.w);
 check("顶栏不再有「⋯」菜单按钮", header.hasMore === false);
 check("旧的顶栏重命名按钮已隐藏（改名走右键菜单）", header.renameHidden === true);
 check("顶栏按钮都可见", header.visibleButtons.length >= 5, header.visibleButtons.join(" / "));

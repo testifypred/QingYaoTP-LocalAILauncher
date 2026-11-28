@@ -1,0 +1,39 @@
+/* 方向 A：中性极简（Linear / Arc 风） */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg:#0b0c0f; --bg-2:#0b0c0f;
+  --panel:#131418; --panel-2:#16181d; --panel-3:#1b1e24;
+  --line:rgba(255,255,255,.075); --line-2:rgba(255,255,255,.14);
+  --text:#edeef2; --text-2:#b9bec9; --dim:#7b818d;
+  --cyan:#93b4ff; --violet:#c3c8d4;
+  --accent:#93b4ff; --accent-2:#b3ccff; --accent-soft:rgba(147,180,255,.10);
+  --ok:#4ade80; --warn:#fbbf24; --err:#f87171;
+  --bubble:#131519; --bubble-user:#1a2130;
+  --code-bg:#0d0f13; --code-ink:#c8d6ff; --table-head:rgba(255,255,255,.04); --quote:rgba(255,255,255,.16);
+  --shadow:0 10px 34px rgba(0,0,0,.42); --shadow-sm:0 1px 3px rgba(0,0,0,.32);
+  --glow-c:transparent; --glow-v:transparent; --overlay:rgba(5,6,9,.72);
+}
+body { font:15px/1.65 "Segoe UI Variable Text","Segoe UI","Microsoft YaHei",system-ui,sans-serif; background:var(--bg); }
+body::before { display:none !important; }
+#sidebar { background:#0e0f13; border-right:1px solid var(--line); }
+header { background:#0e0f13; border-bottom:1px solid var(--line); }
+header::after { display:none !important; }
+.brand .logo { background:var(--panel-3); border:1px solid var(--line-2); box-shadow:none; color:var(--text); border-radius:10px; }
+.brand .name { font-weight:650; letter-spacing:0; font-size:15px; }
+button { border-radius:8px; }
+.tab { border-radius:10px; background:var(--panel-2); }
+.tab::before,.tab::after { display:none !important; }
+.tab.sel { box-shadow:none !important; border-color:var(--line-2); background:var(--panel-3); }
+.heroGreet { background:none !important; -webkit-text-fill-color:currentColor !important; color:var(--text) !important; font-size:32px; font-weight:600; letter-spacing:-.015em; }
+.heroBrand { letter-spacing:.10em; color:var(--dim); font-weight:600; }
+.heroSub { color:var(--text-2); font-size:14.5px; }
+.modeBtn { border-radius:10px; background:var(--panel-2); border-color:var(--line); }
+.modeBtn.sel { box-shadow:none !important; background:var(--panel-3); border-color:var(--line-2); }
+.modeBtn.reason { font-family:inherit !important; text-shadow:none !important; color:var(--text-2) !important; border-color:var(--line) !important; font-weight:600 !important; }
+.heroBox textarea { border-radius:14px; background:var(--panel); border-color:var(--line-2); }
+.heroBox textarea:focus { box-shadow:0 0 0 1px var(--accent); border-color:var(--accent); }
+.heroBox button { height:56px; border-radius:14px; }
+.heroHint { font-family:inherit; font-size:12px; color:var(--dim); }
+.sessionItem { border-radius:8px; }
+.sessionItem.sel { box-shadow:none !important; background:var(--panel-2); border-color:var(--line); }
+.sideSearch input { border-radius:8px; background:var(--panel-2); }

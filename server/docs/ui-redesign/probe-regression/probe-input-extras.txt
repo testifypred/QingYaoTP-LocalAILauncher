@@ -1,0 +1,14 @@
+﻿=== probe-input-extras ===
+[edge] pid=35000 cdp up
+[edge] page ready url=http://127.0.0.1:8099/
+ok   ↑ 调出最近一条  [最近一条]
+ok   再 ↑ 调出更早一条  [早一点]
+ok   ↓ 往回走  [最近一条]
+ok   ↓ 回到空草稿  [""]
+ok   Ctrl+N 新建对话
+ok   Ctrl+K 聚焦可见输入框
+ok   Esc 清空当前输入框
+ok   右键「清空消息」清掉消息  [len=0]
+
+RESULT 8/8
+[probe] exit=0

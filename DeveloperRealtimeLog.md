@@ -4062,3 +4062,119 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 - 附件（GitHub 返回 digest 与本地一致）：`QingYaoTP-AILauncher-v1.11.1.zip` 127,971,996B / sha256 `deccbae4…ffe213c`；`QingYaoTP-AILauncher-v1.6.0-vision-pack.zip` 38,408,198B / sha256 `d7924534…699a11d3`。
 - About topics 已补（8 个）：local-ai / llama-cpp / windows / offline-first / deepseek-harness / rag / code-review / ai-desktop。
 - 发布页 HTTP 200；Git tag v1.11.1（对象 7e961e8 → commit 2fc897d）；CI success。
+
+---
+
+## 第八十七节（2026-11-26 凌晨）v1.11.2 UI 重做：Fluent 暗色 / 暖纸白亮色 + 思源宋体 + 图标
+
+> 用户反馈「UI 太丑」；本轮按「B（Fluent 深色）做暗色、C（暖纸白）做亮色」重做界面外壳，功能/契约/探针选择器不变。
+
+### 一、改动（app.html 末尾设计覆盖层 + 3 处图标标记 + 1 个探针断言）
+
+- 主题：暗色 Fluent 中性灰 #1c1c20 / 系统蓝 #4cc2ff；亮色暖纸白 #f6f6f3 / 蓝 #2563eb；圆角/阴影/字号统一。
+- 去掉 HUD：网格底纹、视口四角框、顶栏扫光、Logo 呼吸、tab 角括号、渐变文字、扫描光、气泡彩色侧条。
+- 宋体问候：Noto Serif SC（思源宋体）**20 余字形子集 woff2 5.7KB** 随包 `vendor/fonts/noto-serif-sc/`（附 OFL.txt）；问候 700/46px、副标题 400/18px。
+- 图标：设置→线性齿轮 SVG；看图→自绘「相框 + Σ + 山」SVG；发送→纸飞机 + 扁平描边主题色（`#send` / `#heroSend`）。
+- 导航文字：`Debug`→`调试`、`余量`→`上下文`；顶栏按钮高度/ghost 统一；修掉 `[hidden]` 被自定义 display 覆盖导致顶栏出现 3 个空按钮。
+- `probe-hero-modes`：旧断言（Agent 斜体 / 推理宋体 / 霓虹色）按新设计改为无衬线 + 非霓虹色。
+
+### 二、验证
+
+- 8 个界面探针全绿：start-screen 12/12、start-flow 8/8、ui-new 30/30、settings-tools 9/9、hero-modes 10/10、input-extras 8/8、ui-version 9/9、code-window-ui 10/10。
+- 截图证据：`server/docs/ui-redesign-2026-11-26/screens/`（hero/chat/settings × 暗亮 + 图标放大）。
+- 许可：`THIRD_PARTY_NOTICES.md` 增 Noto Serif SC（SIL OFL 1.1，子集）；`build-portable.ps1` 的 `$need` 增字体文件存在性检查。
+
+### 三、未做
+
+- 设置页 slider / 代码审查面板 / 工具卡片细节；窄窗与高 DPI 专项。
+- 版本号仍 1.11.1（v1.11.2 打包时统一 bump）。
+
+---
+
+## 第八十八节（2026-11-26 深夜）SmartScreen 拦截：原因与签名路线
+
+- 现象：下载的 v1.11.1 在主包 exe 首次运行被 SmartScreen 拦（「Windows 已保护你的电脑」）。
+- 实测签名状态：`QingYaoTP AILauncher.exe` / `DebugTool.exe` **NotSigned**；`runtime\node.exe` Valid（上游 Node 已签）。
+- 官方机制（Microsoft Learn）：未签名每个新版本从 0 信誉起步；**EV 已不再免 SmartScreen**；OV/EV 首下仍可能弹；Store 代签永不弹；Artifact Signing $9.99/月、无硬件 token、需身份验证；消费者端**无人工提信誉通道**，只能靠下载量累积。
+- 已做：README FAQ + `使用说明.txt` 加「更多信息 → 仍要运行 / 解除锁定 / 先校验 SHA256」指引；新增 `server\docs\signing-2026-11-26.md` 方案对比与落地细节。
+- 建议：优先申请 **SignPath Foundation**（OSS 免费）签 `QingYaoTP AILauncher.exe` + `DebugTool.exe`（先签后打 zip）；备选 Azure Artifact Signing；中长期 MSIX/Microsoft Store。EV 不推荐。
+- 顺手修复：编辑 `build-portable.ps1` 时 BOM 丢失 → 已恢复（PS 5.1 中文脚本必须 UTF-8 BOM），解析 0 错。
+
+---
+
+## 第八十七节补记（2026-11-26 深夜）模型菜单 / 代码面板 / 设置页统一 + 两处真 bug
+
+- 模型菜单：删除键「删」文字（10.5px 渲染像「拝」）→ **垃圾桶 SVG**（悬停点亮、hover 变红）；行高/字号/宽度重排；代码面板按钮层级（运行实心、模型审查描边、其余 ghost）；设置页 chip 式页签；toast 统一。
+- **真 bug 1**：第二版 CSS 补丁漏了一个 `}`，后续 3~6 号补丁被浏览器当成嵌套规则**静默失效**（模型菜单/代码面板样式没生效）。修复：补 `}`，并记录「追加 CSS 覆盖块后必须校验 `{}` 平衡（`open==close`）」。
+- **真 bug 2**：`.recentWrap`（上次在聊，z-index 55）会盖住 `.modal`（旧 z-index 较低）里的代码面板 → 调整 `.modal{z-index:90}`、`.toasts{z-index:100}`。
+- 回归：probe-code-panel-v2 44/44、start-screen 12/12、start-flow 8/8、ui-new 30/30、settings-tools 9/9、hero-modes 10/10、input-extras 8/8、ui-version 9/9、code-window-ui 10/10。
+- 证据：`server\docs\ui-redesign-2026-11-26\screens\`（新增 menu/code 两套暗亮截图）。
+
+---
+
+## 第八十九节（2026-11-27 深夜）v1.11.2 UI 第二轮收尾 + 工作移交
+
+> 承接第八十七节（UI 重做第一版）与第八十八节（SmartScreen）。本轮把模型菜单/代码面板/设置页/toast 也统一，并修掉两个真 bug；随后做交接。
+
+### 一、第二轮改动
+
+- **模型菜单**：每行的「删」文字（10.5px 下发虚、放大像「拝」）→ **垃圾桶 SVG**（默认淡灰、悬停点亮、hover 变红）；行高 46、名称 13px / 大小 11px、菜单宽 330；「＋ 添加模型…」虚线按钮。
+- **代码面板**：工具条/审查栏按钮统一 26px 高、8px 圆角；`运行` 实心主题色、`模型审查` 描边主题色、其余 ghost；编辑器 13px/1.62。
+- **设置页**：页签改 30px chip 式、选中主题色；toast 统一圆角 + 左侧主题色条。
+- **弹层层级**：`.modal` z-index 90、`.toasts` 100 —— 修掉「上次在聊」浮卡（55）盖住代码面板等弹层的问题。
+- **两个真 bug**：① 第二版 CSS 补丁漏 `}` → 浏览器把后续 3 段规则当嵌套**静默失效**（模型菜单/代码面板样式没生效）；已补并加「改 CSS 校验 `{}` 平衡」纪律。② `build-portable.ps1` 编辑时丢 UTF-8 BOM → 已恢复，Parser 0 错。
+
+### 二、验证
+
+- `probe-code-panel-v2` **44/44**、`probe-start-screen` 12/12、`probe-start-flow` 8/8、`probe-ui-new` 30/30、`probe-settings-tools` 9/9、`probe-hero-modes` 10/10、`probe-input-extras` 8/8、`probe-ui-version` 9/9、`probe-code-window-ui` 10/10。
+- 证据：`server\docs\ui-redesign-2026-11-26\`（README + screens）、`server\docs\ui-redesign\`（截图/探针工具）。
+
+### 三、状态与移交
+
+- 8099 归一为单实例：`C:\QingYaoTP-AILauncher`（v1.11.1 + 新 UI，4B/16K，视觉包 pack 53）；dist 规范安装的 app.html / vendor 字体已同步，但实例未运行。
+- Git：main `ae9cb3d` / tag v1.11.1；v1.11.2 改动**全部未提交、未打包、未推**；版本仍 1.11.1。
+- 交接：`server\docs\handover-2026-11-27.md`（短版：状态 / 未提交清单 / v1.11.2 收口步骤 / 环境注意）；`新会话启动词.md` 顶部已加 11-27 一行；`交接文档.md` 追加 v1.11.2 小节。
+- 自我复盘：`Reflection OfDSH.md`（根目录，未跟踪）。
+
+### 四、下一步（等用户批准）
+
+1. v1.11.2：版本 5 文件 7 处 bump → 全量 70 条源码实例 → build-portable/make-zip → 工作区外副本冒烟 → RELEASE-v1.11.2 + README 数字 → commit/tag/push/Release。
+2. 可选：SignPath Foundation / Artifact Signing / Store（SmartScreen）；UI 继续打磨设置页滑杆、窄窗 175%、工具卡片。
+
+---
+
+## 第九十节（2026-11-28 凌晨）v1.11.2 收口：探针阻塞修复 + 版本 bump + 全量有效 70/70 + 打包
+
+> 承接第八十七 / 八十七补记 / 八十九节（UI 第二轮重做，未提交未打包）。本轮按「先收口、后开新篇」执行，**打包/推送/Release 仍等用户点头**。
+
+### 一、接手审计（3 名只读审计，Lead 复核关键数字）
+
+- git：main `ae9cb3d` / tag `v1.11.1`；**9 改 + 6 未跟踪**（handover 清单漏 `交接文档.md` 与 handover 自身）。
+- 两个真 bug 复核通过：`<style>` 花括号 **1017=1017**；`build-portable.ps1` 前三字节 `EF BB BF`、PS5.1 Parser 0 错。
+- 环境真值：8099 于 11-27 23:46 「收到退出指令」后停止；dist 与源码 6/6 同哈希（仅版本未 bump、包内 README/NOTICES 落后）；视觉包在 dist（54 文件）；Edge 158.0.4370.45 / node v24.21.0。
+- **收口阻塞（静态发现）**：① `probe-ui-debug` 断言按钮文案含 `Debug`，已改「调试」；② `probe-model-delete` 断言 `.modelDel` 文案含「删」，已改纯 SVG；③ `#send #sendIco{display:none}` 但 `probe-start-screen/start-flow` 只查 `hidden` 属性 → **假绿**。
+
+### 二、改动（只动探针 + 文档，产品代码零改动）
+
+- `probe-ui-debug.mjs:47` → 断言「调试」；`probe-model-delete.mjs:283/287` → 断言 `delSvg` + `delH>0`；
+- `probe-start-screen.mjs:26/35` → 新增 `sendPlane` / `sendIcoVisible`（`getComputedStyle`），断言「纸飞机存在 + 品牌图标不可见」；`probe-start-flow.mjs:37` 同款；
+- `technique/07` 新增：v1.11.2 品牌图标下线约定、**判可见性用 `getComputedStyle`**、**回答结束后 <1s 刷新会丢最后一条 assistant（400ms 防抖）**；
+- 版本 bump **1.11.2（5 文件 7 处）**：`app.mjs:47` / `package.json:3` / `localai.mjs:19` / `localai-tui.mjs:1570` / `probe-tui-tools.mjs:164,170,177`；TUI `VER` 仍 2.0.0。
+
+### 三、全量回归（源码实例，v1.11.2）
+
+- 70/70 执行，**68 PASS / 2 FAIL**，断言合计 **1,523**（= v1.11.1 的 1,524 − probe-hero-modes 11→10）；**无环境红**（web-tools 19/19、ui-web 39/39、vision 四连全过）。
+- 两条 FAIL 定性：① `probe-title-ui` 状态栏 `#status` 实测 93–98px（v1.11.1 为 120；几何实测 scrollW==clientW、文本完整无省略号）→ **阈值 `w>=100` 过期**，改 `>=80`；② `probe-ui-tools` C 段「刷新后卡片/正文丢失」→ reload 早于 **400ms 防抖 + PUT** 存盘，**探针时序竞态**（对照实验等 2.5s 则正常）；探针改为刷新前轮询 `GET /api/sessions/<id>` 等 assistant 落盘。
+- 修正后隔离复跑各 **2/2 全绿**（title-ui 13/13 ×2、ui-tools 12/12 ×2）→ **有效 70/70**。证据 `server\docs\probe-full-2026-11-27-v1112\`（RESULT.md 含第九节）。
+
+### 四、打包（两轮）
+
+- 首轮（README 回填前）：258.9 MB / 3,453 文件；zip 127,986,742 B / 3,955 条目 / SHA256 `216BF9FF…F88C`（**作废**）。
+- **终版（README 回填后）**：构建 258.9 MB / 3,453 文件；zip **127,986,879 B / 122.1 MB / 3,955 条目 / SHA256 `646E6B58D1A3681186A6F4424C89204CB5A732786A84DEEAFE9C3F9846948DB0`**；包内 `app/README.md` 与仓库 README 同哈希（17,598B / `B2BCD26D…44BC5`）。
+- 自检全过：无 app/llama、无 data/cloud-review、/data/ 与 /logs/ 无文件、config 8 键消毒且无 `D:\LocalModels`、字体 woff2+OFL 在包、许可 3/3、包内版本 1.11.2 / TUI 2.0.0。
+
+### 五、状态
+
+- **未 commit / 未 tag / 未 push / Release 未发**（等用户明确「打包 / release / 推」）。
+- 8099 收口期间空闲；dist 已换 v1.11.2（build 重置了本机 config 的 modelDir，本机要跑需手填）；用户会话跑前已备份 `%TEMP%\sessions-before-v1112`。
+- 证据：`probe-full-2026-11-27-v1112\`、`packaging-2026-11-27-v1112\`（RESULT / build2 / make-zip2 / zip-check）。

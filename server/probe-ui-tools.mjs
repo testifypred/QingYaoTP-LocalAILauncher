@@ -112,6 +112,19 @@ console.log("\n== B. 发一轮需要工具的问题 ==");
 
 console.log("\n== C. 刷新后工具卡片仍在（存档）==");
 {
+  // 刷新前先等「助手消息真正落盘」：app.html 存对话是 400ms 防抖 + PUT（saveTranscript），
+  // 生成刚结束就 Page.reload，导航会取消防抖计时器 → 会话里只剩 user 那条（v1.11.2 全量实测复现）。
+  // 轮询 /api/sessions/<id> 直到出现 assistant 消息（最多 10s）；超时则照旧刷新，C 段红了即说明存盘窗口真的丢了。
+  const sid0 = await ev("localStorage.getItem('localai.lastSession') || ''");
+  let persisted = false;
+  for (let i = 0; i < 40 && sid0; i++) {
+    try {
+      const s = await (await fetch(`${APP}/api/sessions/${encodeURIComponent(sid0)}`)).json();
+      if ((s.messages || []).some((m) => m.role === "assistant")) { persisted = true; break; }
+    } catch {}
+    await sleep(250);
+  }
+  if (!persisted) console.log("  ! 等落盘超时（10s），继续刷新（若 C 段红＝存盘窗口真的丢了）");
   await cmd("Page.reload", { ignoreCache: true });
   await sleep(4200);
   // 10-24 起启动页固定是新对话，最近一条只放在右下角卡片上：不点它，刷新后就是空页面

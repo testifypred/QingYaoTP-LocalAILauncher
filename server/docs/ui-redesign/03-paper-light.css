@@ -1,0 +1,36 @@
+/* 方向 C：暖纸白（浅色默认） */
+:root[data-theme="light"] {
+  --bg:#f6f6f3; --bg-2:#f2f2ee;
+  --panel:#ffffff; --panel-2:#ffffff; --panel-3:#f7f7f4;
+  --line:rgba(17,24,39,.09); --line-2:rgba(17,24,39,.16);
+  --text:#1a1d21; --text-2:#4b5158; --dim:#8a9098;
+  --cyan:#2563eb; --violet:#2563eb;
+  --accent:#2563eb; --accent-2:#1d4ed8; --accent-soft:rgba(37,99,235,.08);
+  --ok:#15803d; --warn:#b45309; --err:#dc2626;
+  --bubble:#ffffff; --bubble-user:#eef3ff;
+  --code-bg:#f4f5f7; --code-ink:#1f2937; --table-head:rgba(17,24,39,.04); --quote:rgba(37,99,235,.25);
+  --shadow:0 8px 28px rgba(17,24,39,.08); --shadow-sm:0 1px 3px rgba(17,24,39,.06);
+  --glow-c:transparent; --glow-v:transparent; --overlay:rgba(17,24,39,.24);
+}
+body { font:15px/1.65 "Segoe UI Variable Text","Segoe UI","Microsoft YaHei",system-ui,sans-serif; background:var(--bg); }
+body::before { display:none !important; }
+#sidebar { background:#fbfbf9; border-right:1px solid var(--line); }
+header { background:rgba(255,255,255,.94); border-bottom:1px solid var(--line); }
+header::after { display:none !important; }
+.brand .logo { background:#1a1d21; border:none; box-shadow:none; }
+.brand .name { font-weight:650; }
+.tab { border-radius:10px; background:#fff; border-color:var(--line); }
+.tab::before,.tab::after { display:none !important; }
+.tab.sel { box-shadow:none !important; border-color:var(--accent); background:#f2f6ff; }
+.heroGreet { background:none !important; -webkit-text-fill-color:currentColor !important; color:var(--text) !important; font-weight:600; font-size:32px; letter-spacing:-.015em; }
+.heroSub { color:var(--text-2); }
+.modeBtn { border-radius:10px; background:#fff; border-color:var(--line); }
+.modeBtn.sel { box-shadow:none !important; border-color:var(--accent); background:#f2f6ff; }
+.modeBtn.reason { font-family:inherit !important; text-shadow:none !important; color:var(--text-2) !important; font-weight:600 !important; }
+.heroBox textarea { border-radius:14px; background:#fff; border-color:var(--line-2); }
+.heroBox textarea:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(37,99,235,.12); }
+.heroBox button { height:56px; border-radius:14px; }
+.heroHint { font-family:inherit; font-size:12px; }
+.sessionItem { border-radius:8px; }
+.sessionItem.sel { box-shadow:none !important; background:#eef2fb; border-color:transparent; }
+.sideSearch input { border-radius:8px; background:#fff; }
