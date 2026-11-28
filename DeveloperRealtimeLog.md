@@ -4178,3 +4178,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\LocalModels\server\make-z
 - **未 commit / 未 tag / 未 push / Release 未发**（等用户明确「打包 / release / 推」）。
 - 8099 收口期间空闲；dist 已换 v1.11.2（build 重置了本机 config 的 modelDir，本机要跑需手填）；用户会话跑前已备份 `%TEMP%\sessions-before-v1112`。
 - 证据：`probe-full-2026-11-27-v1112\`、`packaging-2026-11-27-v1112\`（RESULT / build2 / make-zip2 / zip-check）。
+
+### 六、发布（2026-11-28 深夜，用户批准「发布」）
+
+- 发布前只读核对（2 人并行）：zip ↔ dist ↔ 源码 **6/6 三方哈希一致**（app.mjs `6ec6900f` / app.html `87fa2d73` / README `b2bcd26d` / package.json `00af858b` / localai.mjs `f69c6edb` / tui `fceb0c36`）；未跟踪 69 文件密钥扫描（sk-/ghp_/AKIA/apiKey/secret/password/Bearer/token）**命中 0**；排除 50 KB 噪声（`dev8399.*`、`diag*.mjs` 7 个、`measure-*.mjs/json`、`isolate/measure-*`），截图按历史策略不入库（`.gitignore:28`）。
+- **commit `966d163`**（70 文件：20 改 + 50 新增）→ **annotated tag `v1.11.2`**（对象 `74737b0`）→ push main + tag（SSH over 443）→ **CI success**（run 46154715111）。
+- **GitHub Release 已发布**：https://github.com/testifypred/QingYaoTP-LocalAILauncher/releases/tag/v1.11.2
+  - 主包 `QingYaoTP-AILauncher-v1.11.2.zip` 127,986,879 B → GitHub digest `sha256:646e6b58…48db0`（与本地 SHA256 一致）
+  - 视觉包 `QingYaoTP-AILauncher-v1.6.0-vision-pack.zip` 38,408,198 B → `sha256:d7924534…a11d3`（一致）
+  - 上传用 `server\docs\packaging-2026-11-27-v1112\create-release-v1.11.2.mjs`（幂等：已存在同名资产先删再传）。
+- **凭据卫生**：本轮为发布临时使用了用户提供的 fine-grained PAT（出现在会话记录里）→ **建议发布后立即吊销/轮换**；以后优先“本地终端交互输入 + 只在该进程 env 生效”。

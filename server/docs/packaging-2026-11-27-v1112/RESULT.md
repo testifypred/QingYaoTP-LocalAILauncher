@@ -99,6 +99,22 @@ Lead 已按本文件第七节回填 README（v1.11.2 / 122.1 MB / 3,955 条目 /
 - 终版自检沿用首轮全项（无 app/llama、无 data/cloud-review、/data/ 与 /logs/ 无文件、fonts woff2+OFL 在包、许可 3/3、config 8 键消毒无 `D:\LocalModels`），本次只重算字节/条目/SHA 并核对包内 README 同哈希。
 - 下一步：发布包冒烟（工作区外解压终版 zip，7 项 244 断言）→ 通过后写 `.github/RELEASE-v1.11.2.md` 与日志；commit/tag/push/Release 等用户批准。
 
+## 十、发布（2026-11-28 深夜）
+
+| 项 | 值 |
+|---|---|
+| commit | **966d163** release: v1.11.2（界面第二轮重做 + 收口）· 70 文件（20 改 + 50 新增） |
+| tag | annotated **v1.11.2**（对象 74737b0），已推远端 |
+| push | main + tag 走 SSH over 443；`ae9cb3d..966d163` 快进 |
+| CI | **success** · run 46154715111（6 组：JS 语法 / 版本三处 / 许可 / PS5.1 Parser / 仓库卫生 / README） |
+| Release | https://github.com/testifypred/QingYaoTP-LocalAILauncher/releases/tag/v1.11.2 |
+| 主包 asset | `QingYaoTP-AILauncher-v1.11.2.zip` 127,986,879 B · GitHub digest `sha256:646e6b58d1a3681186a6f4424c89204cb5a732786a84deeafe9c3f9846948db0` = 本地 SHA256 ✓ |
+| 视觉包 asset | `QingYaoTP-AILauncher-v1.6.0-vision-pack.zip` 38,408,198 B · `sha256:d7924534b30143f3791d26c143b95656306ae1ffa08d52557ee25d56699a11d3` = 本地 SHA256 ✓ |
+| 上传方式 | `create-release-v1.11.2.mjs`（本轮新增；幂等，已存在同名资产先删再传） |
+
+- 提交清单已剔除 50 KB 噪声（`dev8399.*` / `diag*.mjs` ×7 / `measure-*.mjs,json` / `isolate/measure-*`）；证据截图按历史策略不入库（`.gitignore:28`，历史 0 张 docs png 被跟踪）。
+- 凭据：发布时临时使用用户提供的 fine-grained PAT（仅在该工具进程 env 生效、用后移除、未落盘）→ **已在日志中标注建议吊销/轮换**。
+
 ---
 
 ## 九、发布包冒烟（终版 zip，工作区外 · 2026-11-28 00:33–00:36）
